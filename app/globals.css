@@ -1,0 +1,530 @@
+@import "tailwindcss";
+
+/* ===== Design tokens — Didier Stamatti (B&N + dorado sobrio) ===== */
+:root{
+  --ground:#FBFAF8; --surface:#FFFFFF; --surface-2:#F3F2EF;
+  --ink:#141312; --muted:#79766F; --hair:#E7E4DE;
+  --brand:#141312; --brand-strong:#000000; --brand-soft:#EEECE7; --on-brand:#FFFFFF;
+  --gold:#A8813E;
+  --ok:#2E7D50; --ok-soft:#E6F0E9;
+  --warn:#B0781E; --warn-soft:#F6ECD8;
+  --crit:#B23A28; --crit-soft:#F7E4DF;
+  --shadow:0 1px 2px rgba(20,19,18,.05),0 6px 20px rgba(20,19,18,.06);
+  --shadow-lift:0 2px 4px rgba(20,19,18,.06),0 12px 28px rgba(20,19,18,.10);
+  --font-ui:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --fs:1; /* multiplicador de tamaño de texto (Ajustes → Accesibilidad) */
+
+  /* Escala de espaciado — todo el layout se apoya en estos pasos */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px; --sp-8:40px;
+
+  /* Escala de radios */
+  --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px; --r-pill:999px;
+  --radius:14px; /* alias histórico = --r-lg */
+
+  /* Movimiento — corto y con desaceleración natural, nunca decorativo */
+  --dur-fast:110ms; --dur:170ms;
+  --ease:cubic-bezier(.22,1,.36,1);
+
+  /* Altura mínima cómoda para el dedo */
+  --tap:44px;
+
+  /* Escala tipográfica — 8 pasos deliberados (antes: 18 tamaños con casi-duplicados).
+     Cada paso ya incluye el multiplicador de accesibilidad --fs. */
+  --t-xs:calc(11px * var(--fs));    /* etiquetas en mayúscula, micro-texto */
+  --t-sm:calc(12.5px * var(--fs));  /* meta, rubros, ayudas, chips */
+  --t-base:calc(14px * var(--fs));  /* cuerpo, tablas, botones */
+  --t-md:calc(15px * var(--fs));    /* navegación, campos de formulario */
+  --t-lg:calc(16.5px * var(--fs));  /* títulos de sección, números destacados */
+  --t-xl:calc(19px * var(--fs));    /* títulos de tarjeta y modal */
+  --t-2xl:calc(22px * var(--fs));   /* título de página */
+  --t-3xl:calc(28px * var(--fs));   /* cifras grandes, stepper */
+}
+
+/* Modo oscuro automático (lo que diga el sistema), salvo que se haya elegido "Claro" a mano */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E0E0D; --surface:#1A1A18; --surface-2:#232320;
+    --ink:#F2F1ED; --muted:#9C9A93; --hair:#2E2E2A;
+    --brand:#F2F1ED; --brand-strong:#FFFFFF; --brand-soft:#26261F; --on-brand:#141312;
+    --gold:#C9A150;
+    --ok:#5FB985; --ok-soft:#1B2E22; --warn:#D6A24A; --warn-soft:#332A18; --crit:#D96A52; --crit-soft:#33201B;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.5);
+  }
+}
+/* Modo oscuro elegido a mano (aunque el sistema esté en claro) */
+:root[data-theme="dark"]{
+  --ground:#0E0E0D; --surface:#1A1A18; --surface-2:#232320;
+  --ink:#F2F1ED; --muted:#9C9A93; --hair:#2E2E2A;
+  --brand:#F2F1ED; --brand-strong:#FFFFFF; --brand-soft:#26261F; --on-brand:#141312;
+  --gold:#C9A150;
+  --ok:#5FB985; --ok-soft:#1B2E22; --warn:#D6A24A; --warn-soft:#332A18; --crit:#D96A52; --crit-soft:#33201B;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.5);
+}
+
+/* Tamaño de texto (Ajustes → Accesibilidad) */
+:root[data-text="grande"]{--fs:1.13}
+:root[data-text="xl"]{--fs:1.26}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--font-ui); color:var(--ink); background:var(--ground);
+  -webkit-font-smoothing:antialiased; line-height:1.45;
+}
+
+/* Foco visible al navegar con teclado (no aparece al hacer clic con el mouse).
+   :where() = especificidad 0, cualquier regla puntual lo puede sobrescribir. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible{
+  outline:2px solid var(--gold); outline-offset:2px;
+}
+
+/* Los cambios de estado se acompañan, no saltan */
+:where(.btn, .tab, .qbtn, .nav, .miniedit, .seg button, .step-btn, .note-toggle,
+       .event, .foot-user, .logout-btn, .pass-toggle, .wk-select, .search){
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important; animation-iteration-count:1!important;
+    transition-duration:.01ms!important; scroll-behavior:auto!important;
+  }
+}
+
+/* ===== App shell ===== */
+.app{display:grid; grid-template-columns:248px 1fr; min-height:100vh}
+.side{
+  background:color-mix(in srgb,var(--surface) 90%,#000); border-right:1px solid var(--hair);
+  padding:var(--sp-5) var(--sp-4); display:flex; flex-direction:column; gap:var(--sp-1);
+  position:sticky; top:0; height:100vh;
+}
+.brand{padding:var(--sp-3) var(--sp-2) var(--sp-4); display:flex; justify-content:center}
+/* Logo vectorial (SVG) pintado con el color del tema vía máscara */
+.logo-mark{width:100%; aspect-ratio:1040 / 836; background-color:var(--ink); display:block;
+  -webkit-mask:url(/logo.svg) center / contain no-repeat; mask:url(/logo.svg) center / contain no-repeat}
+.brand .logo-mark{max-width:190px}
+.nav-label{font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.13em; color:var(--muted); padding:var(--sp-5) var(--sp-3) var(--sp-2)}
+.nav{
+  display:flex; align-items:center; gap:var(--sp-3); min-height:var(--tap); padding:0 var(--sp-3);
+  border-radius:var(--r-md); cursor:pointer;
+  color:var(--ink); font-size:var(--t-md); font-weight:500; border:1px solid transparent; background:transparent;
+  text-align:left; width:100%; text-decoration:none;
+}
+.nav svg{width:20px; height:20px; flex:0 0 auto; color:var(--muted); transition:color var(--dur) var(--ease)}
+.nav:hover{background:var(--surface-2)}
+.nav:hover svg{color:var(--ink)}
+.nav.active{background:var(--brand-soft); color:var(--ink); border-color:var(--hair); font-weight:600}
+.nav.active svg{color:var(--gold)}
+.side .foot{margin-top:auto; padding:var(--sp-2) var(--sp-1); border-top:1px solid var(--hair); display:flex; align-items:center; gap:var(--sp-2); color:var(--muted); font-size:var(--t-sm)}
+.avatar{width:32px; height:32px; flex:0 0 auto; border-radius:50%; background:var(--gold); color:#fff; display:grid; place-items:center; font-size:var(--t-sm); font-weight:700}
+
+.main{min-width:0; display:flex; flex-direction:column}
+.topbar{
+  position:sticky; top:0; z-index:5; background:color-mix(in srgb,var(--ground) 86%,transparent);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--hair);
+  padding:var(--sp-4) var(--sp-6); display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+}
+.topbar h1{font-size:var(--t-2xl); margin:0; font-weight:700; letter-spacing:-.01em; text-wrap:balance}
+.topbar .sub{font-size:var(--t-sm); color:var(--muted); margin-top:2px}
+.spacer{flex:1}
+.content{padding:var(--sp-6) var(--sp-6) 96px; max-width:1120px; width:100%}
+
+/* ===== Buttons ===== */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:var(--sp-2);
+  font-family:var(--font-ui); font-size:var(--t-base); font-weight:600; line-height:1.2;
+  min-height:var(--tap); padding:0 var(--sp-4); border-radius:var(--r-md);
+  border:1px solid var(--hair); background:var(--surface); color:var(--ink); cursor:pointer;
+}
+.btn svg{width:18px; height:18px; flex:0 0 auto}
+.btn:hover{background:var(--surface-2); border-color:color-mix(in srgb,var(--hair) 60%,var(--ink))}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--brand); border-color:var(--brand); color:var(--on-brand)}
+.btn.primary:hover{background:var(--brand-strong); border-color:var(--brand-strong)}
+.btn.ghost{background:transparent}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.danger{background:var(--crit); border-color:var(--crit); color:#fff}
+.btn.danger:hover{background:color-mix(in srgb,var(--crit) 85%,#000); border-color:color-mix(in srgb,var(--crit) 85%,#000)}
+.btn.btn-del{color:var(--muted); border-color:var(--hair); background:transparent}
+.btn.btn-del:hover{color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+.btn:disabled:hover{background:var(--surface); border-color:var(--hair); transform:none}
+.btn.primary:disabled:hover{background:var(--brand); border-color:var(--brand)}
+
+/* ===== Chips / status ===== */
+.chip{font-size:var(--t-sm); font-weight:650; padding:5px 10px; border-radius:var(--r-pill); display:inline-flex; align-items:center; gap:6px; white-space:nowrap}
+.chip svg{width:14px; height:14px}
+.chip.ok{background:var(--ok-soft); color:var(--ok)}
+.chip.warn{background:var(--warn-soft); color:var(--warn)}
+.chip.crit{background:var(--crit-soft); color:var(--crit)}
+.chip.neutral{background:var(--surface-2); color:var(--muted); border:1px solid var(--hair)}
+
+/* ===== Search + filters ===== */
+.searchbar{display:flex; gap:var(--sp-2); margin-bottom:var(--sp-4); flex-wrap:wrap; align-items:center}
+.search{
+  flex:1; min-width:220px; display:flex; align-items:center; gap:var(--sp-2);
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  min-height:var(--tap); padding:0 var(--sp-4); color:var(--muted);
+}
+.search:focus-within{border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 18%,transparent)}
+.search svg{width:18px; height:18px; flex:0 0 auto}
+.search input{border:none; background:none; outline:none; font-size:var(--t-base); color:var(--ink); width:100%; font-family:var(--font-ui)}
+.tab{
+  min-height:var(--tap); padding:0 var(--sp-4); border-radius:var(--r-pill);
+  border:1px solid var(--hair); background:var(--surface);
+  font-family:var(--font-ui); font-size:var(--t-sm); font-weight:600;
+  color:var(--muted); cursor:pointer;
+}
+.tab:hover{background:var(--surface-2); color:var(--ink)}
+.tab.active{background:var(--ink); color:var(--ground); border-color:var(--ink)}
+.tab.active:hover{background:var(--brand-strong); color:var(--ground)}
+
+/* ===== Table ===== */
+.tablewrap{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:var(--t-base); min-width:680px}
+/* El encabezado acompaña el scroll de listas largas (167 productos) */
+thead th{
+  text-align:left; font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.08em;
+  color:var(--muted); font-weight:700; padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--hair); background:var(--surface-2);
+  position:sticky; top:0; z-index:1;
+}
+tbody td{padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--hair); vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background-color var(--dur) var(--ease)}
+tbody tr:hover{background:var(--surface-2)}
+.prod{font-weight:600}
+.rubro{color:var(--muted); font-size:var(--t-sm); margin-top:2px}
+.stocknum{font-variant-numeric:tabular-nums; font-weight:700; font-size:var(--t-lg)}
+.miniedit{
+  font-size:var(--t-sm); color:var(--ink); font-weight:600; cursor:pointer;
+  border:1px solid var(--hair); background:var(--surface);
+  min-height:36px; padding:0 var(--sp-3); border-radius:var(--r-sm); white-space:nowrap;
+}
+.miniedit:hover{background:var(--brand-soft); border-color:var(--gold)}
+.dim{color:var(--muted); font-weight:500}
+
+.emptyrow{padding:var(--sp-8) var(--sp-4); text-align:center; color:var(--muted)}
+.hint{font-size:var(--t-sm); color:var(--muted); margin-top:var(--sp-4); display:flex; gap:var(--sp-2); align-items:flex-start; max-width:75ch; text-wrap:pretty}
+.hint svg{width:15px; height:15px; flex:0 0 auto; margin-top:2px; color:var(--gold)}
+.countnote{font-size:var(--t-sm);color:var(--muted);margin:2px 0 14px}
+
+/* ===== Modal ===== */
+.overlay{
+  position:fixed; inset:0; background:rgba(15,14,13,.5); backdrop-filter:blur(2px);
+  display:flex; align-items:center; justify-content:center; z-index:50; padding:var(--sp-4);
+}
+.modal{
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-xl);
+  box-shadow:0 20px 60px rgba(0,0,0,.3); width:100%; max-width:440px; padding:var(--sp-5);
+  animation:modal-in var(--dur) var(--ease);
+}
+/* Solo anima el movimiento, NUNCA la opacidad: si la animación no corre
+   (pestaña oculta, headless), el modal igual se ve. Realza, no condiciona. */
+@keyframes modal-in{from{transform:translateY(8px) scale(.985)}to{transform:none}}
+.modal h2{margin:0 0 3px; font-size:var(--t-xl); font-weight:700; letter-spacing:-.01em}
+.modal .msub{color:var(--muted); font-size:var(--t-sm); margin-bottom:var(--sp-5); text-wrap:pretty}
+/* stepper − [n] + del editor de stock */
+.stepper-row{display:flex; align-items:center; justify-content:center; gap:12px; margin:8px 0 4px}
+.step-btn{width:54px; height:54px; border-radius:var(--r-md); border:1px solid var(--hair); background:var(--surface-2); font-size:var(--t-3xl); font-weight:600; line-height:1; color:var(--ink); cursor:pointer; display:grid; place-items:center; user-select:none}
+.step-btn:hover{background:var(--brand-soft); border-color:var(--gold)}
+.step-btn:active{transform:scale(.95)}
+.step-input{width:118px; height:54px; text-align:center; font-size:var(--t-3xl); font-weight:700; border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface-2); color:var(--ink); font-variant-numeric:tabular-nums; -moz-appearance:textfield}
+.step-input::-webkit-outer-spin-button, .step-input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+.step-input:focus{outline:2px solid var(--gold); outline-offset:-1px}
+.delta-line{text-align:center; font-size:var(--t-sm); color:var(--muted); margin:2px 0 16px; min-height:18px; font-weight:600}
+.delta-line.active{color:var(--gold)}
+.field{margin-bottom:var(--sp-3)}
+.field label{display:block; font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; margin-bottom:var(--sp-2)}
+.field input, .field select{
+  width:100%; min-height:var(--tap); font-size:var(--t-md); font-family:var(--font-ui);
+  background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:0 var(--sp-3); color:var(--ink);
+  transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.field input:focus, .field select:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
+.preview-line{font-size:var(--t-sm); color:var(--muted); margin:-4px 0 16px}
+.preview-line b{color:var(--ink); font-variant-numeric:tabular-nums}
+.modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:6px}
+
+/* ===== Mobile ===== */
+.mobnav{display:none}
+@media(max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{display:none}
+  .content{padding:18px 16px 92px}
+  .topbar{padding:14px 16px}
+  .mobnav{
+    display:flex; position:fixed; bottom:0; left:0; right:0; z-index:20; background:var(--surface);
+    border-top:1px solid var(--hair); padding:8px 6px calc(8px + env(safe-area-inset-bottom)); justify-content:space-around;
+  }
+  .mobnav a{border:none; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:var(--t-xs); color:var(--muted); font-weight:600; min-height:var(--tap); padding:var(--sp-1) var(--sp-3); border-radius:var(--r-sm); text-decoration:none}
+  .mobnav a svg{width:22px; height:22px}
+  .mobnav a.active{color:var(--ink)}
+  .mobnav a.active svg{color:var(--gold)}
+}
+
+/* ===== Login ===== */
+.login-wrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--ground)}
+.login-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-xl); box-shadow:var(--shadow); width:100%; max-width:380px; padding:28px 26px}
+.login-logo{display:flex; justify-content:center; margin-bottom:18px}
+.login-logo .logo-mark{max-width:210px}
+.login-card h1{margin:0; font-size:var(--t-2xl); font-weight:700; text-align:center; letter-spacing:.06em}
+.login-sub{margin:4px 0 20px; text-align:center; color:var(--muted); font-size:var(--t-sm)}
+.remember{display:flex; align-items:center; gap:9px; font-size:var(--t-sm); color:var(--muted); margin:4px 0 6px; cursor:pointer}
+.remember input{width:16px; height:16px; accent-color:var(--gold)}
+.login-error{background:var(--crit-soft); color:var(--crit); border:1px solid color-mix(in srgb,var(--crit) 30%,transparent); border-radius:var(--r-sm); padding:9px 12px; font-size:var(--t-sm); font-weight:500; margin-top:12px}
+.pass-wrap{position:relative}
+.pass-wrap input{padding-right:46px}
+.pass-toggle{position:absolute; top:50%; right:6px; transform:translateY(-50%); background:none; border:none; padding:7px; margin:0; cursor:pointer; color:var(--muted); display:grid; place-items:center; border-radius:var(--r-sm)}
+.pass-toggle:hover{color:var(--ink)}
+.pass-toggle:focus-visible{outline:2px solid var(--gold); outline-offset:0}
+.pass-toggle svg{width:19px; height:19px}
+
+/* ===== Selector segmentado (pestañas de Historial, opciones de Ajustes) ===== */
+.seg{display:flex; gap:8px; flex-wrap:wrap}
+.seg button{
+  flex:1; min-width:92px; min-height:var(--tap); padding:0 var(--sp-3); border-radius:var(--r-sm); border:1px solid var(--hair);
+  background:var(--surface); font-family:var(--font-ui); font-weight:600; font-size:var(--t-sm);
+  color:var(--muted); cursor:pointer;
+}
+.seg button:hover{background:var(--surface-2)}
+.seg button.active{background:var(--brand-soft); color:var(--ink); border-color:var(--gold)}
+
+/* ===== Mi cuenta / Ajustes ===== */
+.settings-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start}
+.field input:disabled{opacity:.65; cursor:not-allowed}
+.settings-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px 24px 22px; min-width:0}
+/* Las tarjetas necesitan ~340px para que los selectores de 3 opciones no se apilen mal */
+@media(max-width:1050px){ .settings-grid{grid-template-columns:1fr} }
+.settings-card h2{margin:0 0 3px; font-size:var(--t-xl); font-weight:700}
+.settings-sub{margin:0 0 18px; color:var(--muted); font-size:var(--t-sm)}
+.settings-hint{margin:2px 0 0; color:var(--muted); font-size:var(--t-sm)}
+.settings-ok{background:var(--ok-soft); color:var(--ok); border:1px solid color-mix(in srgb,var(--ok) 30%,transparent); border-radius:var(--r-sm); padding:9px 12px; font-size:var(--t-sm); font-weight:600; margin-top:12px}
+.foot-user{display:flex; align-items:center; gap:var(--sp-2); flex:1; min-width:0; text-decoration:none; color:inherit; border-radius:var(--r-sm); padding:var(--sp-1); margin:calc(var(--sp-1) * -1)}
+.foot-user:hover{background:var(--surface-2)}
+.foot-id{flex:1; min-width:0}
+.foot-name{color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.foot-role{font-size:var(--t-xs)}
+
+/* ===== Aviso de fin de semana pasado (versión guardada) ===== */
+.snapshot-bar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--brand-soft); border:1px solid var(--hair); border-radius:var(--radius); padding:12px 16px; margin-bottom:20px; font-size:var(--t-sm)}
+.snapshot-bar svg{width:19px; height:19px; flex:0 0 auto; color:var(--gold)}
+.snapshot-bar b{font-variant-numeric:tabular-nums}
+
+/* ===== Fin de semana (hub) ===== */
+.wk-select{font-family:var(--font-ui); font-size:var(--t-base); font-weight:600; color:var(--ink); background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md); padding:10px 12px; cursor:pointer; max-width:240px}
+.tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:var(--sp-4); margin-bottom:var(--sp-5)}
+.tile{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); padding:var(--sp-5); box-shadow:var(--shadow)}
+.tile .k{font-size:var(--t-sm); color:var(--muted); display:flex; align-items:center; gap:var(--sp-2)}
+.tile .v{font-size:var(--t-3xl); font-weight:700; margin-top:var(--sp-2); font-variant-numeric:tabular-nums; line-height:1.1; letter-spacing:-.02em}
+.tile .v small{font-size:var(--t-md); color:var(--muted); font-weight:400; letter-spacing:0}
+.dot{width:9px; height:9px; border-radius:50%; display:inline-block; flex:0 0 auto}
+
+.banner{border-radius:var(--radius); padding:var(--sp-4); display:flex; gap:var(--sp-3); align-items:flex-start; margin-bottom:var(--sp-5); border:1px solid}
+.banner.crit{background:var(--crit-soft); border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
+.banner.ok{background:var(--ok-soft); border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+.banner svg{width:22px; height:22px; flex:0 0 auto; margin-top:1px}
+.banner.crit svg{color:var(--crit)}
+.banner.ok svg{color:var(--ok)}
+.banner b{display:block; font-size:var(--t-base); margin-bottom:2px}
+.banner p{margin:0; font-size:var(--t-sm); color:var(--muted)}
+
+.section-title{font-size:var(--t-lg); font-weight:700; margin:var(--sp-6) 0 var(--sp-3); display:flex; align-items:center; gap:var(--sp-2); letter-spacing:-.01em}
+.count-pill{font-size:var(--t-sm); font-weight:600; color:var(--muted); background:var(--surface-2); border:1px solid var(--hair); padding:2px var(--sp-2); border-radius:var(--r-pill)}
+
+.event-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--sp-4)}
+.event{
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius);
+  padding:var(--sp-4) var(--sp-5); box-shadow:var(--shadow); cursor:pointer;
+  display:flex; flex-direction:column; gap:var(--sp-3); text-decoration:none; color:var(--ink);
+}
+.event:hover{border-color:color-mix(in srgb,var(--gold) 55%,transparent); box-shadow:var(--shadow-lift); transform:translateY(-2px)}
+.event:active{transform:translateY(0)}
+.event .row1{display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-2)}
+.event h3{margin:0; font-size:var(--t-lg); font-weight:650; letter-spacing:-.01em; text-wrap:balance}
+.event .meta{display:flex; flex-wrap:wrap; gap:var(--sp-2) var(--sp-4); color:var(--muted); font-size:var(--t-sm)}
+.event .meta b{color:var(--ink); font-weight:600}
+.event .metaicon{display:inline-flex; align-items:center; gap:6px}
+.event .metaicon svg{width:15px; height:15px; color:var(--muted); flex:0 0 auto}
+.event-foot{font-size:var(--t-sm); color:var(--muted); border-top:1px solid var(--hair); padding-top:var(--sp-3); font-weight:600; margin-top:auto}
+.event:hover .event-foot{color:var(--gold)}
+
+.empty-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-8) var(--sp-6); text-align:center; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1)}
+.empty-card .empty-title{font-weight:600; color:var(--ink); font-size:var(--t-md); margin:0}
+.empty-card p{margin:0; max-width:52ch; text-wrap:pretty}
+.empty-card .btn{margin-top:var(--sp-3)}
+
+@media(max-width:860px){
+  .tiles{grid-template-columns:1fr}
+  .event-grid{grid-template-columns:1fr}
+  .wk-select{max-width:none; flex:1}
+}
+
+/* ===== Armador de pedido ===== */
+.save-ind{color:var(--gold); font-weight:600}
+/* Estado tranquilo = discreto. El aviso de faltante (.banner.crit) sí es prominente. */
+.status-ok{
+  display:inline-flex; align-items:center; gap:var(--sp-2); margin:0 0 var(--sp-4);
+  font-size:var(--t-sm); font-weight:600; color:var(--ok);
+  background:var(--ok-soft); border:1px solid color-mix(in srgb,var(--ok) 22%,transparent);
+  border-radius:var(--r-pill); padding:var(--sp-2) var(--sp-4);
+}
+.status-ok svg{width:15px; height:15px; flex:0 0 auto}
+.olist{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden}
+.orow{
+  display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1.1fr) auto;
+  gap:var(--sp-4); align-items:center; padding:var(--sp-3) var(--sp-5);
+  border-bottom:1px solid var(--hair);
+  transition:background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.orow:last-child{border-bottom:none}
+.orow:hover{background:var(--surface-2)}
+/* Una fila cargada se distingue por una marca dorada al borde, no por teñir todo */
+.orow.has-qty{
+  background:color-mix(in srgb,var(--gold) 5%,var(--surface));
+  box-shadow:inset 3px 0 0 var(--gold);
+}
+.orow.has-qty:hover{background:color-mix(in srgb,var(--gold) 9%,var(--surface))}
+
+.ocol-name{min-width:0}
+.ocol-name .pname{font-weight:600; font-size:var(--t-base); line-height:1.3}
+.orow.has-qty .pname{font-weight:700}
+
+/* La nota solo grita cuando existe; si no, aparece al pasar por encima o al tabular */
+.note-toggle{
+  display:inline-block; border:none; background:none; padding:var(--sp-1) 0 0;
+  font-size:var(--t-sm); color:var(--muted); font-weight:600; cursor:pointer; text-align:left;
+  opacity:0; transition:opacity var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.note-toggle:hover{color:var(--gold)}
+.orow:hover .note-toggle, .orow:focus-within .note-toggle{opacity:1}
+.note-toggle.has-note{opacity:1; color:var(--gold)}
+/* Sin hover (celular/tablet) o en layout angosto: la nota siempre visible */
+@media(max-width:860px), (hover:none){ .note-toggle{opacity:1} }
+
+.note-input{display:block; width:100%; margin-top:var(--sp-2); font-size:var(--t-sm); font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
+.note-input:focus{outline:2px solid var(--gold); outline-offset:-1px}
+
+.ocol-stock{font-size:var(--t-sm); color:var(--muted); font-variant-numeric:tabular-nums; min-width:0}
+.ocol-stock .bar{height:6px; border-radius:var(--r-pill); background:var(--surface-2); border:1px solid var(--hair); overflow:hidden; margin-bottom:var(--sp-2); max-width:200px}
+.ocol-stock .fill{height:100%; border-radius:var(--r-pill); transition:width var(--dur) var(--ease), background-color var(--dur) var(--ease)}
+.ocol-stock .line{display:flex; gap:var(--sp-2); align-items:center; flex-wrap:wrap}
+.ocol-stock .line b{color:var(--ink); font-weight:650}
+.ocol-stock .chip{padding:2px var(--sp-2)}
+
+.ocol-qty{display:flex; align-items:center; gap:var(--sp-1)}
+.qbtn{
+  height:var(--tap); min-width:var(--tap); padding:0 var(--sp-2); border-radius:var(--r-md);
+  border:1px solid var(--hair); background:var(--surface-2);
+  font-family:var(--font-ui); font-size:var(--t-lg); font-weight:600; line-height:1;
+  color:var(--ink); cursor:pointer; display:grid; place-items:center; user-select:none;
+}
+.qbtn.wide{font-size:var(--t-sm); font-weight:700}
+.qbtn:hover{background:var(--brand-soft); border-color:var(--gold); color:var(--ink)}
+.qbtn:active{transform:scale(.94)}
+.qbtn.danger{color:var(--crit)}
+.qbtn.danger:hover{border-color:var(--crit); background:var(--crit-soft)}
+.qbtn svg{width:16px; height:16px}
+.qinput{
+  width:66px; height:var(--tap); text-align:center; font-size:var(--t-lg); font-weight:700;
+  border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface-2); color:var(--ink);
+  font-variant-numeric:tabular-nums; -moz-appearance:textfield; font-family:var(--font-ui);
+  transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.qinput::-webkit-outer-spin-button, .qinput::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+.qinput:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
+.orow.has-qty .qinput{border-color:color-mix(in srgb,var(--gold) 45%,var(--hair)); background:var(--surface)}
+
+.extras-form{display:flex; gap:var(--sp-3); align-items:flex-end; flex-wrap:wrap; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-4) var(--sp-5)}
+@media(max-width:860px){
+  .orow{grid-template-columns:1fr; gap:10px}
+  .ocol-qty{justify-content:flex-start}
+  .extras-form{flex-direction:column; align-items:stretch}
+  .extras-form .field{width:100%!important}
+}
+
+/* ===== Resumen del depósito ===== */
+.summary-note{font-size:var(--t-sm); color:var(--muted); margin-bottom:14px; font-weight:500}
+.summary-note .over{color:var(--crit); font-weight:600}
+.summary-table{min-width:640px}
+.summary-table .cat-row td{background:var(--surface-2); font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.1em; font-weight:700; color:var(--muted); padding:8px 16px}
+.summary-table .parts{font-size:var(--t-sm); color:var(--muted); max-width:340px}
+.summary-table .parts b{color:var(--ink); font-variant-numeric:tabular-nums}
+.summary-table .parts em{font-style:normal; font-size:var(--t-sm); color:var(--gold)}
+
+/* ===== Cartel del pedido (para pegar en cada sector del depósito) ===== */
+.reprint-row{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:22px; font-size:var(--t-sm); color:var(--muted)}
+.cartel-page{
+  aspect-ratio:297/210; width:100%; max-width:640px; margin:0 auto 28px;
+  background:var(--surface); border:2px solid var(--ink); border-radius:var(--radius); box-shadow:var(--shadow);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(8px,2vw,18px);
+  padding:6%; text-align:center;
+}
+.cartel-logo{width:14%; max-width:86px; margin-bottom:2%}
+.cartel-label{font-size:clamp(10px,1.6vw,13px); letter-spacing:.2em; text-transform:uppercase; color:var(--muted); font-weight:700}
+.cartel-lugar{font-size:clamp(26px,7.5vw,64px); font-weight:800; letter-spacing:.01em; line-height:1.05; text-transform:uppercase; word-break:break-word}
+.cartel-date{font-size:clamp(16px,3.6vw,32px); font-weight:700; color:var(--muted)}
+
+/* ===== PDF del pedido (evento), separado por sector ===== */
+.pdf-content{max-width:760px}
+.pdf-section{margin-bottom:32px}
+.pdf-header{display:flex; align-items:center; gap:16px; padding-bottom:16px; margin-bottom:18px; border-bottom:2px solid var(--ink)}
+.pdf-header .pdf-logo{width:54px; max-width:54px; flex:0 0 auto}
+.pdf-title{margin:0; font-size:var(--t-2xl); font-weight:800; letter-spacing:.08em}
+.pdf-event-box{display:grid; grid-template-columns:repeat(2,1fr); gap:10px 24px; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 18px; margin-bottom:20px}
+.pdf-event-row{display:flex; justify-content:space-between; gap:10px; font-size:var(--t-base); border-bottom:1px dashed var(--hair); padding-bottom:6px}
+.pdf-k{color:var(--muted); font-weight:600}
+.pdf-v{font-weight:700}
+.checkcol{width:34px}
+.checkbox{display:inline-block; width:17px; height:17px; border:1.6px solid var(--ink); border-radius:4px}
+.pdf-footer{margin-top:34px; padding-top:18px; border-top:1px solid var(--hair); font-size:var(--t-sm); color:var(--muted)}
+
+/* ===== Impresión (también sirve para guardar como PDF) ===== */
+@media print{
+  @page{size:A4; margin:14mm}
+  @page cartel{size:A4 landscape; margin:0}
+
+  /* Lo impreso siempre sale en tamaño estándar, sin importar el ajuste de pantalla */
+  :root[data-text]{--fs:1}
+
+  :root{--ground:#fff; --surface:#fff; --surface-2:#f2f2f2; --ink:#000; --muted:#444;
+    --hair:#bbb; --gold:#000; --ok:#000; --ok-soft:#fff; --warn:#000; --warn-soft:#fff;
+    --crit:#000; --crit-soft:#fff; --shadow:none}
+  .side,.mobnav,.no-print,.wk-select{display:none!important}
+  .app{display:block}
+  .topbar{position:static; background:none; backdrop-filter:none; border-bottom:2px solid #000; padding:0 0 10px}
+  .content{padding:14px 0 0; max-width:none}
+  .tablewrap{box-shadow:none; border-color:#999; overflow:visible}
+  table{min-width:0!important; font-size:12px}
+  .chip{border:1px solid #000; background:#fff!important; color:#000!important}
+  .chip.crit{font-weight:800}
+  tbody tr{break-inside:avoid}
+  .pdf-event-box{box-shadow:none}
+  .pdf-content{padding:0}
+
+  /* Cada cartel ocupa su propia hoja A4 horizontal; el resto del pedido sigue en A4 vertical */
+  .cartel-page{
+    page:cartel; break-after:page;
+    width:297mm; height:210mm; max-width:none; aspect-ratio:auto;
+    border:none; box-shadow:none; border-radius:0; margin:0; padding:0;
+  }
+  .cartel-logo{width:110px; max-width:110px}
+  .cartel-label{font-size:16pt}
+  .cartel-lugar{font-size:100pt}
+  .cartel-date{font-size:36pt}
+
+  /* Un pedido separado por hoja: cada cartel y cada sección corta antes del siguiente bloque */
+  .pdf-content > *:not(:last-child){break-after:page}
+  .pdf-section{margin-bottom:0}
+}
+
+/* ===== Logout button (sidebar) ===== */
+.logout-btn{background:transparent; border:1px solid var(--hair); border-radius:var(--r-sm); width:40px; height:40px; display:grid; place-items:center; color:var(--muted); cursor:pointer; flex:0 0 auto}
+.logout-btn:hover{background:var(--surface-2); color:var(--crit)}
+.logout-btn svg{width:17px; height:17px}

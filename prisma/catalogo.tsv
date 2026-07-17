@@ -1,0 +1,168 @@
+Categoría	Rubro	Producto	Tipo	Unidad	Stock disponible	Revisar / Notas
+ENSERES	Copas y vasos	Copa de agua	Reutilizable	Unidad
+ENSERES	Copas y vasos	Copa de champagne	Reutilizable	Unidad
+ENSERES	Copas y vasos	Copa de daiquiri	Reutilizable	Unidad
+ENSERES	Copas y vasos	Copa de mojito	Reutilizable	Unidad
+ENSERES	Copas y vasos	Copa gin	Reutilizable	Unidad
+ENSERES	Copas y vasos	Copa martini	Reutilizable	Unidad
+ENSERES	Copas y vasos	Vaso caipiriña	Reutilizable	Unidad
+ENSERES	Copas y vasos	Vaso trago largo	Reutilizable	Unidad
+ENSERES	Copas y vasos	Vaso whisky	Reutilizable	Unidad
+ENSERES	Copas y vasos	Shot (vasito)	Reutilizable	Unidad
+ENSERES	Copas y vasos	Frasco chico	Reutilizable	Unidad
+ENSERES	Copas y vasos	Frasco grande	Reutilizable	Unidad
+ENSERES	Copas y vasos	Copón	Reutilizable	Unidad		Separado de "frascos + copones"
+ENSERES	Copas y vasos	Jarra	Reutilizable	Unidad
+ENSERES	Copas y vasos	Frapero	Reutilizable	Unidad
+ENSERES	Copas y vasos	Vertedor de vidrio	Reutilizable	Unidad
+ENSERES	Copas y vasos	Porta copa de madera	Reutilizable	Unidad
+ENSERES	Platos	Plato de sitio	Reutilizable	Unidad
+ENSERES	Platos	Plato de cena	Reutilizable	Unidad
+ENSERES	Platos	Plato hondo nuevo	Reutilizable	Unidad
+ENSERES	Platos	Plato pan	Reutilizable	Unidad
+ENSERES	Platos	Plato postre	Reutilizable	Unidad
+ENSERES	Platos	Plato hondo negro	Reutilizable	Unidad
+ENSERES	Platos	Plato de cena negro	Reutilizable	Unidad
+ENSERES	Platos	Plato negro playo	Reutilizable	Unidad
+ENSERES	Platos	Plato postre negro	Reutilizable	Unidad
+ENSERES	Platos	Plato rectangular negro	Reutilizable	Unidad
+ENSERES	Cubiertos	Cuchara postre	Reutilizable	Unidad
+ENSERES	Cubiertos	Cuchillo cena	Reutilizable	Unidad		Separado de "cuchillo postre/cena" (nota 100+100)
+ENSERES	Cubiertos	Cuchillo postre	Reutilizable	Unidad		Separado de "cuchillo postre/cena" (nota 100+100)
+ENSERES	Cubiertos	Tenedor cena	Reutilizable	Unidad
+ENSERES	Cubiertos	Tenedor entrada	Reutilizable	Unidad
+ENSERES	Cubiertos	Tenedor postre	Reutilizable	UnidadENSERES	Bandejas y fuentes	Bandeja de mozo	Reutilizable	Unidad
+ENSERES	Bandejas y fuentes	Bandeja rectangular	Reutilizable	Unidad
+ENSERES	Bandejas y fuentes	Bandeja oval	Reutilizable	Unidad
+ENSERES	Bandejas y fuentes	Fuente redonda	Reutilizable	Unidad
+ENSERES	Bandejas y fuentes	Ensaladera negra	Reutilizable	Unidad
+ENSERES	Bandejas y fuentes	Ensaladera chica	Reutilizable	Unidad
+ENSERES	Bandejas y fuentes	Ensaladera grande	Reutilizable	Unidad
+ENSERES	Cazuelas y ollas	Cazuela negra (nueva)	Reutilizable	Unidad
+ENSERES	Cazuelas y ollas	Cazuela de porcelana	Reutilizable	Unidad		Separado de "cazuela porcelana/fundición" (nota 10+20)
+ENSERES	Cazuelas y ollas	Cazuela de fundición	Reutilizable	Unidad		Separado de "cazuela porcelana/fundición" (nota 10+20)
+ENSERES	Cazuelas y ollas	Cazuela de vidrio	Reutilizable	Unidad
+ENSERES	Cazuelas y ollas	Fondue de barro c/ soporte	Reutilizable	Unidad
+ENSERES	Salseras y mantequeras	Salsera 180cc	Reutilizable	Unidad
+ENSERES	Salseras y mantequeras	Salsera 60cc	Reutilizable	Unidad
+ENSERES	Salseras y mantequeras	Salsera de porcelana	Reutilizable	Unidad
+ENSERES	Salseras y mantequeras	Mantequera	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Anafe de cocina	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Anafe homelette	Reutilizable	Unidad		REVISAR: ¿nombre correcto? (¿anafe para omelette/crepes?)
+ENSERES	Equipos de cocina y servicio	Juguera	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Chafin para comida	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Chafin para café	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Base de acero	Reutilizable	Unidad		REVISAR: ¿son las bases de los chafines?
+ENSERES	Equipos de cocina y servicio	Hielera con pinzas	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Porta nacho	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Provoletera	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Sartencito de hierro	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Cuenco de hierro	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Cuenco de madera	Reutilizable	Unidad		Separado de "cuencos madera/cucharón"
+ENSERES	Equipos de cocina y servicio	Cucharón	Reutilizable	Unidad		Separado de "cuencos madera/cucharón"
+ENSERES	Equipos de cocina y servicio	Coctelera	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Licuadora	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Mortero	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Juego de café	Reutilizable	Juego
+ENSERES	Equipos de cocina y servicio	Juego de té	Reutilizable	Juego
+ENSERES	Maderas, tablas y decoración	Tabla (general)	Reutilizable	Unidad		REVISAR: figuraba "tablas nuevas", ¿medida/tipo específico?
+ENSERES	Maderas, tablas y decoración	Tabla 20x40	Reutilizable	Unidad		Separado de "tablas 20x40-20x60"
+ENSERES	Maderas, tablas y decoración	Tabla 20x60	Reutilizable	Unidad		Separado de "tablas 20x40-20x60"
+ENSERES	Maderas, tablas y decoración	Lajita de madera	Reutilizable	Unidad
+ENSERES	Maderas, tablas y decoración	Laja / lajita empedrada	Reutilizable	Unidad		REVISAR: figuraba "lajas-lajitas emp", ¿es lo mismo que la lajita de madera?
+ENSERES	Maderas, tablas y decoración	Ladrillo de madera	Reutilizable	Unidad		Separado de "ladrillos de madera/vidrio"
+ENSERES	Maderas, tablas y decoración	Ladrillo de vidrio	Reutilizable	Unidad		Separado de "ladrillos de madera/vidrio"
+ENSERES	Maderas, tablas y decoración	Cesto de mimbre	Reutilizable	Unidad		REVISAR: figuraba solo "mimbre"
+ENSERES	Maderas, tablas y decoración	Florero con pie	Reutilizable	Unidad
+ENSERES	Insumos	Servilleta Didier	Consumible	Paquete	no se controla	Aparecía en enseres y bebida; la trato como consumible (se compra)
+BEBIDA	Aguas y gaseosas	Agua con gas x12	Consumible	Pack	no se controla
+BEBIDA	Aguas y gaseosas	Agua saborizada 500cc	Consumible	Pack	no se controla
+BEBIDA	Aguas y gaseosas	Agua sin gas x12	Consumible	Pack	no se controla
+BEBIDA	Aguas y gaseosas	Agua tónica	Consumible	Pack	no se controla
+BEBIDA	Aguas y gaseosas	Coca	Consumible	Cajón	no se controla
+BEBIDA	Aguas y gaseosas	Coca Zero 500	Consumible	Pack	no se controla
+BEBIDA	Aguas y gaseosas	Sprite	Consumible	Cajón	no se controla
+BEBIDA	Aguas y gaseosas	Pomelo (gaseosa)	Consumible	Pack	no se controla
+BEBIDA	Jugos y pulpas	Jugo de naranja	Consumible	Litro	no se controla	Separado de "jugo de naranja/pomelo"
+BEBIDA	Jugos y pulpas	Jugo de pomelo	Consumible	Litro	no se controla	Separado de "jugo de naranja/pomelo"
+BEBIDA	Jugos y pulpas	Pulpa de frutilla	Consumible	Lata	no se controla
+BEBIDA	Jugos y pulpas	Pulpa de ananá	Consumible	Lata	no se controla
+BEBIDA	Jugos y pulpas	Pulpa de maracuyá	Consumible	Unidad	no se controla	Separado de "pulpa de maracuyá/frutos rojos"
+BEBIDA	Jugos y pulpas	Pulpa de frutos rojos	Consumible	Unidad	no se controla	Separado de "pulpa de maracuyá/frutos rojos"
+BEBIDA	Cervezas	Cerveza Heineken (cajón)	Consumible	Cajón	no se controla
+BEBIDA	Cervezas	Cerveza Heineken pinina 330ml	Consumible	Botella	no se controla
+BEBIDA	Cervezas	Cerveza Corona pinina 330ml	Consumible	Botella	no se controla
+BEBIDA	Cervezas	Cerveza sin alcohol	Consumible	Lata	no se controla
+BEBIDA	Vinos y espumantes	Vino Las Perdices tinto	Consumible	Caja	no se controla	Separado de "vino Las Perdices tinto y blanco"
+BEBIDA	Vinos y espumantes	Vino Las Perdices blanco	Consumible	Caja	no se controla	Separado de "vino Las Perdices tinto y blanco"
+BEBIDA	Vinos y espumantes	Champaña Las Perdices	Consumible	Caja	no se controla	Separado de "champaña Las Perdices - sidra"
+BEBIDA	Vinos y espumantes	Sidra 1888	Consumible	Caja	no se controla	Separado de "champaña Las Perdices - sidra"
+BEBIDA	Vinos y espumantes	Botella Minerva	Consumible	Botella	no se controla	REVISAR: ¿qué producto es? (¿espumante/vino?)
+BEBIDA	Aperitivos y licores	Gancia	Consumible	Botella	no se controla
+BEBIDA	Aperitivos y licores	Martini (vermú)	Consumible	Botella	no se controla
+BEBIDA	Aperitivos y licores	Cinzano	Consumible	Botella	no se controla	Separado de "Cinzano + Carpano"
+BEBIDA	Aperitivos y licores	Carpano	Consumible	Botella	no se controla	Separado de "Cinzano + Carpano"
+BEBIDA	Aperitivos y licores	Campari	Consumible	Botella	no se controla
+BEBIDA	Aperitivos y licores	Aperol	Consumible	Botella	no se controla
+BEBIDA	Aperitivos y licores	Fernet	Consumible	Botella	no se controla
+BEBIDA	Aperitivos y licores	Cynar	Consumible	Botella	no se controla
+BEBIDA	Destilados	Bacardí	Consumible	Botella	no se controla
+BEBIDA	Destilados	Bacardí dorado	Consumible	Botella	no se controla
+BEBIDA	Destilados	Cachaça	Consumible	Botella	no se controla
+BEBIDA	Destilados	Smirnoff (vodka)	Consumible	Botella	no se controla
+BEBIDA	Destilados	Gin Heredero	Consumible	Litro	no se controla
+BEBIDA	Destilados	Whisky	Consumible	Botella	no se controla
+BEBIDA	Otros insumos de barra	Azúcar	Consumible	Kg	no se controla
+BEBIDA	Otros insumos de barra	Sorbetes / removedores	Consumible	Caja	no se controla
+MOBILIARIO	Mesas	Mesa redonda 8	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesa redonda 10	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesa redonda 12	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesa tiffany	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesa tiffany redonda	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesa de apoyo	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesón nuevo	Reutilizable	Unidad		REVISAR: ¿medida/tipo?
+MOBILIARIO	Mesas	Mesón redondo	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesón isla	Reutilizable	Unidad
+MOBILIARIO	Sillas y almohadones	Silla tiffany dorada	Reutilizable	Unidad
+MOBILIARIO	Sillas y almohadones	Silla tiffany blanca	Reutilizable	Unidad
+MOBILIARIO	Sillas y almohadones	Silla tiffany negra	Reutilizable	Unidad
+MOBILIARIO	Sillas y almohadones	Silla alta	Reutilizable	Unidad
+MOBILIARIO	Sillas y almohadones	Almohadón blanco	Reutilizable	Unidad
+MOBILIARIO	Tablones y tablas	Tabla tiffany	Reutilizable	Unidad		REVISAR: ¿"tabla" o "tablón" tiffany?
+MOBILIARIO	Tablones y tablas	Tablón c/ caballete	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Barra completa	Reutilizable	Unidad		REVISAR: figuraba nota "5 madera"
+MOBILIARIO	Cocina y fuego	Horno	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Horno a leña	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Horno eléctrico	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Freidora	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Garrafa	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Parrilla	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Fogonero	Reutilizable	Unidad		REVISAR: figuraba "fogoneros/toneles", ¿son lo mismo o distintos?
+MOBILIARIO	Cocina y fuego	Tonel	Reutilizable	Unidad		Separado de "fogoneros/toneles"
+MOBILIARIO	Cocina y fuego	Disco con pata y tapa	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Olla de barro	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Pala (para brasas)	Reutilizable	Unidad		Separado de "carbón-leña-pala"
+MOBILIARIO	Cocina y fuego	Tacho para enfriar	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Estantería	Reutilizable	Unidad
+MOBILIARIO	Cartelería	Cartel de barra	Reutilizable	Unidad
+MOBILIARIO	Cartelería	Carteles (varios)	Reutilizable	Unidad		REVISAR: genérico, ¿conviene desglosar?
+MOBILIARIO	Insumos	Carbón	Consumible	Bolsa	no se controla	Separado de "carbón-leña-pala"
+MOBILIARIO	Insumos	Leña	Consumible	Unidad	no se controla	Separado de "carbón-leña-pala"
+MOBILIARIO	Insumos	Hielo	Consumible	Bolsa	no se controla
+ENSERES	Bandejas y fuentes	Bandeja mozo	Reutilizable	Unidad
+ENSERES	Maderas, tablas y decoración	Canastito de alambre	Reutilizable	Unidad
+ENSERES	Cazuelas y ollas	Brasero	Reutilizable	Unidad
+ENSERES	Salseras y mantequeras	Compotera de vidrio	Reutilizable	Unidad
+ENSERES	Platos	Plato hondo porcelana azul	Reutilizable	Unidad
+ENSERES	Cubiertos	Cuchillo entrada	Reutilizable	Unidad
+ENSERES	Cubiertos	Cajón de cubiertos	Reutilizable	Unidad
+ENSERES	Platos	Plato negro nuevo	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Matafuegos	Reutilizable	Unidad
+MOBILIARIO	Cocina y fuego	Zorra de cocina	Reutilizable	Unidad
+MOBILIARIO	Mesas	Mesa serpentina	Reutilizable	Módulo
+MOBILIARIO	Iluminación	Jirafa (parante de luz)	Reutilizable	Unidad
+ENSERES	Equipos de cocina y servicio	Cuchara de fundición	Reutilizable	Unidad
+ENSERES	Maderas, tablas y decoración	Tabla rectangular de madera	Reutilizable	Unidad
+ENSERES	Maderas, tablas y decoración	Laja de madera	Reutilizable	Unidad
+ENSERES	Maderas, tablas y decoración	Lajita de empanadas	Reutilizable	Unidad
+BEBIDA	Destilados	Skyy (vodka)	Consumible	Unidad

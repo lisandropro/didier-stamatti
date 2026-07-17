@@ -1,0 +1,107 @@
+// Modelo de datos — App de control de stock Didier Stamatti Catering
+// Reglas clave:
+// - Reutilizables (enseres/mobiliario) llevan stock; consumibles (bebida/insumos) no.
+// - Control por fin de semana: la suma de un producto entre todos los eventos del
+//   finde no debe superar product.stock (aviso, no bloqueo).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String          @id @default(cuid())
+  name         String
+  email        String          @unique
+  passwordHash String
+  role         String          @default("ARMADOR") // ADMIN | ARMADOR
+  createdAt    DateTime        @default(now())
+  movements    StockMovement[]
+}
+
+model Product {
+  id         String          @id @default(cuid())
+  name       String
+  category   String          // ENSERES | BEBIDA | MOBILIARIO
+  rubro      String?
+  type       String          // REUTILIZABLE | CONSUMIBLE
+  unit       String          @default("Unidad")
+  stock      Int             @default(0) // solo aplica a reutilizables
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  movements  StockMovement[]
+  orderLines OrderLine[]
+
+  @@index([category])
+}
+
+// Historial de ajustes de stock (rotura / pérdida / compra / ajuste manual)
+model StockMovement {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  delta     Int // + suma, - resta
+  reason    String   // ROTURA | PERDIDA | COMPRA | AJUSTE
+  note      String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// Un fin de semana agrupa hasta ~11 eventos que comparten el mismo stock
+model Weekend {
+  id        String            @id @default(cuid())
+  label     String
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime          @default(now())
+  events    Event[]
+  snapshot  WeekendSnapshot?
+}
+
+// "Versión guardada" (checkpoint) de los pedidos de un fin de semana ya pasado.
+// Permite descartar cambios accidentales y volver a este estado.
+model WeekendSnapshot {
+  id        String   @id @default(cuid())
+  weekendId String   @unique
+  weekend   Weekend  @relation(fields: [weekendId], references: [id], onDelete: Cascade)
+  takenAt   DateTime @default(now())
+  data      String // JSON: [{ eventId, productId, customName, customUnit, qty, note }]
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  weekendId   String
+  weekend     Weekend     @relation(fields: [weekendId], references: [id], onDelete: Cascade)
+  lugar       String
+  date        DateTime
+  guests      Int         @default(0)
+  responsable String?
+  status      String      @default("NO_LISTO") // LISTO | NO_LISTO
+  createdAt   DateTime    @default(now())
+  lines       OrderLine[]
+}
+
+// Una línea de pedido dentro de un evento.
+// Puede ser un producto del catálogo (productId) o un ítem suelto fuera de
+// catálogo (customName, sin control de stock). Los ítems sueltos llevan su
+// propia categoría (customCategory) para poder imprimirse en el pedido del
+// sector correcto (Enseres/Bebida/Mobiliario), ya que no tienen producto.
+model OrderLine {
+  id             String   @id @default(cuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  productId      String?
+  product        Product? @relation(fields: [productId], references: [id])
+  customName     String?
+  customUnit     String?
+  customCategory String? // ENSERES | BEBIDA | MOBILIARIO — solo para ítems sueltos
+  qty            Int      @default(0)
+  note           String?
+
+  @@unique([eventId, productId])
+}
