@@ -25,6 +25,11 @@ const ICONS = {
       <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /><path d="M12 8v4l3 2" />
     </svg>
   ),
+  usuarios: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="9" cy="8" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 20a6.5 6.5 0 0 0-3-5.5" />
+    </svg>
+  ),
 };
 
 const NAV = [
@@ -32,6 +37,7 @@ const NAV = [
   { href: "/inventario", label: "Inventario", icon: ICONS.inventario },
   { href: "/historial", label: "Historial", icon: ICONS.historial },
 ];
+const ADMIN_NAV = [{ href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios }];
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -45,6 +51,7 @@ const ROLE_LABEL: Record<string, string> = {
 export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const pathname = usePathname();
   const initial = (user.name?.[0] ?? "?").toUpperCase();
+  const nav = user.role === "ADMIN" ? [...NAV, ...ADMIN_NAV] : NAV;
 
   return (
     <aside className="side">
@@ -52,7 +59,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
         <span className="logo-mark" role="img" aria-label="Didier Stamatti Catering" />
       </div>
       <div className="nav-label">Menú</div>
-      {NAV.map((item) => (
+      {nav.map((item) => (
         <Link
           key={item.href}
           href={item.href}

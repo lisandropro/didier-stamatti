@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
@@ -28,6 +29,13 @@ export default async function CuentaPage() {
         <ProfileCard name={user?.name ?? session.name} email={user?.email ?? session.email} />
         <AppearanceCard />
         <AccountForm />
+        {session.role === "ADMIN" && (
+          <div className="settings-card">
+            <h2>Usuarios</h2>
+            <p className="settings-sub">Agregá o quitá personas y restablecé contraseñas.</p>
+            <Link className="btn primary" href="/usuarios">Gestionar usuarios</Link>
+          </div>
+        )}
       </div>
     </>
   );

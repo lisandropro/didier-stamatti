@@ -312,6 +312,21 @@ tbody tr:hover{background:var(--surface-2)}
 .foot-name{color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .foot-role{font-size:var(--t-xs)}
 
+/* ===== Usuarios ===== */
+.users-head{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); margin-bottom:var(--sp-4); flex-wrap:wrap}
+.users-count{margin:0; color:var(--muted); font-size:var(--t-sm); font-weight:600}
+.user-list{display:flex; flex-direction:column; gap:var(--sp-3); max-width:720px}
+.user-row{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-4)}
+.user-avatar{width:40px; height:40px; font-size:var(--t-md); flex:0 0 auto}
+.user-info{flex:1; min-width:140px}
+.user-name{font-weight:650}
+.user-email{color:var(--muted); font-size:var(--t-sm); margin-top:2px; word-break:break-all}
+.user-rolechip{flex:0 0 auto}
+.user-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap; align-items:center; width:100%; margin-top:var(--sp-2); padding-top:var(--sp-3); border-top:1px solid var(--hair)}
+.user-actions .btn{font-size:var(--t-sm); min-height:38px; padding:0 var(--sp-3)}
+.user-self-note{color:var(--muted); font-size:var(--t-sm)}
+.reset-shown{font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; font-size:var(--t-lg); font-weight:700; text-align:center; background:var(--surface-2); border:1px dashed var(--hair); border-radius:var(--r-md); padding:var(--sp-3); margin:var(--sp-3) 0; letter-spacing:.02em; user-select:all; word-break:break-all}
+
 /* ===== Aviso de fin de semana pasado (versión guardada) ===== */
 .snapshot-bar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--brand-soft); border:1px solid var(--hair); border-radius:var(--radius); padding:12px 16px; margin-bottom:20px; font-size:var(--t-sm)}
 .snapshot-bar svg{width:19px; height:19px; flex:0 0 auto; color:var(--gold)}
