@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 import { InventoryTable } from "@/components/InventoryTable";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,9 @@ export const dynamic = "force-dynamic";
 const CAT_ORDER: Record<string, number> = { ENSERES: 0, MOBILIARIO: 1, BEBIDA: 2 };
 
 export default async function InventarioPage() {
+  const session = await getSessionUser();
+  const canEdit = session?.role === "ADMIN"; // solo la administradora edita stock
+
   const products = await prisma.product.findMany({
     orderBy: [{ rubro: "asc" }, { name: "asc" }],
   });
@@ -36,7 +40,7 @@ export default async function InventarioPage() {
         </div>
       </div>
       <div className="content">
-        <InventoryTable products={data} />
+        <InventoryTable products={data} canEdit={canEdit} />
       </div>
     </>
   );

@@ -36,7 +36,7 @@ const IconWarn = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 8v5M12 16h.01" /><circle cx="12" cy="12" r="9" /></svg>
 );
 
-export function InventoryTable({ products }: { products: Product[] }) {
+export function InventoryTable({ products, canEdit }: { products: Product[]; canEdit: boolean }) {
   const [items, setItems] = useState<Product[]>(products);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState("TODOS");
@@ -91,13 +91,13 @@ export function InventoryTable({ products }: { products: Product[] }) {
               <th>Unidad</th>
               <th>Stock</th>
               <th>Estado</th>
-              <th></th>
+              {canEdit && <th></th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td className="emptyrow" colSpan={6}>No hay productos que coincidan con la búsqueda.</td>
+                <td className="emptyrow" colSpan={canEdit ? 6 : 5}>No hay productos que coincidan con la búsqueda.</td>
               </tr>
             )}
             {filtered.map((p) => {
@@ -126,13 +126,15 @@ export function InventoryTable({ products }: { products: Product[] }) {
                       <span className="chip warn">{IconWarn}Falta cargar</span>
                     )}
                   </td>
-                  <td>
-                    {reutil ? (
-                      <button className="miniedit" onClick={() => setEditing(p)}>Editar stock</button>
-                    ) : (
-                      <span className="dim">—</span>
-                    )}
-                  </td>
+                  {canEdit && (
+                    <td>
+                      {reutil ? (
+                        <button className="miniedit" onClick={() => setEditing(p)}>Editar stock</button>
+                      ) : (
+                        <span className="dim">—</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -142,7 +144,9 @@ export function InventoryTable({ products }: { products: Product[] }) {
 
       <div className="hint">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
-        Al editar el stock podés poner el total nuevo o sumar/restar, anotando el motivo (rotura, pérdida o compra). Las bebidas no llevan stock: solo se listan en el pedido.
+        {canEdit
+          ? "Al editar el stock podés poner el total nuevo o sumar/restar, anotando el motivo (rotura, pérdida o compra). Las bebidas no llevan stock: solo se listan en el pedido."
+          : "Este es el stock disponible en el depósito. Las bebidas no llevan stock: solo se listan en el pedido."}
       </div>
 
       {editing && (
