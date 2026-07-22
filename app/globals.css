@@ -312,6 +312,10 @@ tbody tr:hover{background:var(--surface-2)}
 .foot-name{color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .foot-role{font-size:var(--t-xs)}
 
+/* ===== Compartir pedido ===== */
+.share-wrap{display:inline-flex; align-items:center; gap:var(--sp-2)}
+.share-msg{font-size:var(--t-sm); color:var(--muted)}
+
 /* ===== Repetir pedido (copiar de otro evento) ===== */
 .copy-list{display:flex; flex-direction:column; gap:var(--sp-2); max-height:46vh; overflow-y:auto; margin-bottom:var(--sp-3)}
 .copy-row{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-md); padding:var(--sp-3); cursor:pointer; font-family:var(--font-ui); color:var(--ink); transition:background-color var(--dur) var(--ease), border-color var(--dur) var(--ease)}

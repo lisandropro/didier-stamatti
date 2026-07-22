@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fmtEventDate } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
+import { ShareOrderButton } from "@/components/ShareOrderButton";
 import { Cartel } from "@/components/Cartel";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +99,7 @@ export default async function EventoPdfPage({
         <div className="spacer" />
         <Link className="btn ghost" href={`/evento/${ev.id}`}>Volver</Link>
         <PrintButton />
+        <ShareOrderButton eventId={ev.id} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} disabled={totalItems === 0} />
       </div>
 
       <div className="content pdf-content">
