@@ -37,6 +37,17 @@ export default async function EventoPage({
     if (l.productId) reserved.set(l.productId, (reserved.get(l.productId) ?? 0) + l.qty);
   }
 
+  // Otros eventos que ya tienen un pedido cargado → se pueden copiar acá.
+  const sourceEventsRaw = await prisma.event.findMany({
+    where: { id: { not: id }, lines: { some: {} } },
+    orderBy: { date: "desc" },
+    take: 40,
+    include: {
+      _count: { select: { lines: true } },
+      weekend: { select: { label: true } },
+    },
+  });
+
   const data = {
     event: {
       id: ev.id,
@@ -66,6 +77,13 @@ export default async function EventoPage({
         qty: l.qty,
         note: l.note,
       })),
+    sourceEvents: sourceEventsRaw.map((e) => ({
+      id: e.id,
+      lugar: e.lugar,
+      dateLabel: fmtEventDate(e.date),
+      weekendLabel: e.weekend.label,
+      lineCount: e._count.lines,
+    })),
   };
 
   return <OrderBuilder data={data} />;

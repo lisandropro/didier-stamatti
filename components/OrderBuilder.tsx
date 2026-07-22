@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { setLine, addCustomLine, setCustomQty, deleteLine } from "@/app/actions/order";
+import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
 import { setEventStatus } from "@/app/actions/weekend";
 
 type ProductRow = {
@@ -19,10 +19,12 @@ type ProductRow = {
   note: string;
 };
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
+type SourceEvent = { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number };
 type Data = {
   event: { id: string; lugar: string; subLabel: string; status: string };
   products: ProductRow[];
   customLines: CustomLine[];
+  sourceEvents: SourceEvent[];
 };
 
 const CATS = [
@@ -42,6 +44,9 @@ const IconWarn = (
 const IconTrash = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" /></svg>
 );
+const IconCopy = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg>
+);
 
 export function OrderBuilder({ data }: { data: Data }) {
   const router = useRouter();
@@ -54,6 +59,7 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [savedOnce, setSavedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});
+  const [showCopy, setShowCopy] = useState(false);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // ---- autosave con debounce por producto ----
@@ -133,6 +139,7 @@ export function OrderBuilder({ data }: { data: Data }) {
         </div>
         <div className="spacer" />
         <Link className="btn ghost" href="/">Volver</Link>
+        <button className="btn ghost" onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
         <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
@@ -292,7 +299,107 @@ export function OrderBuilder({ data }: { data: Data }) {
           Lo vacío no va en el pedido. “Otros eventos” es lo que ya pidieron los demás eventos de este fin de semana del mismo depósito.
         </div>
       </div>
+
+      {showCopy && (
+        <CopyOrderModal
+          targetEventId={data.event.id}
+          hasLines={inOrderCount > 0}
+          sourceEvents={data.sourceEvents}
+          onClose={() => setShowCopy(false)}
+        />
+      )}
     </>
+  );
+}
+
+function CopyOrderModal({
+  targetEventId,
+  hasLines,
+  sourceEvents,
+  onClose,
+}: {
+  targetEventId: string;
+  hasLines: boolean;
+  sourceEvents: SourceEvent[];
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<SourceEvent | null>(null);
+  const [query, setQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirm() {
+    if (!selected) return;
+    setSaving(true);
+    setError(null);
+    const res = await copyOrderFromEvent(targetEventId, selected.id);
+    if (res.ok) {
+      // Recarga completa: el armador siembra su estado desde el servidor al montar,
+      // así el pedido copiado se ve reflejado de forma confiable.
+      window.location.reload();
+    } else {
+      setSaving(false);
+      setError(res.error ?? "No se pudo copiar.");
+    }
+  }
+
+  const q = norm(query.trim());
+  const list = q
+    ? sourceEvents.filter((e) => norm(`${e.lugar} ${e.weekendLabel}`).includes(q))
+    : sourceEvents;
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        {selected ? (
+          <>
+            <h2>¿Copiar este pedido?</h2>
+            <div className="msub">
+              Vas a traer el pedido de <b>{selected.lugar}</b> ({selected.dateLabel}, {selected.lineCount} producto
+              {selected.lineCount === 1 ? "" : "s"}) a este evento.
+              {hasLines && <> <b>Reemplaza</b> lo que ya cargaste en este evento.</>}
+            </div>
+            {error && <div className="login-error">{error}</div>}
+            <div className="modal-actions">
+              <button className="btn ghost" onClick={() => setSelected(null)} disabled={saving}>Volver</button>
+              <button className="btn primary" onClick={confirm} disabled={saving}>
+                {saving ? "Copiando…" : "Copiar pedido"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2>Repetir pedido</h2>
+            <div className="msub">Elegí un evento anterior y traé su pedido a este, para no cargarlo de cero.</div>
+            {sourceEvents.length === 0 ? (
+              <div className="emptyrow">Todavía no hay otros eventos con pedido para copiar.</div>
+            ) : (
+              <>
+                <label className="search" style={{ marginBottom: "var(--sp-3)" }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
+                  <input placeholder="Buscar por lugar o fin de semana…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                </label>
+                <div className="copy-list">
+                  {list.map((e) => (
+                    <button key={e.id} className="copy-row" onClick={() => setSelected(e)}>
+                      <div>
+                        <div className="copy-lugar">{e.lugar}</div>
+                        <div className="copy-meta">{e.weekendLabel} · {e.dateLabel}</div>
+                      </div>
+                      <span className="chip neutral">{e.lineCount} prod.</span>
+                    </button>
+                  ))}
+                  {list.length === 0 && <div className="emptyrow">No hay eventos que coincidan.</div>}
+                </div>
+              </>
+            )}
+            <div className="modal-actions">
+              <button className="btn ghost" onClick={onClose}>Cerrar</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

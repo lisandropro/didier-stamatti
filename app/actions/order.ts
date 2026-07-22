@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
-export type OrderResult = { ok: boolean; error?: string; lineId?: string };
+export type OrderResult = { ok: boolean; error?: string; lineId?: string; count?: number };
 
 /** Fija la cantidad (y nota) de un producto del catálogo en el pedido de un evento.
  *  qty 0 = el producto no va → se borra la línea. */
@@ -88,4 +88,39 @@ export async function deleteLine(lineId: string): Promise<OrderResult> {
   await prisma.orderLine.delete({ where: { id: lineId } });
   revalidatePath("/");
   return { ok: true };
+}
+
+/** Copia el pedido completo de otro evento a este (reemplaza lo que hubiera).
+ *  Sirve para no cargar de cero un evento parecido a uno anterior. */
+export async function copyOrderFromEvent(targetEventId: string, sourceEventId: string): Promise<OrderResult> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  if (targetEventId === sourceEventId) return { ok: false, error: "Es el mismo evento." };
+
+  const target = await prisma.event.findUnique({ where: { id: targetEventId } });
+  if (!target) return { ok: false, error: "No se encontró el evento." };
+
+  const sourceLines = await prisma.orderLine.findMany({ where: { eventId: sourceEventId } });
+  if (sourceLines.length === 0) return { ok: false, error: "Ese evento no tiene pedido para copiar." };
+
+  await prisma.$transaction([
+    prisma.orderLine.deleteMany({ where: { eventId: targetEventId } }),
+    ...sourceLines.map((l) =>
+      prisma.orderLine.create({
+        data: {
+          eventId: targetEventId,
+          productId: l.productId,
+          customName: l.customName,
+          customCategory: l.customCategory,
+          customUnit: l.customUnit,
+          qty: l.qty,
+          note: l.note,
+        },
+      })
+    ),
+  ]);
+
+  revalidatePath("/");
+  revalidatePath(`/evento/${targetEventId}`);
+  return { ok: true, count: sourceLines.length };
 }
