@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
+import { NotifBadge } from "@/components/NotifBadge";
 
 const ICONS = {
   finde: (
@@ -30,12 +31,18 @@ const ICONS = {
       <circle cx="9" cy="8" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 20a6.5 6.5 0 0 0-3-5.5" />
     </svg>
   ),
+  avisos: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" /><path d="M10 20a2 2 0 0 0 4 0" />
+    </svg>
+  ),
 };
 
 const NAV = [
   { href: "/", label: "Fin de semana", icon: ICONS.finde },
   { href: "/inventario", label: "Inventario", icon: ICONS.inventario },
   { href: "/historial", label: "Historial", icon: ICONS.historial },
+  { href: "/notificaciones", label: "Avisos", icon: ICONS.avisos },
 ];
 const ADMIN_NAV = [{ href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios }];
 
@@ -67,6 +74,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
         >
           {item.icon}
           {item.label}
+          {item.href === "/notificaciones" && <NotifBadge />}
         </Link>
       ))}
       <div className="foot">

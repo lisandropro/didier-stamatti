@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { notifyOrderChange } from "@/lib/notify";
 import { revalidatePath } from "next/cache";
 
 export type OrderResult = { ok: boolean; error?: string; lineId?: string; count?: number };
@@ -34,6 +35,7 @@ export async function setLine(input: {
     });
   }
 
+  await notifyOrderChange(user, input.eventId);
   revalidatePath("/");
   return { ok: true };
 }
@@ -67,6 +69,7 @@ export async function addCustomLine(input: {
       note: input.note?.trim() || null,
     },
   });
+  await notifyOrderChange(user, input.eventId);
   revalidatePath("/");
   return { ok: true, lineId: line.id };
 }
@@ -76,7 +79,8 @@ export async function setCustomQty(lineId: string, qty: number): Promise<OrderRe
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
   const q = Math.max(1, Math.round(qty));
-  await prisma.orderLine.update({ where: { id: lineId }, data: { qty: q } });
+  const line = await prisma.orderLine.update({ where: { id: lineId }, data: { qty: q }, select: { eventId: true } });
+  await notifyOrderChange(user, line.eventId);
   revalidatePath("/");
   return { ok: true };
 }
@@ -85,7 +89,9 @@ export async function setCustomQty(lineId: string, qty: number): Promise<OrderRe
 export async function deleteLine(lineId: string): Promise<OrderResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const line = await prisma.orderLine.findUnique({ where: { id: lineId }, select: { eventId: true } });
   await prisma.orderLine.delete({ where: { id: lineId } });
+  if (line) await notifyOrderChange(user, line.eventId);
   revalidatePath("/");
   return { ok: true };
 }
@@ -120,6 +126,7 @@ export async function copyOrderFromEvent(targetEventId: string, sourceEventId: s
     ),
   ]);
 
+  await notifyOrderChange(user, targetEventId);
   revalidatePath("/");
   revalidatePath(`/evento/${targetEventId}`);
   return { ok: true, count: sourceLines.length };

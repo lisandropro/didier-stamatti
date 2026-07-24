@@ -312,6 +312,34 @@ tbody tr:hover{background:var(--surface-2)}
 .foot-name{color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .foot-role{font-size:var(--t-xs)}
 
+/* ===== Avisos / notificaciones ===== */
+.nav{position:relative}
+.notif-badge{
+  display:inline-grid; place-items:center; min-width:18px; height:18px; padding:0 5px;
+  margin-left:auto; border-radius:var(--r-pill); background:var(--crit); color:#fff;
+  font-size:calc(10.5px * var(--fs)); font-weight:700; line-height:1; font-variant-numeric:tabular-nums;
+}
+.mobnav-ico{position:relative; display:inline-flex}
+.mobnav-ico .notif-badge{position:absolute; top:-6px; left:12px; margin:0}
+
+.notif-list{display:flex; flex-direction:column; gap:var(--sp-2); max-width:640px}
+.notif-item{
+  display:flex; align-items:center; gap:var(--sp-3); width:100%; text-align:left;
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  box-shadow:var(--shadow); padding:var(--sp-3) var(--sp-4); cursor:pointer; color:var(--ink);
+  font-family:var(--font-ui); transition:background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.notif-item:disabled{cursor:default}
+.notif-item:not(:disabled):hover{background:var(--surface-2)}
+.notif-item.unread{background:var(--brand-soft); border-color:color-mix(in srgb,var(--gold) 40%,var(--hair))}
+.notif-icon{flex:0 0 auto; color:var(--muted)}
+.notif-icon svg{width:20px; height:20px; display:block}
+.notif-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
+.notif-msg{font-size:var(--t-base); font-weight:500}
+.notif-item.unread .notif-msg{font-weight:650}
+.notif-time{font-size:var(--t-sm); color:var(--muted)}
+.notif-dot{flex:0 0 auto; width:9px; height:9px; border-radius:50%; background:var(--gold)}
+
 /* ===== Compartir pedido ===== */
 .share-wrap{display:inline-flex; align-items:center; gap:var(--sp-2)}
 .share-msg{font-size:var(--t-sm); color:var(--muted)}

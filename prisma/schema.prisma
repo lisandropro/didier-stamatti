@@ -14,13 +14,31 @@ datasource db {
 }
 
 model User {
-  id           String          @id @default(cuid())
-  name         String
-  email        String          @unique
-  passwordHash String
-  role         String          @default("ARMADOR") // ADMIN | ARMADOR
-  createdAt    DateTime        @default(now())
-  movements    StockMovement[]
+  id            String          @id @default(cuid())
+  name          String
+  email         String          @unique
+  passwordHash  String
+  role          String          @default("ARMADOR") // ADMIN | ARMADOR
+  createdAt     DateTime        @default(now())
+  movements     StockMovement[]
+  notifications Notification[]  @relation("NotifRecipient")
+}
+
+// Aviso para un usuario ("Enrique actualizó el pedido de Puerto").
+// Se crea uno por destinatario (todos menos quien hizo el cambio).
+model Notification {
+  id          String   @id @default(cuid())
+  recipientId String
+  recipient   User     @relation("NotifRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actorName   String
+  type        String // ORDER_EDIT
+  message     String
+  eventId     String?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId, read])
+  @@index([recipientId, createdAt])
 }
 
 model Product {
