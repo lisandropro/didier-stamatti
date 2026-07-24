@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { sendPushToUser } from "@/lib/push";
 
 // Ventana para "agrupar": si el mismo usuario sigue tocando el mismo pedido
 // dentro de estos minutos, se actualiza el aviso existente en vez de crear otro.
@@ -37,6 +38,13 @@ export async function notifyOrderChange(actor: { id: string; name: string }, eve
           data: { recipientId: r.id, actorName: actor.name, type: "ORDER_EDIT", message, eventId },
         });
       }
+      // Además del aviso en la app, notificación push al celular (si tiene).
+      await sendPushToUser(r.id, {
+        title: "Didier Stamatti",
+        body: message,
+        url: `/evento/${eventId}`,
+        tag: `order-${eventId}`,
+      });
     }
   } catch {
     // Un fallo de notificación no debe romper el guardado del pedido.

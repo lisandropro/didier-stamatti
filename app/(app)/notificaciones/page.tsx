@@ -2,6 +2,7 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { NotificationsList } from "@/components/NotificationsList";
+import { EnableNotifications } from "@/components/EnableNotifications";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function NotificacionesPage() {
         </div>
       </div>
       <div className="content">
+        <EnableNotifications />
         <NotificationsList items={items} />
       </div>
     </>

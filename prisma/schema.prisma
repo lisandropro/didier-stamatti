@@ -24,6 +24,18 @@ model User {
   notifications Notification[]  @relation("NotifRecipient")
 }
 
+// Suscripción de un dispositivo a las notificaciones push (una por celular/navegador).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 // Aviso para un usuario ("Enrique actualizó el pedido de Puerto").
 // Se crea uno por destinatario (todos menos quien hizo el cambio).
 model Notification {

@@ -4,6 +4,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Didier Stamatti — Stock y Pedidos",
   description: "Control de stock y armado de pedidos por fin de semana",
+  // Para que iPhone/Android la reconozcan como app instalable.
+  applicationName: "Didier Stamatti",
+  appleWebApp: { capable: true, title: "Didier Stamatti", statusBarStyle: "default" },
+  icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
 };
 
 // Aplica el tema y el tamaño de texto guardados ANTES del primer dibujado,
