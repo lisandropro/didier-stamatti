@@ -349,6 +349,34 @@ tbody tr:hover{background:var(--surface-2)}
 .notif-enable-ok{flex:1; min-width:180px; font-size:var(--t-base); font-weight:600; color:var(--ink)}
 .notif-enable-err{flex-basis:100%; font-size:var(--t-sm); color:var(--crit)}
 
+/* ===== Esqueleto de carga (feedback instantáneo al cambiar de pantalla) ===== */
+.sk{
+  background:color-mix(in srgb, var(--ink) 9%, transparent);
+  border-radius:var(--r-sm); position:relative; overflow:hidden;
+}
+.sk::after{
+  content:""; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 6%, transparent), transparent);
+  animation:sk-shimmer 1.3s infinite;
+}
+@keyframes sk-shimmer{ to{ transform:translateX(100%) } }
+.sk-line{height:12px; margin-bottom:var(--sp-2)}
+.sk-row{
+  display:flex; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--hair);
+}
+.sk-card{
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  box-shadow:var(--shadow); padding:var(--sp-4);
+}
+.sk-panel{
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.sk-chips{display:flex; gap:var(--sp-2); margin-bottom:var(--sp-4); flex-wrap:wrap}
+.sk-chip{height:var(--tap); width:104px; border-radius:var(--r-md)}
+@media (prefers-reduced-motion:reduce){ .sk::after{animation:none} }
+
 /* ===== Compartir pedido ===== */
 .share-wrap{display:inline-flex; align-items:center; gap:var(--sp-2)}
 .share-msg{font-size:var(--t-sm); color:var(--muted)}
