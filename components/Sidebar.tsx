@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NavPending } from "@/components/NavPending";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
 import { NotifBadge } from "@/components/NotifBadge";
@@ -75,6 +76,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
           {item.icon}
           {item.label}
           {item.href === "/notificaciones" && <NotifBadge />}
+          <NavPending />
         </Link>
       ))}
       <div className="foot">

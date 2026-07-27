@@ -349,6 +349,28 @@ tbody tr:hover{background:var(--surface-2)}
 .notif-enable-ok{flex:1; min-width:180px; font-size:var(--t-base); font-weight:600; color:var(--ink)}
 .notif-enable-err{flex-basis:100%; font-size:var(--t-sm); color:var(--crit)}
 
+/* ===== Señal de "toque registrado" en la navegación =====
+   Reserva su espacio siempre y sólo se enciende si la navegación tarda
+   (retraso de 100ms), así un cambio rápido no produce un parpadeo. */
+.nav-pending{
+  position:absolute; left:var(--sp-3); right:var(--sp-3); bottom:4px; height:2px;
+  border-radius:var(--r-pill); background:var(--gold);
+  opacity:0; visibility:hidden; transform-origin:left center;
+}
+.nav-pending.is-pending{
+  visibility:visible;
+  animation:nav-pending-in 200ms ease 100ms forwards, nav-pending-pulse 1s ease-in-out 100ms infinite;
+}
+@keyframes nav-pending-in{ to{ opacity:.9 } }
+@keyframes nav-pending-pulse{ 50%{ opacity:.35 } }
+@media (max-width:860px){
+  .mobnav a{position:relative}
+  .nav-pending{left:22%; right:22%; bottom:2px}
+}
+@media (prefers-reduced-motion:reduce){
+  .nav-pending.is-pending{animation:none; opacity:.9}
+}
+
 /* ===== Esqueleto de carga (feedback instantáneo al cambiar de pantalla) ===== */
 .sk{
   background:color-mix(in srgb, var(--ink) 9%, transparent);

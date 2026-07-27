@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NotifBadge } from "@/components/NotifBadge";
+import { NavPending } from "@/components/NavPending";
 
 const ITEMS = [
   {
@@ -62,6 +63,7 @@ export function MobileNav() {
           <Link key={item.href} href={item.href} className={active ? "active" : ""}>
             <span className="mobnav-ico">{item.icon}{item.href === "/notificaciones" && <NotifBadge />}</span>
             {item.label}
+            <NavPending />
           </Link>
         );
       })}
