@@ -81,6 +81,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
       ))}
       <div className="foot">
         <Link href="/cuenta" className="foot-user" title="Mi cuenta">
+          <NavPending />
           <div className="avatar">{initial}</div>
           <div className="foot-id">
             <div className="foot-name">{user.name}</div>

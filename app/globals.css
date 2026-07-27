@@ -352,6 +352,7 @@ tbody tr:hover{background:var(--surface-2)}
 /* ===== Señal de "toque registrado" en la navegación =====
    Reserva su espacio siempre y sólo se enciende si la navegación tarda
    (retraso de 100ms), así un cambio rápido no produce un parpadeo. */
+.foot-user{position:relative}
 .nav-pending{
   position:absolute; left:var(--sp-3); right:var(--sp-3); bottom:4px; height:2px;
   border-radius:var(--r-pill); background:var(--gold);
