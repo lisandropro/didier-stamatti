@@ -595,9 +595,25 @@ tbody tr:hover{background:var(--surface-2)}
 .pdf-event-row{display:flex; justify-content:space-between; gap:10px; font-size:var(--t-base); border-bottom:1px dashed var(--hair); padding-bottom:6px}
 .pdf-k{color:var(--muted); font-weight:600}
 .pdf-v{font-weight:700}
-.checkcol{width:34px}
-.checkbox{display:inline-block; width:17px; height:17px; border:1.6px solid var(--ink); border-radius:4px}
 .pdf-footer{margin-top:34px; padding-top:18px; border-top:1px solid var(--hair); font-size:var(--t-sm); color:var(--muted)}
+
+/* ===== Lista del pedido, en columnas =====
+   Un renglón es "nombre + cantidad": en una sola columna se desperdicia el ancho
+   de la hoja y un sector grande necesita varias. Repartido en columnas entra en
+   una sola. La cantidad de columnas la decide el servidor según el largo. */
+.picklist{column-gap:18px}
+.picklist.cols-2{columns:2}
+.picklist.cols-3{columns:3}
+.pl-group{break-inside:avoid; break-after:avoid; margin:14px 0 4px; font-size:var(--t-xs); font-weight:800;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--gold)}
+.pl-group:first-child{margin-top:0}
+.pl-row{break-inside:avoid; display:flex; align-items:flex-start; gap:8px; padding:5px 0;
+  border-bottom:1px solid var(--hair); font-size:var(--t-base)}
+.pl-check{flex:0 0 auto; width:13px; height:13px; margin-top:3px; border:1.6px solid var(--ink); border-radius:3px}
+.pl-name{flex:1 1 auto; min-width:0; line-height:1.3}
+.pl-unit{color:var(--muted)}
+.pl-note{display:block; color:var(--muted); font-size:var(--t-xs); line-height:1.25}
+.pl-qty{flex:0 0 auto; font-weight:800; font-variant-numeric:tabular-nums}
 
 /* ===== Impresión (también sirve para guardar como PDF) ===== */
 @media print{
@@ -636,6 +652,24 @@ tbody tr:hover{background:var(--surface-2)}
   /* Un pedido separado por hoja: cada cartel y cada sección corta antes del siguiente bloque */
   .pdf-content > *:not(:last-child){break-after:page}
   .pdf-section{margin-bottom:0}
+
+  /* La cabecera va al mínimo: cada renglón que ocupa arriba es un renglón menos
+     de pedido en la hoja. Los datos del evento pasan a una sola línea. */
+  .pdf-header{padding-bottom:8px; margin-bottom:10px}
+  .pdf-header .pdf-logo{width:38px; max-width:38px}
+  .pdf-title{font-size:16pt}
+  .pdf-event-box{display:flex; flex-wrap:wrap; gap:2px 20px; border-radius:0; padding:6px 10px; margin-bottom:10px}
+  .pdf-event-row{border-bottom:none; padding-bottom:0; gap:6px; font-size:9.5pt}
+  .pdf-footer{margin-top:14px; padding-top:8px; font-size:9pt}
+
+  /* Densidad de la lista. El lugar se gana con las columnas; achicar la letra
+     es el último recurso y tiene piso, porque esto se lee en el galpón. */
+  .picklist{column-gap:10mm}
+  .picklist.cols-1 .pl-row{font-size:10.5pt}
+  .picklist.cols-2 .pl-row{font-size:9.5pt; padding:4px 0}
+  .picklist.cols-3 .pl-row{font-size:8.5pt; padding:3px 0}
+  .picklist.cols-3 .pl-check{width:10px; height:10px; margin-top:2px}
+  .pl-group{margin:9px 0 3px}
 }
 
 /* ===== Logout button (sidebar) ===== */
