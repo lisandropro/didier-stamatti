@@ -14,7 +14,8 @@ export default async function EventoPage({
 }) {
   const { id } = await params;
   const ev = await prisma.event.findUnique({ where: { id } });
-  if (!ev) notFound();
+  // Un evento en la papelera no se puede abrir ni editar.
+  if (!ev || ev.deletedAt) notFound();
 
   // Catálogo completo, ordenado como el Excel
   const products = await prisma.product.findMany({
@@ -29,7 +30,7 @@ export default async function EventoPage({
 
   // Reservado por los OTROS eventos del mismo fin de semana
   const otherLines = await prisma.orderLine.findMany({
-    where: { event: { weekendId: ev.weekendId }, eventId: { not: id } },
+    where: { event: { weekendId: ev.weekendId, deletedAt: null }, eventId: { not: id } },
     select: { productId: true, qty: true },
   });
   const reserved = new Map<string, number>();
@@ -39,7 +40,7 @@ export default async function EventoPage({
 
   // Otros eventos que ya tienen un pedido cargado → se pueden copiar acá.
   const sourceEventsRaw = await prisma.event.findMany({
-    where: { id: { not: id }, lines: { some: {} } },
+    where: { id: { not: id }, deletedAt: null, lines: { some: {} } },
     orderBy: { date: "desc" },
     take: 40,
     include: {

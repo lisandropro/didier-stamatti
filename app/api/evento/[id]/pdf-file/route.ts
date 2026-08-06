@@ -19,7 +19,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
   const ev = await prisma.event.findUnique({ where: { id } });
-  if (!ev) return NextResponse.json({ error: "Evento no encontrado." }, { status: 404 });
+  if (!ev || ev.deletedAt) return NextResponse.json({ error: "Evento no encontrado." }, { status: 404 });
 
   const lines = await prisma.orderLine.findMany({ where: { eventId: id }, include: { product: true } });
 

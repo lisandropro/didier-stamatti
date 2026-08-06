@@ -48,7 +48,7 @@ export async function discardWeekendChanges(weekendId: string): Promise<Snapshot
   const snap = await prisma.weekendSnapshot.findUnique({ where: { weekendId } });
   if (!snap) return { ok: false, error: "Todavía no hay una versión guardada para este fin de semana." };
 
-  const events = await prisma.event.findMany({ where: { weekendId }, select: { id: true } });
+  const events = await prisma.event.findMany({ where: { weekendId, deletedAt: null }, select: { id: true } });
   const validEventIds = new Set(events.map((e) => e.id));
 
   const data = JSON.parse(snap.data) as SnapshotLine[];

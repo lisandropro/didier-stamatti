@@ -20,7 +20,7 @@ export default async function CartelSectorPage({
   if (!SECTORS.includes(sector)) notFound();
 
   const ev = await prisma.event.findUnique({ where: { id } });
-  if (!ev) notFound();
+  if (!ev || ev.deletedAt) notFound();
 
   return (
     <>

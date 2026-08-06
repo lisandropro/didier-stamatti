@@ -60,20 +60,58 @@ export async function setEventStatus(eventId: string, status: "LISTO" | "NO_LIST
   return { ok: true };
 }
 
+/** Manda un evento a la papelera. El pedido queda intacto: se puede recuperar. */
 export async function deleteEvent(eventId: string): Promise<ActionResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
-  await prisma.event.delete({ where: { id: eventId } });
+  const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { deletedAt: true } });
+  if (!ev) return { ok: false, error: "No se encontró el evento." };
+  if (ev.deletedAt) return { ok: true }; // ya estaba borrado
+  await prisma.event.update({ where: { id: eventId }, data: { deletedAt: new Date() } });
   revalidatePath("/");
   return { ok: true };
 }
 
-/** Borra un fin de semana completo (y en cascada sus eventos y pedidos).
- *  Pensado para deshacer un finde creado por error. */
+/** Manda un fin de semana a la papelera, con sus eventos y pedidos.
+ *  No se borra nada: se recupera entero desde la papelera. */
 export async function deleteWeekend(weekendId: string): Promise<ActionResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
-  await prisma.weekend.delete({ where: { id: weekendId } });
+  const w = await prisma.weekend.findUnique({ where: { id: weekendId }, select: { deletedAt: true } });
+  if (!w) return { ok: false, error: "No se encontró el fin de semana." };
+  if (w.deletedAt) return { ok: true };
+  await prisma.weekend.update({ where: { id: weekendId }, data: { deletedAt: new Date() } });
   revalidatePath("/");
   return { ok: true };
+}
+
+export async function restoreWeekend(weekendId: string): Promise<ActionResult> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const w = await prisma.weekend.findUnique({ where: { id: weekendId }, select: { id: true } });
+  if (!w) return { ok: false, error: "No se encontró el fin de semana." };
+  await prisma.weekend.update({ where: { id: weekendId }, data: { deletedAt: null } });
+  revalidatePath("/");
+  return { ok: true, id: weekendId };
+}
+
+/** Recupera un evento. Si su fin de semana también estaba borrado lo recupera
+ *  junto, porque si no el evento volvería a un lugar al que no se puede entrar. */
+export async function restoreEvent(eventId: string): Promise<ActionResult> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const ev = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: { weekendId: true, weekend: { select: { deletedAt: true } } },
+  });
+  if (!ev) return { ok: false, error: "No se encontró el evento." };
+
+  await prisma.$transaction([
+    prisma.event.update({ where: { id: eventId }, data: { deletedAt: null } }),
+    ...(ev.weekend.deletedAt
+      ? [prisma.weekend.update({ where: { id: ev.weekendId }, data: { deletedAt: null } })]
+      : []),
+  ]);
+  revalidatePath("/");
+  return { ok: true, id: ev.weekendId };
 }

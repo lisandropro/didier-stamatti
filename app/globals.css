@@ -224,6 +224,7 @@ tbody tr:hover{background:var(--surface-2)}
   box-shadow:0 20px 60px rgba(0,0,0,.3); width:100%; max-width:440px; padding:var(--sp-5);
   animation:modal-in var(--dur) var(--ease);
 }
+.modal.modal-wide{max-width:620px}
 /* Solo anima el movimiento, NUNCA la opacidad: si la animación no corre
    (pestaña oculta, headless), el modal igual se ve. Realza, no condiciona. */
 @keyframes modal-in{from{transform:translateY(8px) scale(.985)}to{transform:none}}
@@ -468,6 +469,35 @@ tbody tr:hover{background:var(--surface-2)}
 .event .metaicon svg{width:15px; height:15px; color:var(--muted); flex:0 0 auto}
 .event-foot{font-size:var(--t-sm); color:var(--muted); border-top:1px solid var(--hair); padding-top:var(--sp-3); font-weight:600; margin-top:auto}
 .event:hover .event-foot{color:var(--gold)}
+
+/* El evento se borra sin tocar el resto del finde. El botón se apoya sobre la
+   tarjeta pero es hermano del enlace, para que tocarlo no abra el evento. */
+.event-wrap{position:relative; display:flex}
+.event-wrap > .event{flex:1 1 auto}
+.event-wrap > .event .event-foot{padding-right:34px}
+.event-del{
+  position:absolute; right:10px; bottom:10px; width:32px; height:32px;
+  display:grid; place-items:center; border-radius:var(--r-sm);
+  background:var(--surface); border:1px solid var(--hair); color:var(--muted);
+  cursor:pointer; opacity:.55; transition:opacity .15s, color .15s, border-color .15s;
+}
+.event-del svg{width:16px; height:16px}
+.event-del:hover{opacity:1; color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
+.event-del:focus-visible{opacity:1}
+/* En el teléfono no hay hover: el botón se ve siempre. */
+@media (hover:none){ .event-del{opacity:1} }
+
+/* ===== Papelera ===== */
+.trash-list{display:flex; flex-direction:column; gap:var(--sp-2); max-height:52vh; overflow:auto; margin:var(--sp-3) 0}
+.trash-item{
+  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4);
+  border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-4);
+  background:var(--surface);
+}
+.trash-item b{font-weight:650}
+.trash-meta{font-size:var(--t-sm); color:var(--muted); margin-top:2px}
+.trash-item .btn{flex:0 0 auto}
+@media (max-width:560px){ .trash-item{flex-direction:column; align-items:stretch} }
 
 .empty-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-8) var(--sp-6); text-align:center; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1)}
 .empty-card .empty-title{font-weight:600; color:var(--ink); font-size:var(--t-md); margin:0}

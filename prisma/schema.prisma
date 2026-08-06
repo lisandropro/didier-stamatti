@@ -89,8 +89,13 @@ model Weekend {
   startDate DateTime
   endDate   DateTime
   createdAt DateTime          @default(now())
+  // Borrar no destruye: se marca la fecha y el finde pasa a la papelera, de
+  // donde se puede recuperar con sus eventos y pedidos intactos.
+  deletedAt DateTime?
   events    Event[]
   snapshot  WeekendSnapshot?
+
+  @@index([deletedAt])
 }
 
 // "Versión guardada" (checkpoint) de los pedidos de un fin de semana ya pasado.
@@ -113,7 +118,11 @@ model Event {
   responsable String?
   status      String      @default("NO_LISTO") // LISTO | NO_LISTO
   createdAt   DateTime    @default(now())
+  // Ídem Weekend: el evento borrado va a la papelera con su pedido.
+  deletedAt   DateTime?
   lines       OrderLine[]
+
+  @@index([weekendId, deletedAt])
 }
 
 // Una línea de pedido dentro de un evento.

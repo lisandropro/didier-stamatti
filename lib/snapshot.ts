@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 
 export async function buildSnapshotData(weekendId: string): Promise<string> {
-  const events = await prisma.event.findMany({ where: { weekendId }, select: { id: true } });
+  const events = await prisma.event.findMany({ where: { weekendId, deletedAt: null }, select: { id: true } });
   const eventIds = events.map((e) => e.id);
   const lines = await prisma.orderLine.findMany({ where: { eventId: { in: eventIds } } });
   return JSON.stringify(

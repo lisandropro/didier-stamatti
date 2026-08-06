@@ -12,10 +12,13 @@ export default async function Home({
 }) {
   const sp = await searchParams;
 
+  // Lo que está en la papelera no aparece en ningún lado ni suma al stock.
   const weekends = await prisma.weekend.findMany({
+    where: { deletedAt: null },
     orderBy: { startDate: "desc" },
     include: {
       events: {
+        where: { deletedAt: null },
         orderBy: { date: "asc" },
         include: { _count: { select: { lines: true } } },
       },
@@ -40,7 +43,7 @@ export default async function Home({
     isPast = selected.endDate < today;
 
     const lines = await prisma.orderLine.findMany({
-      where: { event: { weekendId: selected.id } },
+      where: { event: { weekendId: selected.id, deletedAt: null } },
       select: { productId: true, qty: true },
     });
     const totals = new Map<string, number>();
@@ -65,6 +68,22 @@ export default async function Home({
       snapshotTakenAt = fmtDateTime(snap.takenAt);
     }
   }
+
+  // Papelera: lo borrado sigue existiendo hasta que alguien lo recupere.
+  const [trashedWeekends, trashedEvents] = await Promise.all([
+    prisma.weekend.findMany({
+      where: { deletedAt: { not: null } },
+      orderBy: { deletedAt: "desc" },
+      take: 20,
+      include: { _count: { select: { events: true } } },
+    }),
+    prisma.event.findMany({
+      where: { deletedAt: { not: null } },
+      orderBy: { deletedAt: "desc" },
+      take: 20,
+      include: { _count: { select: { lines: true } }, weekend: { select: { label: true } } },
+    }),
+  ]);
 
   const data = {
     weekends: dropdownWeekends.map((w) => ({
@@ -92,6 +111,23 @@ export default async function Home({
         }
       : null,
     alert: { overProducts, okCount, totalReut },
+    trash: {
+      weekends: trashedWeekends.map((w) => ({
+        id: w.id,
+        label: w.label,
+        rangeLabel: fmtRange(w.startDate, w.endDate),
+        eventCount: w._count.events,
+        deletedLabel: fmtDateTime(w.deletedAt!),
+      })),
+      events: trashedEvents.map((e) => ({
+        id: e.id,
+        lugar: e.lugar,
+        dateLabel: fmtEventDate(e.date),
+        weekendLabel: e.weekend.label,
+        lineCount: e._count.lines,
+        deletedLabel: fmtDateTime(e.deletedAt!),
+      })),
+    },
   };
 
   return <WeekendHub data={data} />;

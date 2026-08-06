@@ -104,7 +104,7 @@ export async function copyOrderFromEvent(targetEventId: string, sourceEventId: s
   if (targetEventId === sourceEventId) return { ok: false, error: "Es el mismo evento." };
 
   const target = await prisma.event.findUnique({ where: { id: targetEventId } });
-  if (!target) return { ok: false, error: "No se encontró el evento." };
+  if (!target || target.deletedAt) return { ok: false, error: "No se encontró el evento." };
 
   const sourceLines = await prisma.orderLine.findMany({ where: { eventId: sourceEventId } });
   if (sourceLines.length === 0) return { ok: false, error: "Ese evento no tiene pedido para copiar." };

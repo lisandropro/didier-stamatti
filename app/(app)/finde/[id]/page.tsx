@@ -29,14 +29,14 @@ export default async function ResumenPage({
   const { id } = await params;
   const weekend = await prisma.weekend.findUnique({
     where: { id },
-    include: { events: { orderBy: { date: "asc" } } },
+    include: { events: { where: { deletedAt: null }, orderBy: { date: "asc" } } },
   });
-  if (!weekend) notFound();
+  if (!weekend || weekend.deletedAt) notFound();
 
   const eventOrder = new Map(weekend.events.map((e, i) => [e.id, i]));
 
   const lines = await prisma.orderLine.findMany({
-    where: { event: { weekendId: id } },
+    where: { event: { weekendId: id, deletedAt: null } },
     include: { product: true, event: { select: { id: true, lugar: true } } },
   });
 

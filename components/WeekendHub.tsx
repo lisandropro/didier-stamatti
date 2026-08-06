@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createWeekend, createEvent, deleteWeekend } from "@/app/actions/weekend";
+import {
+  createWeekend,
+  createEvent,
+  deleteWeekend,
+  deleteEvent,
+  restoreWeekend,
+  restoreEvent,
+} from "@/app/actions/weekend";
 import { saveWeekendSnapshot, discardWeekendChanges } from "@/app/actions/snapshot";
 
 type EventItem = {
@@ -29,6 +36,10 @@ type HubData = {
     overProducts: { name: string; total: number; stock: number }[];
     okCount: number;
     totalReut: number;
+  };
+  trash: {
+    weekends: { id: string; label: string; rangeLabel: string; eventCount: number; deletedLabel: string }[];
+    events: { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number; deletedLabel: string }[];
   };
 };
 
@@ -70,8 +81,11 @@ export function WeekendHub({ data }: { data: HubData }) {
   const [showDelete, setShowDelete] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
 
-  const { selected, weekends, alert } = data;
+  const { selected, weekends, alert, trash } = data;
+  const trashCount = trash.weekends.length + trash.events.length;
 
   async function updateSnapshot() {
     if (!selected) return;
@@ -113,6 +127,11 @@ export function WeekendHub({ data }: { data: HubData }) {
         {selected && (
           <button className="btn primary" onClick={() => setShowEvent(true)}>
             {IconPlus} Nuevo evento
+          </button>
+        )}
+        {trashCount > 0 && (
+          <button className="btn ghost" onClick={() => setShowTrash(true)} title="Recuperar algo borrado">
+            {IconUndo} Papelera <span className="count-pill">{trashCount}</span>
           </button>
         )}
         {selected && (
@@ -205,24 +224,36 @@ export function WeekendHub({ data }: { data: HubData }) {
             ) : (
               <div className="event-grid">
                 {selected.events.map((e) => (
-                  <Link key={e.id} href={`/evento/${e.id}`} className="event">
-                    <div className="row1">
-                      <h3>{e.lugar}</h3>
-                      {e.status === "LISTO" ? (
-                        <span className="chip ok">{IconCheck}Listo</span>
-                      ) : (
-                        <span className="chip neutral">No listo</span>
-                      )}
-                    </div>
-                    <div className="meta">
-                      <span className="metaicon">{IconCal}<b>{e.dateLabel}</b></span>
-                      <span className="metaicon">{IconPeople}<b>{e.guests}</b> invitados</span>
-                      {e.responsable && <span className="metaicon">{IconPerson}{e.responsable}</span>}
-                    </div>
-                    <div className="event-foot">
-                      {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} · Armar pedido →
-                    </div>
-                  </Link>
+                  // El botón de borrar va como HERMANO del enlace, no adentro:
+                  // un botón dentro de un <a> no se puede tocar sin abrir el evento.
+                  <div key={e.id} className="event-wrap">
+                    <Link href={`/evento/${e.id}`} className="event">
+                      <div className="row1">
+                        <h3>{e.lugar}</h3>
+                        {e.status === "LISTO" ? (
+                          <span className="chip ok">{IconCheck}Listo</span>
+                        ) : (
+                          <span className="chip neutral">No listo</span>
+                        )}
+                      </div>
+                      <div className="meta">
+                        <span className="metaicon">{IconCal}<b>{e.dateLabel}</b></span>
+                        <span className="metaicon">{IconPeople}<b>{e.guests}</b> invitados</span>
+                        {e.responsable && <span className="metaicon">{IconPerson}{e.responsable}</span>}
+                      </div>
+                      <div className="event-foot">
+                        {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} · Armar pedido →
+                      </div>
+                    </Link>
+                    <button
+                      className="event-del"
+                      onClick={() => setEventToDelete(e)}
+                      title={`Borrar el evento de ${e.lugar}`}
+                      aria-label={`Borrar el evento de ${e.lugar}`}
+                    >
+                      {IconTrash}
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -275,7 +306,139 @@ export function WeekendHub({ data }: { data: HubData }) {
           }}
         />
       )}
+      {eventToDelete && (
+        <ConfirmDeleteEvent
+          event={eventToDelete}
+          onClose={() => setEventToDelete(null)}
+          onDeleted={() => {
+            setEventToDelete(null);
+            router.refresh();
+          }}
+        />
+      )}
+      {showTrash && (
+        <TrashModal
+          trash={trash}
+          onClose={() => setShowTrash(false)}
+          onRestored={(weekendId) => {
+            setShowTrash(false);
+            if (weekendId) router.push(`/?w=${weekendId}`);
+            router.refresh();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function ConfirmDeleteEvent({
+  event,
+  onClose,
+  onDeleted,
+}: {
+  event: EventItem;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function confirm() {
+    setSaving(true);
+    setErr(null);
+    const res = await deleteEvent(event.id);
+    setSaving(false);
+    if (!res.ok) return setErr(res.error ?? "No se pudo borrar.");
+    onDeleted();
+  }
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(ev) => ev.stopPropagation()}>
+        <h2>¿Borrar el evento de {event.lugar}?</h2>
+        <p className="modal-sub">
+          {event.lineCount > 0
+            ? `Se va a la papelera junto con sus ${event.lineCount} producto${event.lineCount > 1 ? "s" : ""} del pedido.`
+            : "Todavía no tiene pedido cargado."}{" "}
+          El resto del fin de semana no se toca, y lo podés recuperar desde la papelera.
+        </p>
+        {err && <div className="form-error">{err}</div>}
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="btn danger" onClick={confirm} disabled={saving}>
+            {saving ? "Borrando…" : "Borrar evento"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrashModal({
+  trash,
+  onClose,
+  onRestored,
+}: {
+  trash: HubData["trash"];
+  onClose: () => void;
+  onRestored: (weekendId?: string) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function recuperar(kind: "weekend" | "event", id: string) {
+    setBusy(id);
+    setErr(null);
+    const res = kind === "weekend" ? await restoreWeekend(id) : await restoreEvent(id);
+    setBusy(null);
+    if (!res.ok) return setErr(res.error ?? "No se pudo recuperar.");
+    onRestored(res.id);
+  }
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal modal-wide" onClick={(ev) => ev.stopPropagation()}>
+        <h2>Papelera</h2>
+        <p className="modal-sub">
+          Nada se borra del todo. Recuperá lo que necesites y vuelve con sus pedidos como estaban.
+        </p>
+        {err && <div className="form-error">{err}</div>}
+
+        <div className="trash-list">
+          {trash.weekends.map((w) => (
+            <div className="trash-item" key={w.id}>
+              <div>
+                <b>{w.label}</b>
+                <div className="trash-meta">
+                  Fin de semana · {w.rangeLabel} · {w.eventCount} {w.eventCount === 1 ? "evento" : "eventos"} · borrado el {w.deletedLabel}
+                </div>
+              </div>
+              <button className="btn ghost" onClick={() => recuperar("weekend", w.id)} disabled={busy === w.id}>
+                {IconUndo} {busy === w.id ? "Recuperando…" : "Recuperar"}
+              </button>
+            </div>
+          ))}
+          {trash.events.map((e) => (
+            <div className="trash-item" key={e.id}>
+              <div>
+                <b>{e.lugar}</b>
+                <div className="trash-meta">
+                  Evento de {e.weekendLabel} · {e.dateLabel} ·{" "}
+                  {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""}` : "sin pedido"} · borrado el {e.deletedLabel}
+                </div>
+              </div>
+              <button className="btn ghost" onClick={() => recuperar("event", e.id)} disabled={busy === e.id}>
+                {IconUndo} {busy === e.id ? "Recuperando…" : "Recuperar"}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

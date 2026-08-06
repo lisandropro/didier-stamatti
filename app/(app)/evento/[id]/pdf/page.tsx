@@ -24,7 +24,7 @@ export default async function EventoPdfPage({
 }) {
   const { id } = await params;
   const ev = await prisma.event.findUnique({ where: { id } });
-  if (!ev) notFound();
+  if (!ev || ev.deletedAt) notFound();
 
   const lines = await prisma.orderLine.findMany({
     where: { eventId: id },

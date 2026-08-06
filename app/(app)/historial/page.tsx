@@ -8,7 +8,7 @@ export default async function HistorialPage() {
   const today = startOfToday();
 
   const pastWeekends = await prisma.weekend.findMany({
-    where: { endDate: { lt: today } },
+    where: { endDate: { lt: today }, deletedAt: null },
     orderBy: { startDate: "desc" },
     include: {
       events: { select: { id: true } },
