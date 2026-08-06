@@ -43,6 +43,9 @@ export async function updateStock(input: {
         delta,
         reason,
         note: input.note?.trim() || null,
+        // Queda registrado quién lo hizo: el historial es la única forma de
+        // explicar después por qué un número cambió.
+        userId: user.id,
       },
     }),
   ]);

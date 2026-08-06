@@ -18,7 +18,10 @@ export default async function HistorialPage() {
 
   const movements = await prisma.stockMovement.findMany({
     orderBy: { createdAt: "desc" },
-    include: { product: { select: { name: true, unit: true } } },
+    include: {
+      product: { select: { name: true, unit: true } },
+      user: { select: { name: true } },
+    },
   });
 
   const data = {
@@ -36,6 +39,8 @@ export default async function HistorialPage() {
       delta: m.delta,
       reason: m.reason,
       note: m.note,
+      // Los movimientos viejos (y los de un usuario que se borró) no tienen autor.
+      userName: m.user?.name ?? null,
       dateLabel: fmtDateTime(m.createdAt),
     })),
   };

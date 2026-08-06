@@ -17,6 +17,7 @@ type MovementRow = {
   delta: number;
   reason: string;
   note: string | null;
+  userName: string | null;
   dateLabel: string;
 };
 type Data = { weekends: WeekendRow[]; movements: MovementRow[] };
@@ -146,13 +147,14 @@ function Movements({ movements }: { movements: MovementRow[] }) {
               <th>Producto</th>
               <th>Motivo</th>
               <th>Cantidad</th>
+              <th>Quién</th>
               <th>Nota</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td className="emptyrow" colSpan={5}>No hay movimientos que coincidan.</td>
+                <td className="emptyrow" colSpan={6}>No hay movimientos que coincidan.</td>
               </tr>
             )}
             {filtered.map((m) => (
@@ -165,6 +167,7 @@ function Movements({ movements }: { movements: MovementRow[] }) {
                     {m.delta > 0 ? `+${m.delta}` : m.delta}
                   </span>
                 </td>
+                <td className="dim">{m.userName ?? "—"}</td>
                 <td className="dim">{m.note ?? ""}</td>
               </tr>
             ))}
