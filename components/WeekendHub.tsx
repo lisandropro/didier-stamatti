@@ -11,7 +11,7 @@ import {
   restoreWeekend,
   restoreEvent,
 } from "@/app/actions/weekend";
-import { saveWeekendSnapshot, discardWeekendChanges } from "@/app/actions/snapshot";
+import { saveWeekendSnapshot, discardWeekendChanges, restoreWeekendVersion } from "@/app/actions/snapshot";
 
 type EventItem = {
   id: string;
@@ -40,6 +40,7 @@ type HubData = {
   trash: {
     weekends: { id: string; label: string; rangeLabel: string; eventCount: number; deletedLabel: string }[];
     events: { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number; deletedLabel: string }[];
+    versions: { id: string; weekendLabel: string; kind: string; lineCount: number; actorName: string; atLabel: string }[];
   };
 };
 
@@ -85,7 +86,7 @@ export function WeekendHub({ data }: { data: HubData }) {
   const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
 
   const { selected, weekends, alert, trash } = data;
-  const trashCount = trash.weekends.length + trash.events.length;
+  const trashCount = trash.weekends.length + trash.events.length + trash.versions.length;
 
   async function updateSnapshot() {
     if (!selected) return;
@@ -299,6 +300,8 @@ export function WeekendHub({ data }: { data: HubData }) {
           id={selected.id}
           label={selected.label}
           takenAt={selected.snapshotTakenAt}
+          currentLines={selected.events.reduce((n, e) => n + e.lineCount, 0)}
+          eventCount={selected.events.length}
           onClose={() => setShowDiscard(false)}
           onDiscarded={() => {
             setShowDiscard(false);
@@ -386,9 +389,17 @@ function TrashModal({
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  async function recuperar(kind: "weekend" | "event", id: string) {
+  async function recuperar(kind: "weekend" | "event" | "version", id: string) {
     setBusy(id);
     setErr(null);
+    // Recuperar un finde o un evento lleva al finde recuperado; restaurar una
+    // versión de pedidos deja donde estás, porque el finde no se movió.
+    if (kind === "version") {
+      const res = await restoreWeekendVersion(id);
+      setBusy(null);
+      if (!res.ok) return setErr(res.error ?? "No se pudo restaurar.");
+      return onRestored();
+    }
     const res = kind === "weekend" ? await restoreWeekend(id) : await restoreEvent(id);
     setBusy(null);
     if (!res.ok) return setErr(res.error ?? "No se pudo recuperar.");
@@ -400,7 +411,7 @@ function TrashModal({
       <div className="modal modal-wide" onClick={(ev) => ev.stopPropagation()}>
         <h2>Papelera</h2>
         <p className="modal-sub">
-          Nada se borra del todo. Recuperá lo que necesites y vuelve con sus pedidos como estaban.
+Nada se borra del todo. Recuperá lo que necesites y vuelve con sus pedidos como estaban.
         </p>
         {err && <div className="form-error">{err}</div>}
 
@@ -432,6 +443,20 @@ function TrashModal({
               </button>
             </div>
           ))}
+          {trash.versions.map((v) => (
+            <div className="trash-item" key={v.id}>
+              <div>
+                <b>Pedidos de {v.weekendLabel}</b>
+                <div className="trash-meta">
+                  {v.kind === "PRE_DESCARTE" ? "Antes de descartar cambios" : "Antes de restaurar otra versión"} ·{" "}
+                  {v.lineCount} {v.lineCount === 1 ? "producto" : "productos"} · {v.actorName} · {v.atLabel}
+                </div>
+              </div>
+              <button className="btn ghost" onClick={() => recuperar("version", v.id)} disabled={busy === v.id}>
+                {IconUndo} {busy === v.id ? "Restaurando…" : "Restaurar"}
+              </button>
+            </div>
+          ))}
         </div>
 
         <div className="modal-actions">
@@ -446,12 +471,16 @@ function ConfirmDiscardChanges({
   id,
   label,
   takenAt,
+  currentLines,
+  eventCount,
   onClose,
   onDiscarded,
 }: {
   id: string;
   label: string;
   takenAt: string | null;
+  currentLines: number;
+  eventCount: number;
   onClose: () => void;
   onDiscarded: () => void;
 }) {
@@ -472,11 +501,26 @@ function ConfirmDiscardChanges({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>¿Descartar cambios?</h2>
         <div className="msub">
-          Los pedidos de <b>{label}</b> van a volver a como estaban en la versión guardada
-          {takenAt ? <> del <b>{takenAt}</b></> : ""}. Se pierden las cantidades y notas cargadas después de esa versión.
-          No se borran ni el fin de semana ni los eventos, solo los pedidos.
+          <p>
+            Los pedidos de <b>{label}</b> vuelven a como estaban en la versión guardada
+            {takenAt ? <> del <b>{takenAt}</b></> : ""}.
+          </p>
+          <p>
+            <b>Qué se reemplaza:</b> los {currentLines} {currentLines === 1 ? "producto cargado" : "productos cargados"} hoy
+            en {eventCount === 1 ? "el evento" : `los ${eventCount} eventos`} de este fin de semana, con sus cantidades y
+            sus notas.
+          </p>
+          <p>
+            <b>Qué NO se toca:</b> el fin de semana, los eventos, el stock del depósito ni el historial de movimientos.
+          </p>
         </div>
-        {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
+        <div className="banner ok" style={{ marginBottom: "var(--sp-4)" }}>
+          <div>
+            <b>Se guarda una copia antes de descartar</b>
+            <p>Si te arrepentís, la recuperás entera desde la Papelera.</p>
+          </div>
+        </div>
+        {error && <div className="form-error">{error}</div>}
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
           <button className="btn danger" onClick={confirm} disabled={saving}>

@@ -505,6 +505,20 @@ tbody tr:hover{background:var(--surface-2)}
 /* En el teléfono no hay hover: el botón se ve siempre. */
 @media (hover:none){ .event-del{opacity:1} }
 
+/* ===== Administración del catálogo ===== */
+.rowacts{display:flex; gap:var(--sp-2); flex-wrap:wrap; justify-content:flex-end}
+/* Un producto dado de baja se sigue viendo, pero no compite visualmente con los activos. */
+.row-baja{opacity:.6}
+.row-baja .prod{text-decoration:line-through}
+.admin-row{
+  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4);
+  border-top:1px solid var(--hair); padding:var(--sp-3) 0;
+}
+.admin-row b{font-weight:650}
+.admin-row .btn{flex:0 0 auto}
+.admin-row.danger-row b{color:var(--crit)}
+@media (max-width:560px){ .admin-row{flex-direction:column; align-items:stretch} }
+
 /* ===== Papelera ===== */
 .trash-list{display:flex; flex-direction:column; gap:var(--sp-2); max-height:52vh; overflow:auto; margin:var(--sp-3) 0}
 .trash-item{

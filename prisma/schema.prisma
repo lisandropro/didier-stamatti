@@ -92,6 +92,7 @@ model Product {
   createdAt  DateTime        @default(now())
   movements  StockMovement[]
   orderLines OrderLine[]
+  changes    ProductChange[]
 
   @@index([category])
 }
@@ -121,8 +122,42 @@ model Weekend {
   deletedAt DateTime?
   events    Event[]
   snapshot  WeekendSnapshot?
+  versions  WeekendVersion[]
 
   @@index([deletedAt])
+}
+
+// Copia recuperable de los pedidos de un finde. Se guarda ANTES de cualquier
+// acción que los reemplace, para que descartar cambios no sea un camino de ida.
+model WeekendVersion {
+  id         String    @id @default(cuid())
+  weekendId  String
+  weekend    Weekend   @relation(fields: [weekendId], references: [id], onDelete: Cascade)
+  kind       String // PRE_DESCARTE | PRE_RESTAURACION
+  data       String // JSON de las líneas, mismo formato que WeekendSnapshot
+  lineCount  Int       @default(0)
+  actorId    String?
+  actorName  String
+  createdAt  DateTime  @default(now())
+  restoredAt DateTime?
+
+  @@index([weekendId, createdAt])
+}
+
+// Historial de modificaciones del catálogo: qué campo, quién y con qué valores.
+// El stock NO va acá: sus cambios ya viven en StockMovement.
+model ProductChange {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actorName String
+  field     String // nombre | descripcion | categoria | rubro | tipo | unidad | estado
+  before    String?
+  after     String?
+  createdAt DateTime @default(now())
+
+  @@index([productId, createdAt])
 }
 
 // "Versión guardada" (checkpoint) de los pedidos de un fin de semana ya pasado.

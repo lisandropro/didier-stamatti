@@ -3,18 +3,21 @@
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { buildSnapshotData } from "@/lib/snapshot";
+import { applySnapshotData, buildSnapshotData, saveRecoverableVersion } from "@/lib/snapshot";
 
-export type SnapshotResult = { ok: boolean; error?: string; takenAt?: string };
-
-type SnapshotLine = {
-  eventId: string;
-  productId: string | null;
-  customName: string | null;
-  customUnit: string | null;
-  qty: number;
-  note: string | null;
+export type SnapshotResult = {
+  ok: boolean;
+  error?: string;
+  takenAt?: string;
+  guardadas?: number;
+  restauradas?: number;
 };
+
+function revalidar(weekendId: string) {
+  revalidatePath("/");
+  revalidatePath(`/finde/${weekendId}`);
+  revalidatePath("/historial");
+}
 
 /** Guarda (o actualiza) la "versión segura" de los pedidos de un fin de semana.
  *  Sirve como punto al que volver si algo se modifica por error.
@@ -25,22 +28,21 @@ export async function saveWeekendSnapshot(weekendId: string): Promise<SnapshotRe
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
 
-  const data = await buildSnapshotData(weekendId);
+  const { data } = await buildSnapshotData(weekendId);
   const snap = await prisma.weekendSnapshot.upsert({
     where: { weekendId },
     update: { data, takenAt: new Date() },
     create: { weekendId, data },
   });
 
-  revalidatePath("/");
-  revalidatePath(`/finde/${weekendId}`);
-  revalidatePath("/historial");
+  revalidar(weekendId);
   return { ok: true, takenAt: snap.takenAt.toISOString() };
 }
 
-/** Descarta los cambios hechos a los pedidos desde la última versión guardada
- *  y restaura ese estado. Solo afecta cantidades/notas de los pedidos, no los
- *  datos del evento (lugar, fecha, invitados) ni si se agregó/borró un evento. */
+/** Descarta los cambios hechos a los pedidos desde la última versión guardada.
+ *  Antes de pisar nada guarda una copia recuperable del estado actual, así el
+ *  descarte deja de ser un camino de ida. Solo afecta cantidades/notas de los
+ *  pedidos, no los datos del evento ni si se agregó o borró un evento. */
 export async function discardWeekendChanges(weekendId: string): Promise<SnapshotResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
@@ -48,30 +50,28 @@ export async function discardWeekendChanges(weekendId: string): Promise<Snapshot
   const snap = await prisma.weekendSnapshot.findUnique({ where: { weekendId } });
   if (!snap) return { ok: false, error: "Todavía no hay una versión guardada para este fin de semana." };
 
-  const events = await prisma.event.findMany({ where: { weekendId, deletedAt: null }, select: { id: true } });
-  const validEventIds = new Set(events.map((e) => e.id));
+  // Primero el resguardo, después el descarte. Si el resguardo fallara, no se
+  // pisa nada: es preferible no descartar a descartar sin poder volver.
+  const resguardo = await saveRecoverableVersion(weekendId, "PRE_DESCARTE", user);
+  const restauradas = await applySnapshotData(weekendId, snap.data);
 
-  const data = JSON.parse(snap.data) as SnapshotLine[];
-  const toRestore = data.filter((l) => validEventIds.has(l.eventId));
+  revalidar(weekendId);
+  return { ok: true, takenAt: snap.takenAt.toISOString(), guardadas: resguardo.lineCount, restauradas };
+}
 
-  await prisma.$transaction([
-    prisma.orderLine.deleteMany({ where: { eventId: { in: [...validEventIds] } } }),
-    ...toRestore.map((l) =>
-      prisma.orderLine.create({
-        data: {
-          eventId: l.eventId,
-          productId: l.productId,
-          customName: l.customName,
-          customUnit: l.customUnit,
-          qty: l.qty,
-          note: l.note,
-        },
-      })
-    ),
-  ]);
+/** Vuelve a un estado guardado en el historial de versiones. Antes de aplicarlo
+ *  resguarda el estado actual, para que también se pueda deshacer esta vuelta. */
+export async function restoreWeekendVersion(versionId: string): Promise<SnapshotResult> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
 
-  revalidatePath("/");
-  revalidatePath(`/finde/${weekendId}`);
-  revalidatePath("/historial");
-  return { ok: true, takenAt: snap.takenAt.toISOString() };
+  const version = await prisma.weekendVersion.findUnique({ where: { id: versionId } });
+  if (!version) return { ok: false, error: "No se encontró esa versión." };
+
+  const resguardo = await saveRecoverableVersion(version.weekendId, "PRE_RESTAURACION", user);
+  const restauradas = await applySnapshotData(version.weekendId, version.data);
+  await prisma.weekendVersion.update({ where: { id: versionId }, data: { restoredAt: new Date() } });
+
+  revalidar(version.weekendId);
+  return { ok: true, guardadas: resguardo.lineCount, restauradas };
 }

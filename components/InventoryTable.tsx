@@ -3,16 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { updateStock } from "@/app/actions/stock";
 import { NewProductModal } from "@/components/NewProductModal";
+import { ProductAdminModal } from "@/components/ProductAdminModal";
 import { useRouter } from "next/navigation";
 
 type Product = {
   id: string;
   name: string;
+  description: string | null;
   category: string;
   rubro: string | null;
   type: string;
   unit: string;
   stock: number;
+  active: boolean;
 };
 
 const CATS = [
@@ -47,6 +50,7 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
   const [cat, setCat] = useState("TODOS");
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
+  const [admin, setAdmin] = useState<Product | null>(null);
   const router = useRouter();
 
   const filtered = useMemo(() => {
@@ -115,10 +119,13 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
             {filtered.map((p) => {
               const reutil = p.type === "REUTILIZABLE";
               return (
-                <tr key={p.id}>
+                <tr key={p.id} className={p.active ? undefined : "row-baja"}>
                   <td>
                     <div className="prod">{p.name}</div>
-                    <div className="rubro">{CAT_LABEL[p.category] ?? p.category}{p.rubro ? ` · ${p.rubro}` : ""}</div>
+                    <div className="rubro">
+                      {CAT_LABEL[p.category] ?? p.category}{p.rubro ? ` · ${p.rubro}` : ""}
+                      {p.description ? ` · ${p.description}` : ""}
+                    </div>
                   </td>
                   <td>{reutil ? "Reutilizable" : "Consumible"}</td>
                   <td>{p.unit}</td>
@@ -130,7 +137,9 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
                     )}
                   </td>
                   <td>
-                    {!reutil ? (
+                    {!p.active ? (
+                      <span className="chip crit">Dado de baja</span>
+                    ) : !reutil ? (
                       <span className="chip neutral">Se compra por evento</span>
                     ) : p.stock > 0 ? (
                       <span className="chip ok">{IconCheck}Cargado</span>
@@ -139,12 +148,9 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
                     )}
                   </td>
                   {canEdit && (
-                    <td>
-                      {reutil ? (
-                        <button className="miniedit" onClick={() => setEditing(p)}>Editar stock</button>
-                      ) : (
-                        <span className="dim">—</span>
-                      )}
+                    <td className="rowacts">
+                      {reutil && <button className="miniedit" onClick={() => setEditing(p)}>Editar stock</button>}
+                      <button className="miniedit" onClick={() => setAdmin(p)}>Administrar</button>
                     </td>
                   )}
                 </tr>
@@ -166,6 +172,16 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
           product={editing}
           onClose={() => setEditing(null)}
           onSaved={(newStock) => handleSaved(editing.id, newStock)}
+        />
+      )}
+      {admin && (
+        <ProductAdminModal
+          product={admin}
+          onClose={() => setAdmin(null)}
+          onChanged={() => {
+            setAdmin(null);
+            router.refresh();
+          }}
         />
       )}
       {creating && (

@@ -18,15 +18,18 @@ export default async function InventarioPage() {
   products.sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9));
 
   const reutCount = products.filter((p) => p.type === "REUTILIZABLE").length;
+  const bajaCount = products.filter((p) => !p.active).length;
 
   const data = products.map((p) => ({
     id: p.id,
     name: p.name,
+    description: p.description,
     category: p.category,
     rubro: p.rubro,
     type: p.type,
     unit: p.unit,
     stock: p.stock,
+    active: p.active,
   }));
 
   return (
@@ -36,6 +39,7 @@ export default async function InventarioPage() {
           <h1>Inventario</h1>
           <div className="sub">
             {products.length} productos · {reutCount} con control de stock
+            {bajaCount > 0 ? ` · ${bajaCount} dado${bajaCount === 1 ? "" : "s"} de baja` : ""}
           </div>
         </div>
       </div>

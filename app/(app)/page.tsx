@@ -70,7 +70,7 @@ export default async function Home({
   }
 
   // Papelera: lo borrado sigue existiendo hasta que alguien lo recupere.
-  const [trashedWeekends, trashedEvents] = await Promise.all([
+  const [trashedWeekends, trashedEvents, versions] = await Promise.all([
     prisma.weekend.findMany({
       where: { deletedAt: { not: null } },
       orderBy: { deletedAt: "desc" },
@@ -82,6 +82,14 @@ export default async function Home({
       orderBy: { deletedAt: "desc" },
       take: 20,
       include: { _count: { select: { lines: true } }, weekend: { select: { label: true } } },
+    }),
+    // Copias guardadas antes de descartar o restaurar pedidos. Se muestran las
+    // que todavía nadie usó para volver atrás.
+    prisma.weekendVersion.findMany({
+      where: { restoredAt: null, weekend: { deletedAt: null } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: { weekend: { select: { label: true } } },
     }),
   ]);
 
@@ -126,6 +134,14 @@ export default async function Home({
         weekendLabel: e.weekend.label,
         lineCount: e._count.lines,
         deletedLabel: fmtDateTime(e.deletedAt!),
+      })),
+      versions: versions.map((v) => ({
+        id: v.id,
+        weekendLabel: v.weekend.label,
+        kind: v.kind,
+        lineCount: v.lineCount,
+        actorName: v.actorName,
+        atLabel: fmtDateTime(v.createdAt),
       })),
     },
   };

@@ -1,19 +1,32 @@
 import { prisma } from "@/lib/db";
 
-export async function buildSnapshotData(weekendId: string): Promise<string> {
+export type SnapshotLine = {
+  eventId: string;
+  productId: string | null;
+  customName: string | null;
+  customUnit: string | null;
+  customCategory: string | null;
+  qty: number;
+  note: string | null;
+};
+
+/** Serializa los pedidos de un finde. Incluye `customCategory`: sin ella, al
+ *  restaurar, los ítems fuera de catálogo perdían su sector y se imprimían
+ *  todos en Enseres. */
+export async function buildSnapshotData(weekendId: string): Promise<{ data: string; lineCount: number }> {
   const events = await prisma.event.findMany({ where: { weekendId, deletedAt: null }, select: { id: true } });
   const eventIds = events.map((e) => e.id);
   const lines = await prisma.orderLine.findMany({ where: { eventId: { in: eventIds } } });
-  return JSON.stringify(
-    lines.map((l) => ({
-      eventId: l.eventId,
-      productId: l.productId,
-      customName: l.customName,
-      customUnit: l.customUnit,
-      qty: l.qty,
-      note: l.note,
-    }))
-  );
+  const payload: SnapshotLine[] = lines.map((l) => ({
+    eventId: l.eventId,
+    productId: l.productId,
+    customName: l.customName,
+    customUnit: l.customUnit,
+    customCategory: l.customCategory,
+    qty: l.qty,
+    note: l.note,
+  }));
+  return { data: JSON.stringify(payload), lineCount: payload.length };
 }
 
 /** Crea la versión guardada de un finde solo si todavía no existe.
@@ -22,7 +35,50 @@ export async function buildSnapshotData(weekendId: string): Promise<string> {
 export async function ensureWeekendSnapshot(weekendId: string) {
   const existing = await prisma.weekendSnapshot.findUnique({ where: { weekendId } });
   if (existing) return existing;
-  return prisma.weekendSnapshot.create({
-    data: { weekendId, data: await buildSnapshotData(weekendId) },
+  const { data } = await buildSnapshotData(weekendId);
+  return prisma.weekendSnapshot.create({ data: { weekendId, data } });
+}
+
+/** Guarda una copia recuperable del estado ACTUAL antes de pisarlo, y devuelve
+ *  cuántas líneas quedaron resguardadas. Toda acción que reemplace los pedidos
+ *  de un finde tiene que pasar por acá primero. */
+export async function saveRecoverableVersion(
+  weekendId: string,
+  kind: "PRE_DESCARTE" | "PRE_RESTAURACION",
+  actor: { id: string; name: string }
+): Promise<{ id: string; lineCount: number }> {
+  const { data, lineCount } = await buildSnapshotData(weekendId);
+  const v = await prisma.weekendVersion.create({
+    data: { weekendId, kind, data, lineCount, actorId: actor.id, actorName: actor.name },
   });
+  return { id: v.id, lineCount };
+}
+
+/** Reemplaza los pedidos de un finde por los de un JSON de versión.
+ *  Sólo toca eventos vivos: un evento en la papelera no revive por esto. */
+export async function applySnapshotData(weekendId: string, json: string): Promise<number> {
+  const events = await prisma.event.findMany({ where: { weekendId, deletedAt: null }, select: { id: true } });
+  const validEventIds = new Set(events.map((e) => e.id));
+
+  const parsed = JSON.parse(json) as SnapshotLine[];
+  const toRestore = parsed.filter((l) => validEventIds.has(l.eventId));
+
+  await prisma.$transaction([
+    prisma.orderLine.deleteMany({ where: { eventId: { in: [...validEventIds] } } }),
+    ...toRestore.map((l) =>
+      prisma.orderLine.create({
+        data: {
+          eventId: l.eventId,
+          productId: l.productId,
+          customName: l.customName,
+          customUnit: l.customUnit,
+          customCategory: l.customCategory ?? null,
+          qty: l.qty,
+          note: l.note,
+        },
+      })
+    ),
+  ]);
+
+  return toRestore.length;
 }
