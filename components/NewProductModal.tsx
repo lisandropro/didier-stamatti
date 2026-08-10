@@ -71,7 +71,7 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="overlay" onClick={onClose}>
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         <h2>Nuevo producto</h2>
         <p className="modal-sub">Se agrega al catálogo y queda disponible para todos los pedidos.</p>

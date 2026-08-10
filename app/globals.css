@@ -506,7 +506,27 @@ tbody tr:hover{background:var(--surface-2)}
 @media (hover:none){ .event-del{opacity:1} }
 
 /* ===== Administración del catálogo ===== */
-.rowacts{display:flex; gap:var(--sp-2); flex-wrap:wrap; justify-content:flex-end}
+.rowacts{text-align:right; white-space:nowrap}
+
+/* Menú de tres puntitos de cada fila. La lista se posiciona con coordenadas
+   fijas desde el componente: la tabla tiene overflow propio y la recortaría. */
+.rowmenu-btn{
+  width:32px; height:32px; display:grid; place-items:center; cursor:pointer;
+  border:1px solid transparent; border-radius:var(--r-sm); background:transparent; color:var(--muted);
+}
+.rowmenu-btn svg{width:18px; height:18px}
+.rowmenu-btn:hover{background:var(--surface-2); color:var(--ink); border-color:var(--hair)}
+.rowmenu-btn[aria-expanded="true"]{background:var(--surface-2); color:var(--ink); border-color:var(--hair)}
+.rowmenu-list{
+  position:fixed; z-index:60; min-width:190px;
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-sm);
+  box-shadow:var(--shadow-lift); padding:var(--sp-1); display:flex; flex-direction:column;
+}
+.rowmenu-list button{
+  text-align:left; background:transparent; border:0; cursor:pointer; color:var(--ink);
+  padding:var(--sp-2) var(--sp-3); border-radius:var(--r-sm); font-size:var(--t-sm); font-weight:600;
+}
+.rowmenu-list button:hover{background:var(--surface-2)}
 /* Un producto dado de baja se sigue viendo, pero no compite visualmente con los activos. */
 .row-baja{opacity:.6}
 .row-baja .prod{text-decoration:line-through}

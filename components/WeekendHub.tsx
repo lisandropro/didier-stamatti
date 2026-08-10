@@ -356,7 +356,7 @@ function ConfirmDeleteEvent({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(ev) => ev.stopPropagation()}>
         <h2>¿Borrar el evento de {event.lugar}?</h2>
         <p className="modal-sub">
@@ -407,7 +407,7 @@ function TrashModal({
   }
 
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="overlay" onClick={onClose}>
       <div className="modal modal-wide" onClick={(ev) => ev.stopPropagation()}>
         <h2>Papelera</h2>
         <p className="modal-sub">

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { updateStock } from "@/app/actions/stock";
 import { NewProductModal } from "@/components/NewProductModal";
 import { ProductAdminModal } from "@/components/ProductAdminModal";
+import { RowMenu } from "@/components/RowMenu";
 import { useRouter } from "next/navigation";
 
 type Product = {
@@ -149,8 +150,13 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
                   </td>
                   {canEdit && (
                     <td className="rowacts">
-                      {reutil && <button className="miniedit" onClick={() => setEditing(p)}>Editar stock</button>}
-                      <button className="miniedit" onClick={() => setAdmin(p)}>Administrar</button>
+                      <RowMenu
+                        label={`Opciones de ${p.name}`}
+                        items={[
+                          ...(reutil ? [{ label: "Editar stock", onSelect: () => setEditing(p) }] : []),
+                          { label: "Administrar producto", onSelect: () => setAdmin(p) },
+                        ]}
+                      />
                     </td>
                   )}
                 </tr>
