@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { markAllRead } from "@/app/actions/notifications";
 
-type Item = { id: string; message: string; eventId: string | null; read: boolean; at: string };
+type Item = { id: string; message: string; eventId: string | null; read: boolean; at: string; changeCount: number };
 
 function relative(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -53,13 +53,17 @@ export function NotificationsList({ items }: { items: Item[] }) {
         <button
           key={n.id}
           className={`notif-item${n.read ? "" : " unread"}`}
-          onClick={() => n.eventId && router.push(`/evento/${n.eventId}`)}
-          disabled={!n.eventId}
+          // Lleva al resumen de qué cambió, no directo al pedido: el aviso sin
+          // el detalle obliga a buscar a ojo qué se tocó.
+          onClick={() => router.push(`/aviso/${n.id}`)}
         >
           <span className="notif-icon">{IconBell}</span>
           <span className="notif-body">
             <span className="notif-msg">{n.message}</span>
-            <span className="notif-time">{relative(n.at)}</span>
+            <span className="notif-time">
+              {relative(n.at)}
+              {n.changeCount > 1 ? ` · ${n.changeCount} cambios` : ""}
+            </span>
           </span>
           {!n.read && <span className="notif-dot" aria-label="Sin leer" />}
         </button>

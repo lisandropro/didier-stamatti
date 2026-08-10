@@ -21,6 +21,7 @@ export default async function NotificacionesPage() {
     message: n.message,
     eventId: n.eventId,
     read: n.read,
+    changeCount: n.changeCount,
     at: n.createdAt.toISOString(),
   }));
 

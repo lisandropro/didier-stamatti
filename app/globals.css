@@ -166,6 +166,9 @@ body{
 
 /* ===== Search + filters ===== */
 .searchbar{display:flex; gap:var(--sp-2); margin-bottom:var(--sp-4); flex-wrap:wrap; align-items:center}
+/* Empuja "Nuevo producto" al extremo, separado de los filtros de categoría. */
+.newprod-btn{margin-left:auto}
+@media (max-width:560px){ .newprod-btn{margin-left:0; width:100%; justify-content:center} }
 .search{
   flex:1; min-width:220px; display:flex; align-items:center; gap:var(--sp-2);
   background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
@@ -240,6 +243,21 @@ tbody tr:hover{background:var(--surface-2)}
 .step-input:focus{outline:2px solid var(--gold); outline-offset:-1px}
 .delta-line{text-align:center; font-size:var(--t-sm); color:var(--muted); margin:2px 0 16px; min-height:18px; font-weight:600}
 .delta-line.active{color:var(--gold)}
+/* Estas dos se venían usando en los modales sin estar definidas: el texto de
+   ayuda salía igual que el cuerpo y el error no se distinguía de una aclaración. */
+.modal-sub{margin:calc(var(--sp-2) * -1) 0 var(--sp-4); color:var(--muted); font-size:var(--t-sm); text-wrap:pretty}
+.form-error{
+  margin:var(--sp-3) 0 0; padding:var(--sp-3) var(--sp-4); border-radius:var(--r-sm);
+  background:var(--crit-soft); border:1px solid var(--crit); color:var(--crit);
+  font-size:var(--t-sm); font-weight:600;
+}
+
+/* Formulario de dos columnas para los modales con varios campos. */
+.form-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 var(--sp-4)}
+.form-grid .field-full{grid-column:1 / -1}
+.field .opt{font-style:normal; text-transform:none; letter-spacing:0; font-weight:500; opacity:.75}
+@media (max-width:560px){ .form-grid{grid-template-columns:1fr} }
+
 .field{margin-bottom:var(--sp-3)}
 .field label{display:block; font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; margin-bottom:var(--sp-2)}
 .field input, .field select{

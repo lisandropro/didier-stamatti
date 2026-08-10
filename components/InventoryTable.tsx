@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { updateStock } from "@/app/actions/stock";
+import { NewProductModal } from "@/components/NewProductModal";
+import { useRouter } from "next/navigation";
 
 type Product = {
   id: string;
@@ -32,6 +34,9 @@ const norm = (s: string) =>
 const IconCheck = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M20 6 9 17l-5-5" /></svg>
 );
+const IconPlus = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+);
 const IconWarn = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 8v5M12 16h.01" /><circle cx="12" cy="12" r="9" /></svg>
 );
@@ -41,6 +46,8 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState("TODOS");
   const [editing, setEditing] = useState<Product | null>(null);
+  const [creating, setCreating] = useState(false);
+  const router = useRouter();
 
   const filtered = useMemo(() => {
     const q = norm(query.trim());
@@ -76,6 +83,11 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
             {c.l}
           </button>
         ))}
+        {canEdit && (
+          <button className="btn primary newprod-btn" onClick={() => setCreating(true)}>
+            {IconPlus} Nuevo producto
+          </button>
+        )}
       </div>
 
       <div className="countnote">
@@ -154,6 +166,17 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
           product={editing}
           onClose={() => setEditing(null)}
           onSaved={(newStock) => handleSaved(editing.id, newStock)}
+        />
+      )}
+      {creating && (
+        <NewProductModal
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false);
+            // Recarga desde el servidor: el producto nuevo tiene que aparecer
+            // ordenado por categoría y rubro como todos los demás.
+            router.refresh();
+          }}
         />
       )}
     </>

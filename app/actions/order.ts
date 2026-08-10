@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { notifyOrderChange } from "@/lib/notify";
+import { notifyOrderChange, type OrderChangeInput } from "@/lib/notify";
 import { revalidatePath } from "next/cache";
 
 export type OrderResult = { ok: boolean; error?: string; lineId?: string; count?: number };
@@ -24,18 +24,39 @@ export async function setLine(input: {
   const existing = await prisma.orderLine.findFirst({
     where: { eventId: input.eventId, productId: input.productId },
   });
+  const producto = await prisma.product.findUnique({
+    where: { id: input.productId },
+    select: { name: true },
+  });
+  const nombre = producto?.name ?? "Producto";
+
+  // Puede cambiar la cantidad Y la nota en el mismo guardado: se registran las
+  // dos cosas, porque la nota es justo lo que le importa al del depósito.
+  const cambios: OrderChangeInput[] = [];
 
   if (qty === 0) {
-    if (existing) await prisma.orderLine.delete({ where: { id: existing.id } });
+    if (existing) {
+      await prisma.orderLine.delete({ where: { id: existing.id } });
+      cambios.push({ itemName: nombre, kind: "QUITADO", before: String(existing.qty), after: null });
+    }
   } else if (existing) {
-    await prisma.orderLine.update({ where: { id: existing.id }, data: { qty, note } });
+    if (existing.qty !== qty) {
+      cambios.push({ itemName: nombre, kind: "CANTIDAD", before: String(existing.qty), after: String(qty) });
+    }
+    if ((existing.note ?? null) !== note) {
+      cambios.push({ itemName: nombre, kind: "NOTA", before: existing.note, after: note });
+    }
+    // Si no cambió ni la cantidad ni la nota, se guarda igual pero no se avisa:
+    // abrir un pedido y volver a guardarlo no es una modificación.
+    if (cambios.length > 0) await prisma.orderLine.update({ where: { id: existing.id }, data: { qty, note } });
   } else {
     await prisma.orderLine.create({
       data: { eventId: input.eventId, productId: input.productId, qty, note },
     });
+    cambios.push({ itemName: nombre, kind: "AGREGADO", before: null, after: String(qty) });
   }
 
-  await notifyOrderChange(user, input.eventId);
+  if (cambios.length > 0) await notifyOrderChange(user, input.eventId, cambios);
   revalidatePath("/");
   return { ok: true };
 }
@@ -69,7 +90,12 @@ export async function addCustomLine(input: {
       note: input.note?.trim() || null,
     },
   });
-  await notifyOrderChange(user, input.eventId);
+  await notifyOrderChange(user, input.eventId, {
+    itemName: name,
+    kind: "AGREGADO",
+    before: null,
+    after: String(qty),
+  });
   revalidatePath("/");
   return { ok: true, lineId: line.id };
 }
@@ -79,8 +105,20 @@ export async function setCustomQty(lineId: string, qty: number): Promise<OrderRe
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
   const q = Math.max(1, Math.round(qty));
+  const antes = await prisma.orderLine.findUnique({
+    where: { id: lineId },
+    select: { qty: true, customName: true, product: { select: { name: true } } },
+  });
+  if (!antes) return { ok: false, error: "No se encontró el ítem." };
   const line = await prisma.orderLine.update({ where: { id: lineId }, data: { qty: q }, select: { eventId: true } });
-  await notifyOrderChange(user, line.eventId);
+  if (antes.qty !== q) {
+    await notifyOrderChange(user, line.eventId, {
+      itemName: antes.customName ?? antes.product?.name ?? "Ítem",
+      kind: "CANTIDAD",
+      before: String(antes.qty),
+      after: String(q),
+    });
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -89,9 +127,19 @@ export async function setCustomQty(lineId: string, qty: number): Promise<OrderRe
 export async function deleteLine(lineId: string): Promise<OrderResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
-  const line = await prisma.orderLine.findUnique({ where: { id: lineId }, select: { eventId: true } });
+  const line = await prisma.orderLine.findUnique({
+    where: { id: lineId },
+    select: { eventId: true, qty: true, customName: true, product: { select: { name: true } } },
+  });
   await prisma.orderLine.delete({ where: { id: lineId } });
-  if (line) await notifyOrderChange(user, line.eventId);
+  if (line) {
+    await notifyOrderChange(user, line.eventId, {
+      itemName: line.customName ?? line.product?.name ?? "Ítem",
+      kind: "QUITADO",
+      before: String(line.qty),
+      after: null,
+    });
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -106,8 +154,10 @@ export async function copyOrderFromEvent(targetEventId: string, sourceEventId: s
   const target = await prisma.event.findUnique({ where: { id: targetEventId } });
   if (!target || target.deletedAt) return { ok: false, error: "No se encontró el evento." };
 
+  const source = await prisma.event.findUnique({ where: { id: sourceEventId }, select: { lugar: true } });
   const sourceLines = await prisma.orderLine.findMany({ where: { eventId: sourceEventId } });
   if (sourceLines.length === 0) return { ok: false, error: "Ese evento no tiene pedido para copiar." };
+  const habia = await prisma.orderLine.count({ where: { eventId: targetEventId } });
 
   await prisma.$transaction([
     prisma.orderLine.deleteMany({ where: { eventId: targetEventId } }),
@@ -126,7 +176,12 @@ export async function copyOrderFromEvent(targetEventId: string, sourceEventId: s
     ),
   ]);
 
-  await notifyOrderChange(user, targetEventId);
+  await notifyOrderChange(user, targetEventId, {
+    itemName: "Todo el pedido",
+    kind: "COPIADO",
+    before: habia > 0 ? `${habia} ${habia === 1 ? "producto" : "productos"}` : "pedido vacío",
+    after: `${sourceLines.length} ${sourceLines.length === 1 ? "producto" : "productos"} copiados de ${source?.lugar ?? "otro evento"}`,
+  });
   revalidatePath("/");
   revalidatePath(`/evento/${targetEventId}`);
   return { ok: true, count: sourceLines.length };

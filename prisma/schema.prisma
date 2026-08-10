@@ -47,10 +47,36 @@ model Notification {
   message     String
   eventId     String?
   read        Boolean  @default(false)
+  // `createdAt` se refresca con cada cambio: marca la ÚLTIMA actividad, y es lo
+  // que usa el barrido para saber que la persona ya dejó de editar.
   createdAt   DateTime @default(now())
+  // `sinceAt` NO se refresca: marca dónde arrancó esta tanda de cambios, y es
+  // desde donde el resumen los lista.
+  sinceAt     DateTime @default(now())
+  changeCount Int      @default(1)
+  // Null = el push todavía no salió. Se manda uno solo por tanda.
+  pushedAt    DateTime?
 
   @@index([recipientId, read])
   @@index([recipientId, createdAt])
+  @@index([type, pushedAt])
+}
+
+// Qué se tocó exactamente en un pedido. Sin esto el aviso puede decir que algo
+// cambió, pero no qué: hay que poder mirar el antes y el después.
+model OrderChange {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actorName String
+  itemName  String
+  kind      String // AGREGADO | QUITADO | CANTIDAD | NOTA | COPIADO
+  before    String?
+  after     String?
+  createdAt DateTime @default(now())
+
+  @@index([eventId, createdAt])
 }
 
 model Product {
@@ -60,6 +86,7 @@ model Product {
   rubro      String?
   type       String          // REUTILIZABLE | CONSUMIBLE
   unit       String          @default("Unidad")
+  description String?        // aclaración opcional: para qué es, cómo distinguirlo
   stock      Int             @default(0) // solo aplica a reutilizables
   active     Boolean         @default(true)
   createdAt  DateTime        @default(now())
@@ -121,6 +148,7 @@ model Event {
   // Ídem Weekend: el evento borrado va a la papelera con su pedido.
   deletedAt   DateTime?
   lines       OrderLine[]
+  changes     OrderChange[]
 
   @@index([weekendId, deletedAt])
 }

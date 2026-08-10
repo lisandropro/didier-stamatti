@@ -1,12 +1,27 @@
-// Arranca el respaldo automático diario. Next.js llama a register() una sola
-// vez, al iniciar el servidor — desde acá programamos el resto.
+// Tareas que corren solas dentro del servidor. Next.js llama a register() una
+// sola vez, al iniciar — desde acá se programa el resto.
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const MINUTE = 60 * 1000;
+  const DAY = 24 * 60 * MINUTE;
+
+  // --- Avisos de pedidos ---------------------------------------------------
+  // Corre siempre, aunque el respaldo no esté configurado: sin este barrido los
+  // avisos de cambios en los pedidos nunca saldrían al celular.
+  const { flushPendingOrderPushes } = await import("@/lib/notify");
+  const flush = async () => {
+    const { enviados, cerrados } = await flushPendingOrderPushes();
+    if (cerrados > 0) console.log(`[avisos] tandas cerradas: ${cerrados} · push enviados: ${enviados}`);
+  };
+  void flush();
+  setInterval(() => void flush(), MINUTE);
+
+  // --- Respaldo y revisión diaria ------------------------------------------
   if (!process.env.BACKUP_S3_BUCKET) return; // sin configurar (ej. en desarrollo local): no hace nada
 
   const { runBackup } = await import("@/lib/backup");
   const { runHealthCheck } = await import("@/lib/healthcheck");
-  const DAY = 24 * 60 * 60 * 1000;
 
   const run = async () => {
     const res = await runBackup();
