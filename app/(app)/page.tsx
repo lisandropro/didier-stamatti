@@ -4,7 +4,7 @@ import { fmtEventDate, fmtRange, fmtDateTime, startOfToday } from "@/lib/format"
 import { ensureWeekendSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
 import { getSessionUser } from "@/lib/auth";
-import { canManageWeekends } from "@/lib/permissions";
+import { canManageWeekends, canEditOrders } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +128,7 @@ export default async function Home({
       : null,
     alert: { overProducts, okCount, totalReut },
     canManage: canManageWeekends(session?.role ?? ""),
+    canEdit: canEditOrders(session?.role ?? ""),
     trash: {
       weekends: trashedWeekends.map((w) => ({
         id: w.id,

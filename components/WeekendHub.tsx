@@ -40,6 +40,9 @@ type HubData = {
     totalReut: number;
   };
   canManage: boolean;
+  /** Puede modificar los pedidos. Cambia el texto de las tarjetas: a quien solo
+   *  mira no se le ofrece "armar" nada. */
+  canEdit: boolean;
   trash: {
     weekends: { id: string; label: string; rangeLabel: string; eventCount: number; deletedLabel: string }[];
     events: { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number; deletedLabel: string }[];
@@ -89,7 +92,7 @@ export function WeekendHub({ data }: { data: HubData }) {
   const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
   const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
-  const { selected, weekends, alert, trash, canManage } = data;
+  const { selected, weekends, alert, trash, canManage, canEdit } = data;
   const trashCount = trash.weekends.length + trash.events.length + trash.versions.length;
 
   async function updateSnapshot() {
@@ -277,7 +280,8 @@ export function WeekendHub({ data }: { data: HubData }) {
 
                     <div className="event-foot">
                       <span>
-                        {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} · Armar pedido →
+                        {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} ·{" "}
+                        {canEdit ? "Armar pedido" : "Ver pedido"} →
                       </span>
                       {canManage && (
                         <button
