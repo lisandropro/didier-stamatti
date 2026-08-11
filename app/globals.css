@@ -870,3 +870,85 @@ tbody tr:hover{background:var(--surface-2)}
 .logout-btn{background:transparent; border:1px solid var(--hair); border-radius:var(--r-sm); width:40px; height:40px; display:grid; place-items:center; color:var(--muted); cursor:pointer; flex:0 0 auto}
 .logout-btn:hover{background:var(--surface-2); color:var(--crit)}
 .logout-btn svg{width:17px; height:17px}
+
+/* ===== Sugerencias ===== */
+
+/* El disparador del menú lateral es un botón, no un enlace: abre el formulario
+   en la misma pantalla. Se separa un poco del resto para que no se lea como
+   una sección más del menú. */
+.nav-action{margin-top:var(--sp-2); color:var(--muted); font-weight:600}
+.nav-action:hover{color:var(--ink)}
+
+.field .req{font-style:normal; text-transform:none; letter-spacing:0; font-weight:600; color:var(--crit); opacity:.85}
+
+/* El formulario en el celular: alto acotado y cuerpo con scroll propio, para
+   que el teclado no empuje los botones fuera de la vista. */
+.sug-modal{max-width:560px}
+.sug-modal textarea{
+  font-family:var(--font-ui); font-size:var(--t-base); line-height:1.5; resize:vertical;
+  padding:var(--sp-3); border:1px solid var(--hair); border-radius:var(--r-md);
+  background:var(--surface); color:var(--ink); width:100%;
+}
+.sug-modal textarea:focus{outline:none; border-color:var(--gold)}
+.sug-nota{font-size:var(--t-xs); color:var(--muted); line-height:1.5; margin:var(--sp-4) 0 0}
+
+/* Lista */
+.sug-filters{display:flex; align-items:flex-end; gap:var(--sp-3); flex-wrap:wrap; margin-bottom:var(--sp-4)}
+.sug-filters label{display:flex; flex-direction:column; gap:var(--sp-1)}
+.sug-filters label span{font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700}
+.sug-filters select{
+  font-family:var(--font-ui); font-size:var(--t-sm); min-height:var(--tap); padding:0 var(--sp-3);
+  border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface); color:var(--ink);
+}
+.sug-filters .countnote{margin:0 0 var(--sp-2)}
+
+.sug-list{display:flex; flex-direction:column; gap:var(--sp-3)}
+.sug-row{
+  display:flex; flex-direction:column; gap:var(--sp-2); padding:var(--sp-4);
+  border:1px solid var(--hair); border-radius:var(--r-lg); background:var(--surface);
+  text-decoration:none; color:var(--ink); transition:border-color var(--dur) var(--ease);
+}
+.sug-row:hover{border-color:var(--gold)}
+.sug-row-top{display:flex; gap:var(--sp-2); flex-wrap:wrap; align-items:center}
+.sug-row-title{font-size:var(--t-md); font-weight:600; line-height:1.35}
+.sug-row-meta{font-size:var(--t-sm); color:var(--muted)}
+
+/* Detalle */
+.sug-block{margin-bottom:var(--sp-6)}
+.sug-block .section-title{margin-top:0}
+/* `pre-wrap` porque la descripción se escribió a mano, con sus renglones:
+   aplastarla en un párrafo continuo pierde justamente cómo se explicó. */
+.sug-body{white-space:pre-wrap; line-height:1.6; font-size:var(--t-base); margin:0}
+.sug-meta{font-size:var(--t-sm); color:var(--muted); margin:var(--sp-3) 0 0}
+.sug-reply{
+  border-left:3px solid var(--gold); padding:var(--sp-4) var(--sp-5);
+  background:var(--surface-2); border-radius:0 var(--r-lg) var(--r-lg) 0;
+}
+.sug-facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:var(--sp-4); margin:0}
+.sug-facts dt{font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:2px}
+.sug-facts dd{margin:0; font-size:var(--t-base)}
+.sug-admin{
+  border:1px solid var(--hair); border-radius:var(--r-lg); padding:var(--sp-5);
+  background:var(--surface);
+}
+.sug-admin textarea{
+  font-family:var(--font-ui); font-size:var(--t-base); line-height:1.5; resize:vertical;
+  padding:var(--sp-3); border:1px solid var(--hair); border-radius:var(--r-md);
+  background:var(--surface); color:var(--ink); width:100%;
+}
+.sug-admin textarea:focus{outline:none; border-color:var(--gold)}
+
+@media(max-width:860px){
+  /* Seis lugares en vez de cinco: se achica el respiro lateral para que las
+     etiquetas sigan entrando enteras y nada quede fuera de la pantalla. */
+  .mobnav-6{justify-content:space-between; padding-left:2px; padding-right:2px}
+  .mobnav-6 a, .mobnav-6 button{padding-left:var(--sp-1); padding-right:var(--sp-1); flex:1 1 0; min-width:0}
+  .mobnav button{
+    border:none; background:none; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:3px; font-size:var(--t-xs); color:var(--muted); font-weight:600;
+    min-height:var(--tap); padding:var(--sp-1) var(--sp-3); border-radius:var(--r-sm); cursor:pointer;
+    font-family:var(--font-ui);
+  }
+  .mobnav button svg{width:22px; height:22px}
+  .sug-facts{grid-template-columns:1fr 1fr}
+}

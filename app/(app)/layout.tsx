@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { PushSubscriptionSync } from "@/components/PushSubscriptionSync";
+import { SuggestionBox } from "@/components/SuggestionBox";
 
 export default async function AppLayout({
   children,
@@ -28,7 +29,9 @@ export default async function AppLayout({
       <PushSubscriptionSync />
       <Sidebar user={user} />
       <div className="main">{children}</div>
-      <MobileNav />
+      <MobileNav role={user.role} />
+      {/* El formulario vive una sola vez acá: se abre desde cualquier pantalla. */}
+      <SuggestionBox />
     </div>
   );
 }

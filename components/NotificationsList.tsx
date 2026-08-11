@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { markAllRead } from "@/app/actions/notifications";
 
-type Item = { id: string; message: string; eventId: string | null; read: boolean; at: string; changeCount: number };
+type Item = { id: string; message: string; eventId: string | null; read: boolean; at: string; changeCount: number; linkUrl: string | null };
 
 function relative(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -53,9 +53,10 @@ export function NotificationsList({ items }: { items: Item[] }) {
         <button
           key={n.id}
           className={`notif-item${n.read ? "" : " unread"}`}
-          // Lleva al resumen de qué cambió, no directo al pedido: el aviso sin
-          // el detalle obliga a buscar a ojo qué se tocó.
-          onClick={() => router.push(`/aviso/${n.id}`)}
+          // Los avisos de pedidos llevan al resumen de qué cambió, no directo al
+          // pedido: sin el detalle hay que buscar a ojo qué se tocó. Los demás
+          // (una sugerencia, por ejemplo) traen su propio destino.
+          onClick={() => router.push(n.linkUrl ?? `/aviso/${n.id}`)}
         >
           <span className="notif-icon">{IconBell}</span>
           <span className="notif-body">

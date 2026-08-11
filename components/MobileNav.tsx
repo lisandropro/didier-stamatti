@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NotifBadge } from "@/components/NotifBadge";
 import { NavPending } from "@/components/NavPending";
+import { canSendSuggestions } from "@/lib/permissions";
+import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 
 const ITEMS = [
   {
@@ -53,10 +55,13 @@ const ITEMS = [
   },
 ];
 
-export function MobileNav() {
+export function MobileNav({ role }: { role: string }) {
   const pathname = usePathname();
+  // Se suma un lugar más, no un botón flotante: un flotante se pone encima de
+  // lo que haya debajo y en un pedido largo tapa justamente lo que se mira.
+  const puedeSugerir = canSendSuggestions(role);
   return (
-    <nav className="mobnav">
+    <nav className={`mobnav${puedeSugerir ? " mobnav-6" : ""}`}>
       {ITEMS.map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
@@ -67,6 +72,12 @@ export function MobileNav() {
           </Link>
         );
       })}
+      {puedeSugerir && (
+        <button type="button" onClick={abrirSugerencia} aria-label="Enviar sugerencia">
+          <span className="mobnav-ico">{IconSuggest}</span>
+          Sugerir
+        </button>
+      )}
     </nav>
   );
 }

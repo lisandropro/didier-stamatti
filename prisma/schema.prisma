@@ -18,10 +18,11 @@ model User {
   name          String
   email         String          @unique
   passwordHash  String
-  role          String          @default("ARMADOR") // ADMIN | ARMADOR
+  role          String          @default("ARMADOR") // ADMIN | ARMADOR | LOGISTICA
   createdAt     DateTime        @default(now())
   movements     StockMovement[]
   notifications Notification[]  @relation("NotifRecipient")
+  suggestions   Suggestion[]    @relation("SuggestionAuthor")
 }
 
 // Suscripción de un dispositivo a las notificaciones push (una por celular/navegador).
@@ -56,10 +57,56 @@ model Notification {
   changeCount Int      @default(1)
   // Null = el push todavía no salió. Se manda uno solo por tanda.
   pushedAt    DateTime?
+  // A dónde lleva el aviso al tocarlo. Null = al resumen de cambios del pedido,
+  // que era el único destino cuando esto se escribió.
+  linkUrl     String?
 
   @@index([recipientId, read])
   @@index([recipientId, createdAt])
   @@index([type, pushedAt])
+}
+
+// Una sugerencia del equipo sobre la app: algo que falta, algo que molesta,
+// algo que no anda. Es un canal de ida y vuelta, no una orden: nada de lo que
+// se pide acá se aplica solo.
+model Suggestion {
+  id         String  @id @default(cuid())
+  authorId   String
+  author     User    @relation("SuggestionAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  // Se guarda el nombre además del vínculo: si el usuario se borra, la
+  // sugerencia tiene que seguir diciendo quién la escribió.
+  authorName String
+  kind       String // AGREGAR | CAMBIAR | ELIMINAR | PROBLEMA | OTRO
+  title      String
+  body       String
+  status     String  @default("NUEVA") // NUEVA | EN_REVISION | ACEPTADA | IMPLEMENTADA | DESCARTADA
+
+  // Contexto: dónde estaba parada la persona y sobre qué escribía. Se arma solo
+  // salvo `contextNote`, que lo escribe quien manda la sugerencia.
+  screen      String?
+  eventId     String?
+  eventLugar  String?
+  productId   String?
+  contextNote String?
+
+  // Datos técnicos para poder reproducir un problema. Nunca credenciales:
+  // `device` es un resumen del navegador y el sistema, no el User-Agent crudo.
+  appVersion String?
+  device     String?
+
+  // Respuesta de la administradora.
+  reply         String?
+  repliedAt     DateTime?
+  repliedByName String?
+  statusAt      DateTime?
+
+  // Llave que manda el formulario, una por redacción. Es lo que hace que un
+  // doble toque —o un reintento al volver la señal— no cree dos sugerencias.
+  clientKey String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([authorId, createdAt])
+  @@index([status, createdAt])
 }
 
 // Qué se tocó exactamente en un pedido. Sin esto el aviso puede decir que algo

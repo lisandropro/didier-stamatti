@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ROLE_LABEL } from "@/lib/permissions";
+import { ROLE_LABEL, canSendSuggestions, canManageSuggestions } from "@/lib/permissions";
+import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 import { NavPending } from "@/components/NavPending";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
@@ -46,7 +47,12 @@ const NAV = [
   { href: "/historial", label: "Historial", icon: ICONS.historial },
   { href: "/notificaciones", label: "Avisos", icon: ICONS.avisos },
 ];
-const ADMIN_NAV = [{ href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios }];
+const ADMIN_NAV = [
+  { href: "/sugerencias", label: "Sugerencias", icon: IconSuggest },
+  { href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios },
+];
+/** Quien manda sugerencias pero no las administra ve solo las suyas. */
+const AUTOR_NAV = [{ href: "/sugerencias", label: "Mis sugerencias", icon: IconSuggest }];
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -57,7 +63,12 @@ function isActive(pathname: string, href: string) {
 export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const pathname = usePathname();
   const initial = (user.name?.[0] ?? "?").toUpperCase();
-  const nav = user.role === "ADMIN" ? [...NAV, ...ADMIN_NAV] : NAV;
+  const puedeSugerir = canSendSuggestions(user.role);
+  const nav = canManageSuggestions(user.role)
+    ? [...NAV, ...ADMIN_NAV]
+    : puedeSugerir
+      ? [...NAV, ...AUTOR_NAV]
+      : NAV;
 
   return (
     <aside className="side">
@@ -77,6 +88,12 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
           <NavPending />
         </Link>
       ))}
+      {puedeSugerir && (
+        <button type="button" className="nav nav-action" onClick={abrirSugerencia}>
+          {IconSuggest}
+          Enviar sugerencia
+        </button>
+      )}
       <div className="foot">
         <Link href="/cuenta" className="foot-user" title="Mi cuenta">
           <NavPending />

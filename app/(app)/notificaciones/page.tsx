@@ -22,6 +22,7 @@ export default async function NotificacionesPage() {
     eventId: n.eventId,
     read: n.read,
     changeCount: n.changeCount,
+    linkUrl: n.linkUrl,
     at: n.createdAt.toISOString(),
   }));
 
