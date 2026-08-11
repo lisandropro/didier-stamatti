@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
+import { PushSubscriptionSync } from "@/components/PushSubscriptionSync";
 
 export default async function AppLayout({
   children,
@@ -22,6 +23,9 @@ export default async function AppLayout({
 
   return (
     <div className="app">
+      {/* La suscripción push es del teléfono, no de la persona: al abrir la app
+          se vuelve a anotar a nombre de quien tiene la sesión ahora. */}
+      <PushSubscriptionSync />
       <Sidebar user={user} />
       <div className="main">{children}</div>
       <MobileNav />

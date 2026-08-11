@@ -12,6 +12,7 @@ const KIND_LABEL: Record<string, string> = {
   CANTIDAD: "Cantidad",
   NOTA: "Nota",
   COPIADO: "Pedido copiado",
+  RESPONSABLE: "Responsable",
 };
 const KIND_CLASS: Record<string, string> = {
   AGREGADO: "ok",
@@ -19,6 +20,7 @@ const KIND_CLASS: Record<string, string> = {
   CANTIDAD: "warn",
   NOTA: "neutral",
   COPIADO: "neutral",
+  RESPONSABLE: "warn",
 };
 
 export default async function AvisoPage({ params }: { params: Promise<{ id: string }> }) {
