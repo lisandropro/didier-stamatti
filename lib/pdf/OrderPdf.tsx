@@ -11,26 +11,31 @@ export type OrderPdfData = {
   sections: PdfSection[];
 };
 
+// Se imprime solo en blanco y negro: nada de tonos que dependan de color para
+// distinguirse. El dorado de la marca (antes GOLD #9a7636) sale como un gris
+// lavado en una impresora B&N — el acento queda solo por peso y mayúsculas.
 const INK = "#141312";
-const MUTED = "#6b6862";
-const HAIR = "#d9d6cf";
-const SOFT = "#f3f2ef";
-const GOLD = "#9a7636";
+const MUTED = "#454545";
+const HAIR = "#999999";
+const SOFT = "#f0f0f0";
+const GOLD = INK;
 
-/** Cuerpo de letra según cuántas columnas entren. Achicar es el último recurso:
- *  primero se gana lugar con las columnas. */
+/** Cuerpo de letra según cuántas columnas entren. Se prioriza la letra grande:
+ *  entrar en una sola hoja es preferible, pero no a costa de la legibilidad.
+ *  Estos números tienen que coincidir con UNITS_PER_COLUMN en
+ *  lib/picklist.ts y con el bloque `@media print` de globals.css. */
 const FONT: Record<number, { size: number; gap: number }> = {
-  1: { size: 10, gap: 18 },
-  2: { size: 9, gap: 14 },
-  3: { size: 8, gap: 10 },
+  1: { size: 12.5, gap: 20 },
+  2: { size: 11, gap: 16 },
+  3: { size: 10, gap: 12 },
 };
 
 const s = StyleSheet.create({
-  page: { paddingTop: 30, paddingBottom: 42, paddingHorizontal: 32, color: INK, fontFamily: "Helvetica" },
+  page: { paddingTop: 32, paddingBottom: 46, paddingHorizontal: 34, color: INK, fontFamily: "Helvetica" },
   brandRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
-  brand: { fontSize: 15, fontFamily: "Helvetica-Bold", letterSpacing: 1 },
-  sectionLabel: { fontSize: 15, fontFamily: "Helvetica-Bold", color: GOLD, letterSpacing: 0.5 },
-  headerRule: { borderBottomWidth: 1.5, borderBottomColor: INK, marginTop: 6, marginBottom: 10 },
+  brand: { fontSize: 17, fontFamily: "Helvetica-Bold", letterSpacing: 1 },
+  sectionLabel: { fontSize: 17, fontFamily: "Helvetica-Bold", color: GOLD, letterSpacing: 0.5 },
+  headerRule: { borderBottomWidth: 1.5, borderBottomColor: INK, marginTop: 7, marginBottom: 12 },
 
   // Los datos del evento van en una sola línea: cada renglón que ocupa la
   // cabecera es un renglón menos de pedido en la hoja.
@@ -41,13 +46,13 @@ const s = StyleSheet.create({
     borderColor: HAIR,
     borderRadius: 4,
     backgroundColor: SOFT,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    marginBottom: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    marginBottom: 12,
   },
-  infoCell: { flexDirection: "row", marginRight: 18 },
-  infoK: { color: MUTED, fontFamily: "Helvetica-Bold", fontSize: 8, marginRight: 4 },
-  infoV: { fontSize: 9 },
+  infoCell: { flexDirection: "row", marginRight: 20 },
+  infoK: { color: MUTED, fontFamily: "Helvetica-Bold", fontSize: 9, marginRight: 4 },
+  infoV: { fontSize: 10.5 },
 
   columns: { flexDirection: "row", alignItems: "flex-start" },
   column: { flex: 1 },
@@ -60,26 +65,26 @@ const s = StyleSheet.create({
     marginTop: 5,
     marginBottom: 2,
   },
-  row: { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 0.5, borderColor: HAIR, paddingVertical: 2.4 },
-  check: { width: 8, height: 8, borderWidth: 0.8, borderColor: INK, borderRadius: 1.5, marginTop: 1.5, marginRight: 5 },
-  name: { flex: 1, paddingRight: 4 },
+  row: { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 0.6, borderColor: HAIR, paddingVertical: 3.2 },
+  check: { width: 9.5, height: 9.5, borderWidth: 1, borderColor: INK, borderRadius: 2, marginTop: 1.5, marginRight: 6 },
+  name: { flex: 1, paddingRight: 5 },
   unit: { color: MUTED },
-  note: { color: MUTED, marginTop: 0.5 },
-  qty: { fontFamily: "Helvetica-Bold", textAlign: "right", minWidth: 24 },
+  note: { color: MUTED, marginTop: 1 },
+  qty: { fontFamily: "Helvetica-Bold", textAlign: "right", minWidth: 26 },
 
   footer: {
     position: "absolute",
-    bottom: 20,
-    left: 32,
-    right: 32,
+    bottom: 22,
+    left: 34,
+    right: 34,
     flexDirection: "row",
     justifyContent: "space-between",
     borderTopWidth: 0.6,
     borderColor: HAIR,
-    paddingTop: 5,
+    paddingTop: 6,
   },
-  footText: { fontSize: 7.5, color: MUTED },
-  empty: { color: MUTED, marginTop: 20, fontSize: 10 },
+  footText: { fontSize: 9, color: MUTED },
+  empty: { color: MUTED, marginTop: 20, fontSize: 12 },
 });
 
 function Blocks({ blocks, size }: { blocks: PickBlock[]; size: number }) {

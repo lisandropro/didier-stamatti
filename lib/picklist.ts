@@ -56,10 +56,14 @@ export function buildBlocks(products: PickItem[], customs: PickItem[]): PickBloc
 }
 
 /** Cuántas columnas usar. Se decide por el alto total, no por la cantidad de
- *  ítems, porque las notas ocupan el doble. */
+ *  ítems, porque las notas ocupan el doble.
+ *
+ *  Los umbrales son más bajos que la capacidad real de cada columna (ver
+ *  UNITS_PER_COLUMN): la letra grande es la prioridad, así que se pasa a más
+ *  columnas un poco antes de que haga falta, para no achicar el cuerpo. */
 export function pickColumns(units: number): 1 | 2 | 3 {
-  if (units <= 22) return 1;
-  if (units <= 52) return 2;
+  if (units <= 18) return 1;
+  if (units <= 42) return 2;
   return 3;
 }
 
@@ -67,10 +71,18 @@ export function totalUnits(blocks: PickBlock[]): number {
   return blocks.reduce((n, b) => n + blockUnits(b), 0);
 }
 
-/** Renglones que entran en una columna de A4 con la letra de cada densidad.
- *  Es conservador a propósito: preferimos que sobre un poco de blanco abajo
- *  antes que un pedido se corte en dos hojas por un renglón. */
-const UNITS_PER_COLUMN: Record<number, number> = { 1: 30, 2: 32, 3: 38 };
+/** Renglones que entran en una columna de A4 con la letra de cada densidad
+ *  (ver los tamaños en `lib/pdf/OrderPdf.tsx` y el bloque `@media print` de
+ *  `globals.css`, que tienen que coincidir con esto). Es conservador a
+ *  propósito: preferimos que sobre un poco de blanco abajo antes que un
+ *  pedido se corte en dos hojas por un renglón.
+ *
+ *  Se prioriza que se lea bien por sobre entrar siempre en una sola hoja: un
+ *  pedido con más de ~90-100 productos en un sector puede necesitar una
+ *  segunda hoja para ese sector (queda marcada "Hoja 1 de 2"). Es un caso
+ *  raro — la mayoría de los pedidos reales tiene entre 20 y 80 productos por
+ *  sector y entra holgado en una sola. */
+const UNITS_PER_COLUMN: Record<number, number> = { 1: 24, 2: 26, 3: 30 };
 
 /** Reparte los bloques en hojas y, dentro de cada hoja, en columnas que se
  *  llenan de arriba hacia abajo. Solo lo necesita el PDF: en HTML el corte de
