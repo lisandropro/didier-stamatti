@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { WeekendHub } from "@/components/WeekendHub";
 import { fmtEventDate, fmtRange, fmtDateTime, startOfToday } from "@/lib/format";
 import { ensureWeekendSnapshot } from "@/lib/snapshot";
+import { shortageCountByEvent } from "@/lib/shortages";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +39,12 @@ export default async function Home({
   let totalReut = 0;
   let isPast = false;
   let snapshotTakenAt: string | null = null;
+  // Cuántos productos le faltan a cada evento, con la misma regla del pedido.
+  let faltantesPorEvento = new Map<string, number>();
 
   if (selected) {
     isPast = selected.endDate < today;
+    faltantesPorEvento = await shortageCountByEvent(selected.id);
 
     const lines = await prisma.orderLine.findMany({
       where: { event: { weekendId: selected.id, deletedAt: null } },
@@ -115,6 +119,7 @@ export default async function Home({
             responsable: e.responsable,
             status: e.status,
             lineCount: e._count.lines,
+            shortageCount: faltantesPorEvento.get(e.id) ?? 0,
           })),
         }
       : null,

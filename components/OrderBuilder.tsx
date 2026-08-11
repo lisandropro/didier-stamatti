@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
+import { computeShortage } from "@/lib/shortage-rule";
 import { setEventStatus } from "@/app/actions/weekend";
 
 type ProductRow = {
@@ -103,9 +104,22 @@ export function OrderBuilder({ data }: { data: Data }) {
   }
 
   // ---- aviso del finde en vivo (este evento + lo reservado por los otros) ----
+  // Usa la MISMA función que el panel "Ver faltantes" de la vista general, para
+  // que los dos no puedan decir cosas distintas del mismo pedido.
   const over = useMemo(
     () =>
-      items.filter((p) => p.type === "REUTILIZABLE" && p.qty + p.reserved > p.stock),
+      items.filter((p) =>
+        computeShortage({
+          productId: p.id,
+          name: p.name,
+          unit: p.unit,
+          rubro: p.rubro,
+          type: p.type,
+          stock: p.stock,
+          requested: p.qty,
+          otherRequested: p.reserved,
+        })
+      ),
     [items]
   );
 

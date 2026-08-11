@@ -228,6 +228,7 @@ tbody tr:hover{background:var(--surface-2)}
   animation:modal-in var(--dur) var(--ease);
 }
 .modal.modal-wide{max-width:620px}
+.modal.modal-xwide{max-width:900px}
 /* Solo anima el movimiento, NUNCA la opacidad: si la animación no corre
    (pestaña oculta, headless), el modal igual se ve. Realza, no condiciona. */
 @keyframes modal-in{from{transform:translateY(8px) scale(.985)}to{transform:none}}
@@ -493,6 +494,23 @@ tbody tr:hover{background:var(--surface-2)}
 .event-wrap{position:relative; display:flex}
 .event-wrap > .event{flex:1 1 auto}
 .event-wrap > .event .event-foot{padding-right:34px}
+
+/* Aviso de faltantes dentro de la tarjeta del evento. */
+.event-falta{
+  display:flex; align-items:center; gap:var(--sp-2); font-size:var(--t-sm); font-weight:650;
+  color:var(--crit); background:var(--crit-soft); border:1px solid var(--crit);
+  border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3);
+}
+.event-falta svg{width:15px; height:15px; flex:0 0 auto}
+/* El botón se apoya sobre la tarjeta, al lado del de borrar. */
+.btn.btn-falta{
+  position:absolute; right:50px; bottom:10px; height:32px; padding:0 var(--sp-3);
+  font-size:var(--t-sm); color:var(--crit); border-color:var(--crit); background:var(--crit-soft);
+}
+.btn.btn-falta:hover{background:var(--crit); color:#fff}
+.btn.btn-falta svg{width:15px; height:15px}
+.event-wrap:has(.btn-falta) > .event .event-foot{padding-right:170px}
+
 .event-del{
   position:absolute; right:10px; bottom:10px; width:32px; height:32px;
   display:grid; place-items:center; border-radius:var(--r-sm);

@@ -12,6 +12,7 @@ import {
   restoreEvent,
 } from "@/app/actions/weekend";
 import { saveWeekendSnapshot, discardWeekendChanges, restoreWeekendVersion } from "@/app/actions/snapshot";
+import { ShortagesModal } from "@/components/ShortagesModal";
 
 type EventItem = {
   id: string;
@@ -21,6 +22,7 @@ type EventItem = {
   responsable: string | null;
   status: string;
   lineCount: number;
+  shortageCount: number;
 };
 type HubData = {
   weekends: { id: string; label: string; rangeLabel: string; eventCount: number }[];
@@ -84,6 +86,7 @@ export function WeekendHub({ data }: { data: HubData }) {
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
+  const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
   const { selected, weekends, alert, trash } = data;
   const trashCount = trash.weekends.length + trash.events.length + trash.versions.length;
@@ -242,10 +245,31 @@ export function WeekendHub({ data }: { data: HubData }) {
                         <span className="metaicon">{IconPeople}<b>{e.guests}</b> invitados</span>
                         {e.responsable && <span className="metaicon">{IconPerson}{e.responsable}</span>}
                       </div>
+                      {e.shortageCount > 0 && (
+                        <div className="event-falta">
+                          {IconWarn}
+                          <span>
+                            {e.shortageCount === 1
+                              ? "1 producto sin stock suficiente"
+                              : `${e.shortageCount} productos sin stock suficiente`}
+                          </span>
+                        </div>
+                      )}
                       <div className="event-foot">
                         {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} · Armar pedido →
                       </div>
                     </Link>
+                    {/* Hermanos del enlace, no hijos: adentro de un <a> no se
+                        pueden tocar sin abrir el evento. */}
+                    {e.shortageCount > 0 && (
+                      <button
+                        className="btn btn-falta"
+                        onClick={() => setFaltantesDe(e)}
+                        title={`Ver los faltantes de ${e.lugar}`}
+                      >
+                        {IconWarn} Ver faltantes
+                      </button>
+                    )}
                     <button
                       className="event-del"
                       onClick={() => setEventToDelete(e)}
@@ -317,6 +341,13 @@ export function WeekendHub({ data }: { data: HubData }) {
             setEventToDelete(null);
             router.refresh();
           }}
+        />
+      )}
+      {faltantesDe && (
+        <ShortagesModal
+          eventId={faltantesDe.id}
+          lugar={faltantesDe.lugar}
+          onClose={() => setFaltantesDe(null)}
         />
       )}
       {showTrash && (
