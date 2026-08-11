@@ -221,14 +221,33 @@ tbody tr:hover{background:var(--surface-2)}
 .overlay{
   position:fixed; inset:0; background:rgba(15,14,13,.5); backdrop-filter:blur(2px);
   display:flex; align-items:center; justify-content:center; z-index:50; padding:var(--sp-4);
+  /* Si el modal igual no entra (pantalla muy baja), el fondo scrollea en vez
+     de recortarlo. */
+  overflow-y:auto; overscroll-behavior:contain;
 }
 .modal{
   background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-xl);
   box-shadow:0 20px 60px rgba(0,0,0,.3); width:100%; max-width:440px; padding:var(--sp-5);
   animation:modal-in var(--dur) var(--ease);
+  /* Ningún modal puede pasar del alto de la pantalla: si el contenido es largo,
+     scrollea adentro. Sin esto, un panel alto se cortaba arriba y abajo y la
+     parte de arriba quedaba inalcanzable. */
+  max-height:calc(100dvh - var(--sp-8)); overflow-y:auto; overscroll-behavior:contain;
 }
 .modal.modal-wide{max-width:620px}
-.modal.modal-xwide{max-width:900px}
+.modal.modal-xwide{max-width:980px}
+
+/* Panel con cabecera y pie fijos y el medio scrolleable: para listas largas,
+   así el título y el botón de cerrar no se van de la vista. */
+.modal.modal-sheet{padding:0; overflow:hidden; display:flex; flex-direction:column}
+.modal-sheet .sheet-head{padding:var(--sp-5) var(--sp-5) var(--sp-4); border-bottom:1px solid var(--hair); flex:0 0 auto}
+.modal-sheet .sheet-body{padding:var(--sp-4) var(--sp-5); overflow-y:auto; overscroll-behavior:contain; flex:1 1 auto; min-height:0}
+.modal-sheet .sheet-foot{
+  padding:var(--sp-3) var(--sp-5) var(--sp-4); border-top:1px solid var(--hair); flex:0 0 auto;
+  display:flex; justify-content:flex-end; gap:var(--sp-2); background:var(--surface);
+}
+.modal-sheet .sheet-head h2{margin-bottom:var(--sp-1)}
+.modal-sheet .sheet-head .modal-sub{margin:0}
 /* Solo anima el movimiento, NUNCA la opacidad: si la animación no corre
    (pestaña oculta, headless), el modal igual se ve. Realza, no condiciona. */
 @keyframes modal-in{from{transform:translateY(8px) scale(.985)}to{transform:none}}
@@ -509,6 +528,9 @@ tbody tr:hover{background:var(--surface-2)}
 }
 .btn.btn-falta:hover{background:var(--crit); color:#fff}
 .btn.btn-falta svg{width:15px; height:15px}
+/* El mismo botón en la barra del pedido: acá va en el flujo, no flotando. */
+.btn.btn-falta-top{position:static; height:auto; padding:0 var(--sp-4)}
+.btn.btn-falta-top .count-pill{background:transparent; border-color:currentColor; color:inherit}
 .event-wrap:has(.btn-falta) > .event .event-foot{padding-right:170px}
 
 .event-del{
@@ -557,6 +579,23 @@ tbody tr:hover{background:var(--surface-2)}
 .admin-row.danger-row b{color:var(--crit)}
 @media (max-width:560px){ .admin-row{flex-direction:column; align-items:stretch} }
 
+/* ===== Panel de faltantes ===== */
+/* En pantalla ancha va la tabla; en el teléfono, una ficha por producto — siete
+   columnas en 375px no se leen. Se muestra una u otra, nunca las dos. */
+.falta-cards{display:none; flex-direction:column; gap:var(--sp-3)}
+.falta-card{border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-4); background:var(--surface)}
+.falta-card-top{display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-3); margin-bottom:var(--sp-2)}
+.falta-card-top .prod{font-weight:650}
+.falta-card .rubro{font-size:var(--t-xs); color:var(--muted); margin-top:1px}
+.falta-nums{display:grid; grid-template-columns:1fr auto; gap:2px var(--sp-3); font-size:var(--t-sm)}
+.falta-nums dt{color:var(--muted)}
+.falta-nums dd{margin:0; text-align:right; font-weight:650; font-variant-numeric:tabular-nums}
+.falta-nums .destacado{color:var(--crit)}
+@media (max-width:720px){
+  .falta-tabla{display:none}
+  .falta-cards{display:flex}
+}
+
 /* ===== Papelera ===== */
 .trash-list{display:flex; flex-direction:column; gap:var(--sp-2); max-height:52vh; overflow:auto; margin:var(--sp-3) 0}
 .trash-item{
@@ -582,14 +621,6 @@ tbody tr:hover{background:var(--surface-2)}
 
 /* ===== Armador de pedido ===== */
 .save-ind{color:var(--gold); font-weight:600}
-/* Estado tranquilo = discreto. El aviso de faltante (.banner.crit) sí es prominente. */
-.status-ok{
-  display:inline-flex; align-items:center; gap:var(--sp-2); margin:0 0 var(--sp-4);
-  font-size:var(--t-sm); font-weight:600; color:var(--ok);
-  background:var(--ok-soft); border:1px solid color-mix(in srgb,var(--ok) 22%,transparent);
-  border-radius:var(--r-pill); padding:var(--sp-2) var(--sp-4);
-}
-.status-ok svg{width:15px; height:15px; flex:0 0 auto}
 .olist{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden}
 .orow{
   display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1.1fr) auto;

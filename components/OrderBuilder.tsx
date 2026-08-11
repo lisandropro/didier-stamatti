@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
 import { computeShortage } from "@/lib/shortage-rule";
+import { ShortagesModal } from "@/components/ShortagesModal";
 import { setEventStatus } from "@/app/actions/weekend";
 
 type ProductRow = {
@@ -36,9 +37,6 @@ const CATS = [
 
 const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
-const IconCheck = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M20 6 9 17l-5-5" /></svg>
-);
 const IconWarn = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
 );
@@ -61,6 +59,7 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [error, setError] = useState<string | null>(null);
   const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});
   const [showCopy, setShowCopy] = useState(false);
+  const [showShortages, setShowShortages] = useState(false);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // ---- autosave con debounce por producto ----
@@ -153,6 +152,12 @@ export function OrderBuilder({ data }: { data: Data }) {
         </div>
         <div className="spacer" />
         <Link className="btn ghost" href="/">Volver</Link>
+        {/* Único lugar donde se informan los faltantes: no hay banner aparte. */}
+        {over.length > 0 && (
+          <button className="btn btn-falta btn-falta-top" onClick={() => setShowShortages(true)}>
+            {IconWarn} Ver faltantes <span className="count-pill">{over.length}</span>
+          </button>
+        )}
         <button className="btn ghost" onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
         <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -170,25 +175,6 @@ export function OrderBuilder({ data }: { data: Data }) {
           <div className="banner crit">{IconWarn}<div><b>{error}</b></div></div>
         )}
 
-        {over.length > 0 ? (
-          <div className="banner crit">
-            {IconWarn}
-            <div>
-              <b>
-                Sumando todos los eventos del finde, {over.length} producto{over.length > 1 ? "s se pasan" : " se pasa"} del stock
-              </b>
-              <p>
-                {over.slice(0, 3).map((p) => `${p.name} (faltan ${p.qty + p.reserved - p.stock})`).join(" · ")}
-                {over.length > 3 ? ` y ${over.length - 3} más` : ""}. Podés seguir igual — es solo un aviso.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <p className="status-ok">
-            {IconCheck}
-            Todo alcanza — ningún producto se pasa del stock del fin de semana.
-          </p>
-        )}
 
         <div className="searchbar">
           <label className="search">
@@ -314,6 +300,13 @@ export function OrderBuilder({ data }: { data: Data }) {
         </div>
       </div>
 
+      {showShortages && (
+        <ShortagesModal
+          eventId={data.event.id}
+          lugar={data.event.lugar}
+          onClose={() => setShowShortages(false)}
+        />
+      )}
       {showCopy && (
         <CopyOrderModal
           targetEventId={data.event.id}
