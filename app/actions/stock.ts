@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/lib/auth";
+import { canEditStock } from "@/lib/permissions";
 
 export type UpdateStockResult = { ok: boolean; error?: string; newStock?: number };
 
@@ -19,7 +20,7 @@ export async function updateStock(input: {
   // Verificación de acceso: solo el administrador edita el stock.
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
-  if (user.role !== "ADMIN") {
+  if (!canEditStock(user.role)) {
     return { ok: false, error: "Solo el administrador puede editar el stock." };
   }
 

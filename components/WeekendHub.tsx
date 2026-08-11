@@ -39,6 +39,7 @@ type HubData = {
     okCount: number;
     totalReut: number;
   };
+  canManage: boolean;
   trash: {
     weekends: { id: string; label: string; rangeLabel: string; eventCount: number; deletedLabel: string }[];
     events: { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number; deletedLabel: string }[];
@@ -88,7 +89,7 @@ export function WeekendHub({ data }: { data: HubData }) {
   const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
   const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
-  const { selected, weekends, alert, trash } = data;
+  const { selected, weekends, alert, trash, canManage } = data;
   const trashCount = trash.weekends.length + trash.events.length + trash.versions.length;
 
   async function updateSnapshot() {
@@ -125,20 +126,22 @@ export function WeekendHub({ data }: { data: HubData }) {
             ))}
           </select>
         )}
-        <button className="btn ghost" onClick={() => setShowWeekend(true)}>
-          {IconPlus} Nuevo fin de semana
-        </button>
-        {selected && (
+        {canManage && (
+          <button className="btn ghost" onClick={() => setShowWeekend(true)}>
+            {IconPlus} Nuevo fin de semana
+          </button>
+        )}
+        {canManage && selected && (
           <button className="btn primary" onClick={() => setShowEvent(true)}>
             {IconPlus} Nuevo evento
           </button>
         )}
-        {trashCount > 0 && (
+        {canManage && trashCount > 0 && (
           <button className="btn ghost" onClick={() => setShowTrash(true)} title="Recuperar algo borrado">
             {IconUndo} Papelera <span className="count-pill">{trashCount}</span>
           </button>
         )}
-        {selected && (
+        {canManage && selected && (
           <button className="btn btn-del" onClick={() => setShowDelete(true)} title="Borrar fin de semana">
             {IconTrash} Borrar
           </button>
@@ -154,21 +157,27 @@ export function WeekendHub({ data }: { data: HubData }) {
               {selected.snapshotTakenAt ? <b>{selected.snapshotTakenAt}</b> : "…"}
             </span>
             <span className="spacer" />
-            <button className="btn ghost" onClick={updateSnapshot} disabled={savingSnapshot}>
-              {savingSnapshot ? "Guardando…" : "Actualizar versión"}
-            </button>
-            <button className="btn btn-del" onClick={() => setShowDiscard(true)}>
-              {IconUndo} Descartar cambios
-            </button>
+            {canManage && (
+              <>
+                <button className="btn ghost" onClick={updateSnapshot} disabled={savingSnapshot}>
+                  {savingSnapshot ? "Guardando…" : "Actualizar versión"}
+                </button>
+                <button className="btn btn-del" onClick={() => setShowDiscard(true)}>
+                  {IconUndo} Descartar cambios
+                </button>
+              </>
+            )}
           </div>
         )}
         {!selected ? (
           <div className="empty-card">
             <p className="empty-title">Todavía no hay fines de semana</p>
-            <p>Creá un fin de semana y empezá a cargar sus eventos y pedidos.</p>
-            <button className="btn primary" onClick={() => setShowWeekend(true)}>
-              {IconPlus} Crear fin de semana
-            </button>
+            <p>{canManage ? "Creá un fin de semana y empezá a cargar sus eventos y pedidos." : "Cuando el equipo cree uno, lo vas a ver acá."}</p>
+            {canManage && (
+              <button className="btn primary" onClick={() => setShowWeekend(true)}>
+                {IconPlus} Crear fin de semana
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -270,14 +279,16 @@ export function WeekendHub({ data }: { data: HubData }) {
                       <span>
                         {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} · Armar pedido →
                       </span>
-                      <button
-                        className="event-del"
-                        onClick={() => setEventToDelete(e)}
-                        title={`Borrar el evento de ${e.lugar}`}
-                        aria-label={`Borrar el evento de ${e.lugar}`}
-                      >
-                        {IconTrash}
-                      </button>
+                      {canManage && (
+                        <button
+                          className="event-del"
+                          onClick={() => setEventToDelete(e)}
+                          title={`Borrar el evento de ${e.lugar}`}
+                          aria-label={`Borrar el evento de ${e.lugar}`}
+                        >
+                          {IconTrash}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

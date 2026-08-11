@@ -3,6 +3,8 @@ import { WeekendHub } from "@/components/WeekendHub";
 import { fmtEventDate, fmtRange, fmtDateTime, startOfToday } from "@/lib/format";
 import { ensureWeekendSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
+import { getSessionUser } from "@/lib/auth";
+import { canManageWeekends } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,7 @@ export default async function Home({
   searchParams: Promise<{ w?: string }>;
 }) {
   const sp = await searchParams;
+  const session = await getSessionUser();
 
   // Lo que está en la papelera no aparece en ningún lado ni suma al stock.
   const weekends = await prisma.weekend.findMany({
@@ -124,6 +127,7 @@ export default async function Home({
         }
       : null,
     alert: { overProducts, okCount, totalReut },
+    canManage: canManageWeekends(session?.role ?? ""),
     trash: {
       weekends: trashedWeekends.map((w) => ({
         id: w.id,

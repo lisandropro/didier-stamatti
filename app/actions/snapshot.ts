@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { applySnapshotData, buildSnapshotData, saveRecoverableVersion } from "@/lib/snapshot";
+import { canManageWeekends } from "@/lib/permissions";
 
 export type SnapshotResult = {
   ok: boolean;
@@ -27,6 +28,7 @@ function revalidar(weekendId: string) {
 export async function saveWeekendSnapshot(weekendId: string): Promise<SnapshotResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  if (!canManageWeekends(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
 
   const { data } = await buildSnapshotData(weekendId);
   const snap = await prisma.weekendSnapshot.upsert({
@@ -46,6 +48,7 @@ export async function saveWeekendSnapshot(weekendId: string): Promise<SnapshotRe
 export async function discardWeekendChanges(weekendId: string): Promise<SnapshotResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  if (!canManageWeekends(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
 
   const snap = await prisma.weekendSnapshot.findUnique({ where: { weekendId } });
   if (!snap) return { ok: false, error: "Todavía no hay una versión guardada para este fin de semana." };
@@ -64,6 +67,7 @@ export async function discardWeekendChanges(weekendId: string): Promise<Snapshot
 export async function restoreWeekendVersion(versionId: string): Promise<SnapshotResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  if (!canManageWeekends(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
 
   const version = await prisma.weekendVersion.findUnique({ where: { id: versionId } });
   if (!version) return { ok: false, error: "No se encontró esa versión." };

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
+import { isPriorityRecipient, sortByNotificationPriority } from "@/lib/permissions";
 
 // Mientras la persona sigue editando, los cambios se van sumando a un mismo
 // aviso. El push al celular NO sale con cada cambio: sale uno solo cuando pasa
@@ -10,7 +11,7 @@ const QUIET_MINUTES = 5;
 // único aviso: pasado este rato desde que empezó, la próxima tanda arranca de cero.
 const MAX_BATCH_MINUTES = 60;
 
-export type ChangeKind = "AGREGADO" | "QUITADO" | "CANTIDAD" | "NOTA" | "COPIADO";
+export type ChangeKind = "AGREGADO" | "QUITADO" | "CANTIDAD" | "NOTA" | "COPIADO" | "RESPONSABLE";
 
 export type OrderChangeInput = {
   itemName: string;
@@ -57,10 +58,16 @@ export async function notifyOrderChange(
       })),
     });
 
-    const recipients = await prisma.user.findMany({
-      where: { id: { not: actor.id } },
-      select: { id: true },
-    });
+    // El encargado de logística primero: su aviso queda disponible en la app
+    // antes que el del resto. Es la única parte del orden que sí se puede
+    // garantizar — el push viaja por servicios de terceros y su orden real de
+    // entrega no depende de nosotros.
+    const recipients = sortByNotificationPriority(
+      await prisma.user.findMany({
+        where: { id: { not: actor.id } },
+        select: { id: true, role: true },
+      })
+    );
     if (recipients.length === 0) return;
 
     const batchCutoff = new Date(ahora.getTime() - MAX_BATCH_MINUTES * 60 * 1000);
@@ -114,25 +121,43 @@ export async function notifyOrderChange(
 export async function flushPendingOrderPushes(): Promise<{ enviados: number; cerrados: number }> {
   try {
     const cutoff = new Date(Date.now() - QUIET_MINUTES * 60 * 1000);
-    const pendientes = await prisma.notification.findMany({
+    const pendientesCrudos = await prisma.notification.findMany({
       where: { type: "ORDER_EDIT", pushedAt: null, createdAt: { lte: cutoff } },
       take: 100,
       orderBy: { createdAt: "asc" },
+      include: { recipient: { select: { role: true } } },
     });
+
+    // Los prioritarios salen primero de la cola.
+    const pendientes = sortByNotificationPriority(
+      pendientesCrudos.map((n) => ({ ...n, role: n.recipient.role }))
+    );
 
     let enviados = 0;
     for (const n of pendientes) {
       // Si ya lo vio en la app, no tiene sentido hacerle sonar el teléfono.
       if (!n.read) {
-        await sendPushToUser(n.recipientId, {
-          title: "Didier Stamatti",
-          body: n.message,
-          url: `/aviso/${n.id}`,
-          tag: `order-${n.eventId ?? n.id}`,
-        });
+        // sendPushToUser nunca lanza: un fallo con una persona no puede dejar
+        // sin aviso a las demás. El try/catch es por si acaso cambiara eso.
+        try {
+          await sendPushToUser(
+            n.recipientId,
+            {
+              title: "Didier Stamatti",
+              body: n.message,
+              url: `/aviso/${n.id}`,
+              tag: `order-${n.eventId ?? n.id}`,
+            },
+            { urgency: isPriorityRecipient(n.role) ? "high" : "normal" }
+          );
+        } catch {
+          // se sigue con el resto
+        }
         enviados++;
       }
-      await prisma.notification.update({ where: { id: n.id }, data: { pushedAt: new Date() } });
+      // Se marca como enviado aunque el push haya fallado: el aviso ya está en
+      // la app, y reintentar para siempre sería peor que perder un push.
+      await prisma.notification.update({ where: { id: n.id }, data: { pushedAt: new Date() } }).catch(() => {});
     }
     return { enviados, cerrados: pendientes.length };
   } catch {

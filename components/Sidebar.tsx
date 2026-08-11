@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ROLE_LABEL } from "@/lib/permissions";
 import { NavPending } from "@/components/NavPending";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
@@ -51,10 +52,7 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: "Administradora",
-  ARMADOR: "Armador/a",
-};
+
 
 export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const pathname = usePathname();

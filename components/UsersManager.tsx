@@ -3,10 +3,19 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createUser, resetUserPassword, setUserRole, deleteUser } from "@/app/actions/users";
+import { ROLES, ROLE_LABEL, ROLE_HELP } from "@/lib/permissions";
 
 type User = { id: string; name: string; email: string; role: string };
 
-const ROLE_LABEL: Record<string, string> = { ADMIN: "Administradora", ARMADOR: "Armador/a" };
+/** Qué implica cada rol, en la confirmación de cambio de rol. */
+const ROLE_DETALLE: Record<string, string> = {
+  ADMIN: "va a poder editar stock, administrar el catálogo, gestionar usuarios y borrar fines de semana.",
+  ARMADOR: "va a poder armar pedidos y manejar los fines de semana, pero no editar stock ni el catálogo ni los usuarios.",
+  LOGISTICA:
+    "va a poder mirar todo —pedidos, faltantes, inventario e historiales— y cambiar únicamente el responsable de cada fiesta. No va a poder modificar pedidos, stock ni el catálogo.",
+};
+
+
 
 const IconPlus = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
@@ -37,7 +46,6 @@ export function UsersManager({ users, meId }: { users: User[]; meId: string }) {
       <div className="user-list">
         {users.map((u) => {
           const isMe = u.id === meId;
-          const otherRole = u.role === "ADMIN" ? "ARMADOR" : "ADMIN";
           return (
             <div key={u.id} className="user-row">
               <div className="avatar user-avatar">{(u.name[0] ?? "?").toUpperCase()}</div>
@@ -57,9 +65,16 @@ export function UsersManager({ users, meId }: { users: User[]; meId: string }) {
                   <span className="user-self-note">Tu cuenta la gestionás desde “Mi cuenta”.</span>
                 ) : (
                   <>
-                    <button className="btn ghost" onClick={() => setRoleChange({ user: u, to: otherRole })}>
-                      Hacer {otherRole === "ADMIN" ? "administradora" : "armador/a"}
-                    </button>
+                    <select
+                      className="user-role-select"
+                      value={u.role}
+                      aria-label={`Rol de ${u.name}`}
+                      onChange={(e) => setRoleChange({ user: u, to: e.target.value })}
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                      ))}
+                    </select>
                     <button className="btn btn-del" onClick={() => setDeleteFor(u)}>{IconTrash} Borrar</button>
                   </>
                 )}
@@ -90,9 +105,10 @@ export function UsersManager({ users, meId }: { users: User[]; meId: string }) {
         <ConfirmModal
           title="¿Cambiar el rol?"
           body={
-            roleChange.to === "ADMIN"
-              ? <><b>{roleChange.user.name}</b> va a pasar a <b>administradora</b>: va a poder editar stock, gestionar usuarios y borrar fines de semana.</>
-              : <><b>{roleChange.user.name}</b> va a pasar a <b>armador/a</b>: va a poder armar pedidos, pero no editar stock ni gestionar usuarios.</>
+            <>
+              <b>{roleChange.user.name}</b> va a pasar a <b>{ROLE_LABEL[roleChange.to]?.toLowerCase()}</b>:{" "}
+              {ROLE_DETALLE[roleChange.to] ?? "cambia lo que puede hacer en la app."}
+            </>
           }
           confirmLabel="Cambiar rol"
           run={() => setUserRole(roleChange.user.id, roleChange.to)}
@@ -139,8 +155,11 @@ function NewUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
         <div className="field">
           <label>Rol</label>
           <select value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="ARMADOR">Armador/a (arma pedidos)</option>
-            <option value="ADMIN">Administradora (control total)</option>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABEL[r]} ({ROLE_HELP[r]})
+              </option>
+            ))}
           </select>
         </div>
         <div className="field">

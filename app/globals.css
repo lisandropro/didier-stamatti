@@ -836,6 +836,36 @@ tbody tr:hover{background:var(--surface-2)}
   .picklist.cols-3 .pl-group{font-size:8.5pt}
 }
 
+/* Responsable de la fiesta: control propio, separado del pedido, porque es lo
+   único que puede cambiar el encargado de logística. */
+.ro-resp{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap; margin-bottom:var(--sp-4)}
+.ro-resp-label{font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700}
+.resp-chip{
+  display:inline-flex; align-items:center; gap:var(--sp-2); min-height:38px; padding:0 var(--sp-3);
+  border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface);
+  font-size:var(--t-base); font-weight:600; color:var(--ink);
+}
+.resp-chip svg{width:16px; height:16px; color:var(--muted); flex:0 0 auto}
+.resp-chip-btn{cursor:pointer}
+.resp-chip-btn:hover{border-color:var(--gold)}
+.resp-cta{font-size:var(--t-sm); font-weight:700; color:var(--gold)}
+.resp-edit{display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap}
+.resp-edit input{
+  font-family:var(--font-ui); font-size:var(--t-base); min-height:var(--tap);
+  padding:0 var(--sp-3); border:1px solid var(--hair); border-radius:var(--r-md);
+  background:var(--surface); color:var(--ink); min-width:220px;
+}
+.resp-edit input:focus{outline:none; border-color:var(--gold)}
+.ro-section{margin-bottom:var(--sp-6)}
+
+/* Selector de rol en la lista de usuarios. */
+.user-role-select{
+  font-family:var(--font-ui); font-size:var(--t-sm); font-weight:600; color:var(--ink);
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-sm);
+  padding:var(--sp-2) var(--sp-3); cursor:pointer;
+}
+.user-role-select:hover{border-color:var(--gold)}
+
 /* ===== Logout button (sidebar) ===== */
 .logout-btn{background:transparent; border:1px solid var(--hair); border-radius:var(--r-sm); width:40px; height:40px; display:grid; place-items:center; color:var(--muted); cursor:pointer; flex:0 0 auto}
 .logout-btn:hover{background:var(--surface-2); color:var(--crit)}

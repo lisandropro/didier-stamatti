@@ -2,6 +2,10 @@ import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { fmtEventDate } from "@/lib/format";
 import { OrderBuilder } from "@/components/OrderBuilder";
+import { OrderReadOnly } from "@/components/OrderReadOnly";
+import { getSessionUser } from "@/lib/auth";
+import { canEditOrders, canSetResponsable } from "@/lib/permissions";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +16,9 @@ export default async function EventoPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await getSessionUser();
+  if (!session) redirect("/login");
+
   const { id } = await params;
   const ev = await prisma.event.findUnique({ where: { id } });
   // Un evento en la papelera no se puede abrir ni editar.
@@ -55,6 +62,7 @@ export default async function EventoPage({
       lugar: ev.lugar,
       subLabel: `${fmtEventDate(ev.date)} · ${ev.guests} invitados${ev.responsable ? ` · ${ev.responsable}` : ""}`,
       status: ev.status,
+      responsable: ev.responsable,
     },
     products: products.map((p) => ({
       id: p.id,
@@ -86,6 +94,22 @@ export default async function EventoPage({
       lineCount: e._count.lines,
     })),
   };
+
+  // Quien no puede editar pedidos ve una pantalla de solo lectura, no el
+  // armador con los controles apagados: así no queda ningún control por el que
+  // se pueda colar una edición.
+  if (!canEditOrders(session.role)) {
+    return (
+      <OrderReadOnly
+        data={{
+          event: data.event,
+          products: data.products,
+          customLines: data.customLines,
+          canSetResponsable: canSetResponsable(session.role),
+        }}
+      />
+    );
+  }
 
   return <OrderBuilder data={data} />;
 }

@@ -4,8 +4,18 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { notifyOrderChange, type OrderChangeInput } from "@/lib/notify";
 import { revalidatePath } from "next/cache";
+import { canEditOrders } from "@/lib/permissions";
 
 export type OrderResult = { ok: boolean; error?: string; lineId?: string; count?: number };
+
+/** Cargar y modificar pedidos. El encargado de logística los mira pero no los
+ *  toca; lo único que puede escribir es el responsable de la fiesta. */
+async function requireEdit() {
+  const user = await getSessionUser();
+  if (!user) return { user: null, error: "Tenés que iniciar sesión." };
+  if (!canEditOrders(user.role)) return { user: null, error: "No tenés permiso para modificar los pedidos." };
+  return { user, error: null };
+}
 
 /** Fija la cantidad (y nota) de un producto del catálogo en el pedido de un evento.
  *  qty 0 = el producto no va → se borra la línea. */
@@ -15,8 +25,8 @@ export async function setLine(input: {
   qty: number;
   note?: string | null;
 }): Promise<OrderResult> {
-  const user = await getSessionUser();
-  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const { user, error: permiso } = await requireEdit();
+  if (!user) return { ok: false, error: permiso! };
 
   const qty = Math.max(0, Math.round(input.qty));
   const note = input.note?.trim() || null;
@@ -73,8 +83,8 @@ export async function addCustomLine(input: {
   qty: number;
   note?: string;
 }): Promise<OrderResult> {
-  const user = await getSessionUser();
-  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const { user, error: permiso } = await requireEdit();
+  if (!user) return { ok: false, error: permiso! };
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Poné el nombre del ítem." };
   if (!CATEGORIES.includes(input.category)) return { ok: false, error: "Elegí a qué sector pertenece." };
@@ -102,8 +112,8 @@ export async function addCustomLine(input: {
 
 /** Cambia la cantidad de un ítem fuera de catálogo. */
 export async function setCustomQty(lineId: string, qty: number): Promise<OrderResult> {
-  const user = await getSessionUser();
-  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const { user, error: permiso } = await requireEdit();
+  if (!user) return { ok: false, error: permiso! };
   const q = Math.max(1, Math.round(qty));
   const antes = await prisma.orderLine.findUnique({
     where: { id: lineId },
@@ -125,8 +135,8 @@ export async function setCustomQty(lineId: string, qty: number): Promise<OrderRe
 
 /** Borra una línea (se usa para los ítems fuera de catálogo). */
 export async function deleteLine(lineId: string): Promise<OrderResult> {
-  const user = await getSessionUser();
-  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const { user, error: permiso } = await requireEdit();
+  if (!user) return { ok: false, error: permiso! };
   const line = await prisma.orderLine.findUnique({
     where: { id: lineId },
     select: { eventId: true, qty: true, customName: true, product: { select: { name: true } } },
@@ -147,8 +157,8 @@ export async function deleteLine(lineId: string): Promise<OrderResult> {
 /** Copia el pedido completo de otro evento a este (reemplaza lo que hubiera).
  *  Sirve para no cargar de cero un evento parecido a uno anterior. */
 export async function copyOrderFromEvent(targetEventId: string, sourceEventId: string): Promise<OrderResult> {
-  const user = await getSessionUser();
-  if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  const { user, error: permiso } = await requireEdit();
+  if (!user) return { ok: false, error: permiso! };
   if (targetEventId === sourceEventId) return { ok: false, error: "Es el mismo evento." };
 
   const target = await prisma.event.findUnique({ where: { id: targetEventId } });

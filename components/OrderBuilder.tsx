@@ -6,6 +6,7 @@ import { useMemo, useRef, useState } from "react";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
 import { computeShortage } from "@/lib/shortage-rule";
 import { ShortagesModal } from "@/components/ShortagesModal";
+import { ResponsableEditor } from "@/components/ResponsableEditor";
 import { setEventStatus } from "@/app/actions/weekend";
 
 type ProductRow = {
@@ -23,7 +24,7 @@ type ProductRow = {
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
 type SourceEvent = { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number };
 type Data = {
-  event: { id: string; lugar: string; subLabel: string; status: string };
+  event: { id: string; lugar: string; subLabel: string; status: string; responsable: string | null };
   products: ProductRow[];
   customLines: CustomLine[];
   sourceEvents: SourceEvent[];
@@ -174,6 +175,11 @@ export function OrderBuilder({ data }: { data: Data }) {
         {error && (
           <div className="banner crit">{IconWarn}<div><b>{error}</b></div></div>
         )}
+
+        <div className="ro-resp">
+          <span className="ro-resp-label">Responsable de la fiesta</span>
+          <ResponsableEditor eventId={data.event.id} responsable={data.event.responsable} canEdit />
+        </div>
 
 
         <div className="searchbar">

@@ -4,15 +4,16 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
+import { ROLES, canManageUsers } from "@/lib/permissions";
 
 export type UserResult = { ok: boolean; error?: string; id?: string };
 
-const ROLES = ["ADMIN", "ARMADOR"];
+
 
 async function requireAdmin() {
   const session = await getSessionUser();
   if (!session) return { session: null, error: "Tenés que iniciar sesión." };
-  if (session.role !== "ADMIN") return { session: null, error: "Solo la administradora puede gestionar usuarios." };
+  if (!canManageUsers(session.role)) return { session: null, error: "Solo la administradora puede gestionar usuarios." };
   return { session, error: null };
 }
 
@@ -32,7 +33,7 @@ export async function createUser(input: {
 
   if (!name) return { ok: false, error: "Poné el nombre." };
   if (!email || !email.includes("@")) return { ok: false, error: "Poné un email válido." };
-  if (!ROLES.includes(role)) return { ok: false, error: "Elegí el rol." };
+  if (!(ROLES as readonly string[]).includes(role)) return { ok: false, error: "Elegí el rol." };
   if (input.password.length < 6) return { ok: false, error: "La contraseña debe tener al menos 6 caracteres." };
 
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -66,7 +67,7 @@ export async function resetUserPassword(userId: string, newPassword: string): Pr
 export async function setUserRole(userId: string, role: string): Promise<UserResult> {
   const { session, error } = await requireAdmin();
   if (!session) return { ok: false, error: error! };
-  if (!ROLES.includes(role)) return { ok: false, error: "Rol inválido." };
+  if (!(ROLES as readonly string[]).includes(role)) return { ok: false, error: "Rol inválido." };
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { ok: false, error: "No se encontró el usuario." };
