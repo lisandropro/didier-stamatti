@@ -228,56 +228,57 @@ export function WeekendHub({ data }: { data: HubData }) {
             ) : (
               <div className="event-grid">
                 {selected.events.map((e) => (
-                  // El botón de borrar va como HERMANO del enlace, no adentro:
-                  // un botón dentro de un <a> no se puede tocar sin abrir el evento.
-                  <div key={e.id} className="event-wrap">
-                    <Link href={`/evento/${e.id}`} className="event">
-                      <div className="row1">
-                        <h3>{e.lugar}</h3>
-                        {e.status === "LISTO" ? (
-                          <span className="chip ok">{IconCheck}Listo</span>
-                        ) : (
-                          <span className="chip neutral">No listo</span>
-                        )}
-                      </div>
-                      <div className="meta">
-                        <span className="metaicon">{IconCal}<b>{e.dateLabel}</b></span>
-                        <span className="metaicon">{IconPeople}<b>{e.guests}</b> invitados</span>
-                        {e.responsable && <span className="metaicon">{IconPerson}{e.responsable}</span>}
-                      </div>
-                      {e.shortageCount > 0 && (
-                        <div className="event-falta">
-                          {IconWarn}
-                          <span>
-                            {e.shortageCount === 1
-                              ? "1 producto sin stock suficiente"
-                              : `${e.shortageCount} productos sin stock suficiente`}
-                          </span>
-                        </div>
+                  // La tarjeta NO es un enlace: el enlace del título se estira
+                  // sobre toda la tarjeta (`.event-link::after`), y así los
+                  // botones pueden vivir adentro y tocarse sin abrir el evento.
+                  <div key={e.id} className="event">
+                    <div className="row1">
+                      <h3>
+                        <Link className="event-link" href={`/evento/${e.id}`}>{e.lugar}</Link>
+                      </h3>
+                      {e.status === "LISTO" ? (
+                        <span className="chip ok">{IconCheck}Listo</span>
+                      ) : (
+                        <span className="chip neutral">No listo</span>
                       )}
-                      <div className="event-foot">
-                        {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} · Armar pedido →
-                      </div>
-                    </Link>
-                    {/* Hermanos del enlace, no hijos: adentro de un <a> no se
-                        pueden tocar sin abrir el evento. */}
+                    </div>
+                    <div className="meta">
+                      <span className="metaicon">{IconCal}<b>{e.dateLabel}</b></span>
+                      <span className="metaicon">{IconPeople}<b>{e.guests}</b> invitados</span>
+                      {e.responsable && <span className="metaicon">{IconPerson}{e.responsable}</span>}
+                    </div>
+
+                    {/* El aviso ES el botón: un solo elemento en vez de una
+                        franja y un botón repitiendo lo mismo. */}
                     {e.shortageCount > 0 && (
                       <button
-                        className="btn btn-falta"
+                        className="event-falta"
                         onClick={() => setFaltantesDe(e)}
                         title={`Ver los faltantes de ${e.lugar}`}
                       >
-                        {IconWarn} Ver faltantes
+                        {IconWarn}
+                        <span>
+                          {e.shortageCount === 1
+                            ? "1 producto sin stock suficiente"
+                            : `${e.shortageCount} productos sin stock suficiente`}
+                        </span>
+                        <span className="event-falta-cta"><span>Ver faltantes →</span></span>
                       </button>
                     )}
-                    <button
-                      className="event-del"
-                      onClick={() => setEventToDelete(e)}
-                      title={`Borrar el evento de ${e.lugar}`}
-                      aria-label={`Borrar el evento de ${e.lugar}`}
-                    >
-                      {IconTrash}
-                    </button>
+
+                    <div className="event-foot">
+                      <span>
+                        {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} · Armar pedido →
+                      </span>
+                      <button
+                        className="event-del"
+                        onClick={() => setEventToDelete(e)}
+                        title={`Borrar el evento de ${e.lugar}`}
+                        aria-label={`Borrar el evento de ${e.lugar}`}
+                      >
+                        {IconTrash}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

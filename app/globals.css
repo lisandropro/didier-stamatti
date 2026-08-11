@@ -492,49 +492,56 @@ tbody tr:hover{background:var(--surface-2)}
 .count-pill{font-size:var(--t-sm); font-weight:600; color:var(--muted); background:var(--surface-2); border:1px solid var(--hair); padding:2px var(--sp-2); border-radius:var(--r-pill)}
 
 .event-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--sp-4)}
+/* La tarjeta es un div, no un enlace: así puede tener botones adentro. El
+   enlace del título se estira sobre toda la tarjeta con ::after, y los botones
+   se apoyan por encima con z-index. */
 .event{
+  position:relative;
   background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius);
-  padding:var(--sp-4) var(--sp-5); box-shadow:var(--shadow); cursor:pointer;
-  display:flex; flex-direction:column; gap:var(--sp-3); text-decoration:none; color:var(--ink);
+  padding:var(--sp-4) var(--sp-5); box-shadow:var(--shadow);
+  display:flex; flex-direction:column; gap:var(--sp-3); color:var(--ink);
 }
 .event:hover{border-color:color-mix(in srgb,var(--gold) 55%,transparent); box-shadow:var(--shadow-lift); transform:translateY(-2px)}
 .event:active{transform:translateY(0)}
 .event .row1{display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-2)}
 .event h3{margin:0; font-size:var(--t-lg); font-weight:650; letter-spacing:-.01em; text-wrap:balance}
+.event-link{color:inherit; text-decoration:none}
+.event-link::after{content:""; position:absolute; inset:0; border-radius:var(--radius); cursor:pointer}
+.event-link:focus-visible::after{outline:2px solid var(--gold); outline-offset:2px}
 .event .meta{display:flex; flex-wrap:wrap; gap:var(--sp-2) var(--sp-4); color:var(--muted); font-size:var(--t-sm)}
 .event .meta b{color:var(--ink); font-weight:600}
 .event .metaicon{display:inline-flex; align-items:center; gap:6px}
 .event .metaicon svg{width:15px; height:15px; color:var(--muted); flex:0 0 auto}
-.event-foot{font-size:var(--t-sm); color:var(--muted); border-top:1px solid var(--hair); padding-top:var(--sp-3); font-weight:600; margin-top:auto}
+.event-foot{
+  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);
+  font-size:var(--t-sm); color:var(--muted); border-top:1px solid var(--hair);
+  padding-top:var(--sp-3); font-weight:600; margin-top:auto;
+}
 .event:hover .event-foot{color:var(--gold)}
 
-/* El evento se borra sin tocar el resto del finde. El botón se apoya sobre la
-   tarjeta pero es hermano del enlace, para que tocarlo no abra el evento. */
-.event-wrap{position:relative; display:flex}
-.event-wrap > .event{flex:1 1 auto}
-.event-wrap > .event .event-foot{padding-right:34px}
-
-/* Aviso de faltantes dentro de la tarjeta del evento. */
+/* El aviso de faltantes ES el botón que abre el panel: una sola cosa en vez de
+   una franja y un botón diciendo lo mismo. Va por encima del enlace estirado. */
 .event-falta{
+  position:relative; z-index:1; width:100%; cursor:pointer; text-align:left;
   display:flex; align-items:center; gap:var(--sp-2); font-size:var(--t-sm); font-weight:650;
   color:var(--crit); background:var(--crit-soft); border:1px solid var(--crit);
   border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3);
+  transition:background .15s, color .15s;
 }
 .event-falta svg{width:15px; height:15px; flex:0 0 auto}
-/* El botón se apoya sobre la tarjeta, al lado del de borrar. */
-.btn.btn-falta{
-  position:absolute; right:50px; bottom:10px; height:32px; padding:0 var(--sp-3);
-  font-size:var(--t-sm); color:var(--crit); border-color:var(--crit); background:var(--crit-soft);
-}
-.btn.btn-falta:hover{background:var(--crit); color:#fff}
-.btn.btn-falta svg{width:15px; height:15px}
-/* El mismo botón en la barra del pedido: acá va en el flujo, no flotando. */
-.btn.btn-falta-top{position:static; height:auto; padding:0 var(--sp-4)}
+.event-falta > span:first-of-type{flex:1 1 auto}
+.event-falta-cta{flex:0 0 auto; font-weight:700; opacity:.85; white-space:nowrap}
+.event-falta:hover{background:var(--crit); color:#fff}
+.event-falta:hover .event-falta-cta{opacity:1}
+
+/* El mismo panel se abre desde la barra del pedido. */
+.btn.btn-falta-top{color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
+.btn.btn-falta-top:hover{background:var(--crit); color:#fff}
+.btn.btn-falta-top svg{width:15px; height:15px}
 .btn.btn-falta-top .count-pill{background:transparent; border-color:currentColor; color:inherit}
-.event-wrap:has(.btn-falta) > .event .event-foot{padding-right:170px}
 
 .event-del{
-  position:absolute; right:10px; bottom:10px; width:32px; height:32px;
+  position:relative; z-index:1; flex:0 0 auto; width:32px; height:32px;
   display:grid; place-items:center; border-radius:var(--r-sm);
   background:var(--surface); border:1px solid var(--hair); color:var(--muted);
   cursor:pointer; opacity:.55; transition:opacity .15s, color .15s, border-color .15s;
@@ -542,8 +549,21 @@ tbody tr:hover{background:var(--surface-2)}
 .event-del svg{width:16px; height:16px}
 .event-del:hover{opacity:1; color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
 .event-del:focus-visible{opacity:1}
-/* En el teléfono no hay hover: el botón se ve siempre. */
+/* Sin hover (teléfono) o en pantalla angosta, el botón se ve siempre: si no,
+   no hay forma de descubrirlo. */
 @media (hover:none){ .event-del{opacity:1} }
+@media (max-width:720px){
+  .event-del{opacity:1; width:38px; height:38px}
+  /* Objetivo cómodo para el dedo. */
+  .event-falta{min-height:44px; padding:var(--sp-2) var(--sp-4)}
+}
+/* En pantalla chica la llamada se acorta, pero NO desaparece: es lo único que
+   dice que el aviso se puede tocar. */
+@media (max-width:460px){
+  .event-falta-cta{font-size:var(--t-xs)}
+  .event-falta-cta::after{content:"Ver →"}
+  .event-falta-cta span{display:none}
+}
 
 /* ===== Administración del catálogo ===== */
 .rowacts{text-align:right; white-space:nowrap}
