@@ -96,8 +96,8 @@ function Formulario({ pathname, onClose }: { pathname: string; onClose: () => vo
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <h2>Gracias</h2>
           <div className="msub">
-            Tu sugerencia le llegó a la administradora. Podés seguirla desde <b>Sugerencias</b>, y ahí vas
-            a ver su respuesta cuando la conteste.
+            Tu sugerencia le llegó a la administradora. Cuando la conteste te va a llegar un aviso con la
+            respuesta.
           </div>
           <div className="modal-actions">
             <button className="btn primary" onClick={onClose} autoFocus>

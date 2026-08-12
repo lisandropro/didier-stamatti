@@ -39,7 +39,9 @@ export default async function SugerenciaPage({ params }: { params: Promise<{ id:
         <span className={`chip ${STATUS_CLASS[s.status] ?? "neutral"}`}>
           {STATUS_LABEL[s.status] ?? s.status}
         </span>
-        <Link className="btn ghost" href="/sugerencias">
+        {/* Quien no gestiona no tiene bandeja: su "volver" es el inicio, no una
+            lista que lo rebotaría. Llega acá desde el aviso de la respuesta. */}
+        <Link className="btn ghost" href={admin ? "/sugerencias" : "/"}>
           Volver
         </Link>
       </div>

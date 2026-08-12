@@ -47,12 +47,12 @@ const NAV = [
   { href: "/historial", label: "Historial", icon: ICONS.historial },
   { href: "/notificaciones", label: "Avisos", icon: ICONS.avisos },
 ];
+/** La bandeja de sugerencias es de quien las gestiona. Los demás tienen el
+ *  botón de mandarlas y nada más: para ellos es un buzón, no una sección. */
 const ADMIN_NAV = [
   { href: "/sugerencias", label: "Sugerencias", icon: IconSuggest },
   { href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios },
 ];
-/** Quien manda sugerencias pero no las administra ve solo las suyas. */
-const AUTOR_NAV = [{ href: "/sugerencias", label: "Mis sugerencias", icon: IconSuggest }];
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -64,11 +64,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const pathname = usePathname();
   const initial = (user.name?.[0] ?? "?").toUpperCase();
   const puedeSugerir = canSendSuggestions(user.role);
-  const nav = canManageSuggestions(user.role)
-    ? [...NAV, ...ADMIN_NAV]
-    : puedeSugerir
-      ? [...NAV, ...AUTOR_NAV]
-      : NAV;
+  const nav = canManageSuggestions(user.role) ? [...NAV, ...ADMIN_NAV] : NAV;
 
   return (
     <aside className="side">

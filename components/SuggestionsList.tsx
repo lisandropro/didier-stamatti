@@ -23,12 +23,10 @@ type Item = {
 
 export function SuggestionsList({
   items,
-  admin,
   tipo,
   estado,
 }: {
   items: Item[];
-  admin: boolean;
   tipo: string | null;
   estado: string | null;
 }) {
@@ -89,11 +87,7 @@ export function SuggestionsList({
             {hayFiltro ? "Ninguna sugerencia con esos filtros" : "Todavía no hay sugerencias"}
           </p>
           <p>
-            {hayFiltro
-              ? "Probá quitando alguno."
-              : admin
-                ? "Cuando alguien del equipo mande una, la vas a ver acá."
-                : "Usá “Enviar sugerencia” para contar qué te falta o qué no anda."}
+            {hayFiltro ? "Probá quitando alguno." : "Cuando alguien del equipo mande una, la vas a ver acá."}
           </p>
         </div>
       ) : (
@@ -109,8 +103,7 @@ export function SuggestionsList({
               </span>
               <span className="sug-row-title">{s.title}</span>
               <span className="sug-row-meta">
-                {admin ? `${s.authorName} · ` : ""}
-                {s.at}
+                {s.authorName} · {s.at}
                 {s.eventLugar ? ` · sobre ${s.eventLugar}` : ""}
               </span>
             </Link>

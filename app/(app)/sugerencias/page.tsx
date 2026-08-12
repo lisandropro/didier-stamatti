@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { canSendSuggestions, canManageSuggestions } from "@/lib/permissions";
+import { canManageSuggestions } from "@/lib/permissions";
 import { fmtDateTime } from "@/lib/format";
 import { isKind, isStatus } from "@/lib/suggestions";
 import { SuggestionsList } from "@/components/SuggestionsList";
@@ -15,19 +15,17 @@ export default async function SugerenciasPage({
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  // Quien no participa del canal no tiene nada que ver acá.
-  if (!canSendSuggestions(user.role)) redirect("/");
+  // La bandeja es de quien las gestiona. Los demás mandan sugerencias con el
+  // botón y leen la respuesta desde el aviso que les llega, sin una sección que
+  // atender.
+  if (!canManageSuggestions(user.role)) redirect("/");
 
-  const admin = canManageSuggestions(user.role);
   const sp = await searchParams;
   const tipo = sp.tipo && isKind(sp.tipo.toUpperCase()) ? sp.tipo.toUpperCase() : null;
   const estado = sp.estado && isStatus(sp.estado.toUpperCase()) ? sp.estado.toUpperCase() : null;
 
   const sugerencias = await prisma.suggestion.findMany({
     where: {
-      // La administradora ve todas; el resto, solo las propias. El filtro es del
-      // servidor: no alcanza con no mostrar el resto en la pantalla.
-      ...(admin ? {} : { authorId: user.id }),
       ...(tipo ? { kind: tipo } : {}),
       ...(estado ? { status: estado } : {}),
     },
@@ -50,16 +48,12 @@ export default async function SugerenciasPage({
     <>
       <div className="topbar">
         <div>
-          <h1>{admin ? "Sugerencias" : "Mis sugerencias"}</h1>
-          <div className="sub">
-            {admin
-              ? "Lo que el equipo propone o reporta sobre la app"
-              : "Lo que enviaste y qué contestó la administradora"}
-          </div>
+          <h1>Sugerencias</h1>
+          <div className="sub">Lo que el equipo propone o reporta sobre la app</div>
         </div>
       </div>
       <div className="content">
-        <SuggestionsList items={items} admin={admin} tipo={tipo} estado={estado} />
+        <SuggestionsList items={items} tipo={tipo} estado={estado} />
       </div>
     </>
   );
