@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { normalizeEmail, emailProblem } from "@/lib/email";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
@@ -28,11 +29,12 @@ export async function createUser(input: {
   if (!session) return { ok: false, error: error! };
 
   const name = input.name.trim();
-  const email = input.email.trim().toLowerCase();
+  const email = normalizeEmail(input.email);
   const role = input.role;
 
   if (!name) return { ok: false, error: "Poné el nombre." };
-  if (!email || !email.includes("@")) return { ok: false, error: "Poné un email válido." };
+  const problema = emailProblem(email);
+  if (problema) return { ok: false, error: problema };
   if (!(ROLES as readonly string[]).includes(role)) return { ok: false, error: "Elegí el rol." };
   if (input.password.length < 6) return { ok: false, error: "La contraseña debe tener al menos 6 caracteres." };
 

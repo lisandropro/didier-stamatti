@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { normalizeEmail } from "@/lib/email";
 import bcrypt from "bcryptjs";
 import { createSession, destroySession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -11,7 +12,9 @@ export async function login(
   _prev: LoginState,
   formData: FormData
 ): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  // Se normaliza igual que al crear el usuario: si el teclado compuso el acento
+  // de otra forma, el texto igual tiene que llegar al mismo lugar.
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
   const password = String(formData.get("password") ?? "");
   const remember = formData.get("remember") === "on";
 
