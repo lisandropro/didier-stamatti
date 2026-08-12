@@ -71,11 +71,13 @@ export function canView(role: string): boolean {
   return isRole(role);
 }
 
-/** Mandar sugerencias sobre la app y ver las propias. El canal se abrió para
- *  quien arma los pedidos, que es quien la usa todo el día y encuentra lo que
- *  falta; la administradora también puede, porque además las gestiona. */
+/** Mandar sugerencias sobre la app y ver las propias. Cualquiera que entre:
+ *  quien la usa es quien encuentra lo que falta, y el que arma los pedidos y el
+ *  que maneja el depósito ven problemas distintos. No es un permiso sobre los
+ *  datos —una sugerencia es un mensaje, no un cambio—, así que abrirlo a todos
+ *  no le da a nadie acceso a nada que antes no tuviera. */
 export function canSendSuggestions(role: string): boolean {
-  return role === "ARMADOR" || role === "ADMIN";
+  return isRole(role);
 }
 
 /** Ver TODAS las sugerencias, cambiarles el estado y responderlas. */

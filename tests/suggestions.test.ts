@@ -16,7 +16,16 @@ import {
   deviceSummary,
   LIMITS,
 } from "../lib/suggestions";
-import { canSendSuggestions, canManageSuggestions, ROLES } from "../lib/permissions";
+import {
+  canSendSuggestions,
+  canManageSuggestions,
+  canEditOrders,
+  canManageWeekends,
+  canEditStock,
+  canManageCatalog,
+  canManageUsers,
+  ROLES,
+} from "../lib/permissions";
 
 /**
  * El canal de sugerencias: permisos, creación, consulta y cambio de estado.
@@ -34,7 +43,7 @@ import { canSendSuggestions, canManageSuggestions, ROLES } from "../lib/permissi
 const ESPERADO = {
   ADMIN: { enviar: true, gestionar: true },
   ARMADOR: { enviar: true, gestionar: false },
-  LOGISTICA: { enviar: false, gestionar: false },
+  LOGISTICA: { enviar: true, gestionar: false },
 } as const;
 
 for (const rol of Object.keys(ESPERADO) as (keyof typeof ESPERADO)[]) {
@@ -55,6 +64,18 @@ test("un rol inventado no puede ni enviar ni gestionar", () => {
   assert.equal(canManageSuggestions("SUPERUSUARIO"), false);
   assert.equal(canSendSuggestions(""), false);
   assert.equal(canManageSuggestions(""), false);
+});
+
+test("abrirle el canal al encargado de logística no le amplió nada más", () => {
+  // Mandar una sugerencia es escribir un mensaje, no tocar un dato. Esta prueba
+  // existe para que quede escrito que lo uno no arrastró lo otro.
+  assert.equal(canSendSuggestions("LOGISTICA"), true);
+  assert.equal(canEditOrders("LOGISTICA"), false);
+  assert.equal(canManageWeekends("LOGISTICA"), false);
+  assert.equal(canEditStock("LOGISTICA"), false);
+  assert.equal(canManageCatalog("LOGISTICA"), false);
+  assert.equal(canManageUsers("LOGISTICA"), false);
+  assert.equal(canManageSuggestions("LOGISTICA"), false);
 });
 
 // ---------------------------------------------------------------------------
