@@ -6,6 +6,7 @@ import { useMemo, useRef, useState } from "react";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
 import { computeShortage } from "@/lib/shortage-rule";
 import { ShortagesModal } from "@/components/ShortagesModal";
+import { EditEventModal } from "@/components/EditEventModal";
 import { ResponsableEditor } from "@/components/ResponsableEditor";
 import { setEventStatus } from "@/app/actions/weekend";
 
@@ -24,7 +25,16 @@ type ProductRow = {
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
 type SourceEvent = { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number };
 type Data = {
-  event: { id: string; lugar: string; subLabel: string; status: string; responsable: string | null };
+  event: {
+    id: string;
+    lugar: string;
+    subLabel: string;
+    status: string;
+    responsable: string | null;
+    dateLocal: string;
+    guests: number;
+    findeLabel: string;
+  };
   products: ProductRow[];
   customLines: CustomLine[];
   sourceEvents: SourceEvent[];
@@ -44,6 +54,11 @@ const IconWarn = (
 const IconTrash = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" /></svg>
 );
+const IconEdit = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);
 const IconCopy = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg>
 );
@@ -60,6 +75,7 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [error, setError] = useState<string | null>(null);
   const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});
   const [showCopy, setShowCopy] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [showShortages, setShowShortages] = useState(false);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -159,6 +175,7 @@ export function OrderBuilder({ data }: { data: Data }) {
             {IconWarn} Ver faltantes <span className="count-pill">{over.length}</span>
           </button>
         )}
+        <button className="btn ghost" onClick={() => setShowEdit(true)}>{IconEdit} Editar evento</button>
         <button className="btn ghost" onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
         <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -319,6 +336,19 @@ export function OrderBuilder({ data }: { data: Data }) {
           hasLines={inOrderCount > 0}
           sourceEvents={data.sourceEvents}
           onClose={() => setShowCopy(false)}
+        />
+      )}
+      {showEdit && (
+        <EditEventModal
+          evento={{
+            id: data.event.id,
+            lugar: data.event.lugar,
+            dateLocal: data.event.dateLocal,
+            guests: data.event.guests,
+            findeLabel: data.event.findeLabel,
+          }}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => setShowEdit(false)}
         />
       )}
     </>

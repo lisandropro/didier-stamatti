@@ -11,7 +11,18 @@ const QUIET_MINUTES = 5;
 // único aviso: pasado este rato desde que empezó, la próxima tanda arranca de cero.
 const MAX_BATCH_MINUTES = 60;
 
-export type ChangeKind = "AGREGADO" | "QUITADO" | "CANTIDAD" | "NOTA" | "COPIADO" | "RESPONSABLE";
+export type ChangeKind =
+  | "AGREGADO"
+  | "QUITADO"
+  | "CANTIDAD"
+  | "NOTA"
+  | "COPIADO"
+  | "RESPONSABLE"
+  // Datos generales del evento, no del pedido: se corrigen sin tocar las líneas.
+  | "LUGAR"
+  | "FECHA"
+  | "INVITADOS"
+  | "FINDE";
 
 export type OrderChangeInput = {
   itemName: string;

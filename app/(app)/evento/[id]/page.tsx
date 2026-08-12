@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
-import { fmtEventDate } from "@/lib/format";
+import { fmtEventDate, toDatetimeLocal } from "@/lib/format";
 import { OrderBuilder } from "@/components/OrderBuilder";
 import { OrderReadOnly } from "@/components/OrderReadOnly";
 import { getSessionUser } from "@/lib/auth";
@@ -20,7 +20,7 @@ export default async function EventoPage({
   if (!session) redirect("/login");
 
   const { id } = await params;
-  const ev = await prisma.event.findUnique({ where: { id } });
+  const ev = await prisma.event.findUnique({ where: { id }, include: { weekend: { select: { label: true } } } });
   // Un evento en la papelera no se puede abrir ni editar.
   if (!ev || ev.deletedAt) notFound();
 
@@ -63,6 +63,10 @@ export default async function EventoPage({
       subLabel: `${fmtEventDate(ev.date)} · ${ev.guests} invitados${ev.responsable ? ` · ${ev.responsable}` : ""}`,
       status: ev.status,
       responsable: ev.responsable,
+      // Para el formulario de corregir el evento.
+      dateLocal: toDatetimeLocal(ev.date),
+      guests: ev.guests,
+      findeLabel: ev.weekend.label,
     },
     products: products.map((p) => ({
       id: p.id,

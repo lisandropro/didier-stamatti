@@ -30,3 +30,11 @@ export function startOfToday(): Date {
   d.setHours(0, 0, 0, 0);
   return d;
 }
+
+// "2026-08-15T18:00" — el formato que pide <input type="datetime-local">.
+// Se arma con los mismos lectores locales que usa fmtEventDate, así lo que se
+// muestra y lo que se edita hablan de la misma hora.
+export function toDatetimeLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
