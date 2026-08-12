@@ -14,7 +14,7 @@ export type ShortageRow = {
   rubro: string | null;
   /** Lo que pide ESTE evento. */
   requested: number;
-  /** Lo que piden los OTROS eventos vivos del mismo fin de semana. */
+  /** Lo que piden los OTROS eventos vivos del mismo período. */
   otherRequested: number;
   /** La suma de todos los eventos del finde. */
   totalRequested: number;
@@ -42,7 +42,7 @@ export type ShortageInput = {
 
 /**
  * Un producto falta cuando es reutilizable y lo que pide este evento más lo que
- * piden los otros eventos del mismo fin de semana supera el stock del depósito.
+ * piden los otros eventos del mismo período supera el stock del depósito.
  * Los consumibles no cuentan: se compran para cada evento.
  *
  * Devuelve null si no falta nada.

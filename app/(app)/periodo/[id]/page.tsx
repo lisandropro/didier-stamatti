@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { fmtEventDate, fmtRange } from "@/lib/format";
+import { fmtEvento, fmtRangoDias } from "@/lib/dates";
+import { nombreDe } from "@/lib/period-fit";
 import { PrintButton } from "@/components/PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -27,16 +28,16 @@ export default async function ResumenPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const weekend = await prisma.weekend.findUnique({
+  const period = await prisma.operationalPeriod.findUnique({
     where: { id },
     include: { events: { where: { deletedAt: null }, orderBy: { date: "asc" } } },
   });
-  if (!weekend || weekend.deletedAt) notFound();
+  if (!period || period.deletedAt) notFound();
 
-  const eventOrder = new Map(weekend.events.map((e, i) => [e.id, i]));
+  const eventOrder = new Map(period.events.map((e, i) => [e.id, i]));
 
   const lines = await prisma.orderLine.findMany({
-    where: { event: { weekendId: id, deletedAt: null } },
+    where: { event: { periodId: id, deletedAt: null } },
     include: { product: true, event: { select: { id: true, lugar: true } } },
   });
 
@@ -91,7 +92,7 @@ export default async function ResumenPage({
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
 
   const overCount = rows.filter((r) => r.type === "REUTILIZABLE" && r.total > r.stock).length;
-  const multiEvent = weekend.events.length > 1;
+  const multiEvent = period.events.length > 1;
 
   // Filas con separador de categoría
   const rendered: React.ReactNode[] = [];
@@ -141,26 +142,26 @@ export default async function ResumenPage({
         <div>
           <h1>Resumen del depósito</h1>
           <div className="sub">
-            {weekend.label} · {fmtRange(weekend.startDate, weekend.endDate)} ·{" "}
-            {weekend.events.map((e) => `${e.lugar} (${fmtEventDate(e.date)})`).join(" · ") || "sin eventos"}
+            {period.label} · {fmtRangoDias(period.startDay, period.endDay)} ·{" "}
+            {period.events.map((e) => `${e.lugar} (${fmtEvento(e.date)})`).join(" · ") || "sin eventos"}
           </div>
         </div>
         <div className="spacer" />
-        <Link className="btn ghost no-print" href={`/?w=${weekend.id}`}>Volver</Link>
+        <Link className="btn ghost no-print" href={`/?w=${period.id}`}>Volver</Link>
         <PrintButton />
       </div>
 
       <div className="content">
         {rows.length === 0 && extras.length === 0 ? (
           <div className="empty-card">
-            <p className="empty-title">Los pedidos de este fin de semana están vacíos</p>
+            <p className="empty-title">Los pedidos de este período están vacíos</p>
             <p>Cargá productos en los eventos y acá vas a ver el total a preparar en el depósito.</p>
-            <Link className="btn primary" href={`/?w=${weekend.id}`}>Ir a los eventos</Link>
+            <Link className="btn primary" href={`/?w=${period.id}`}>Ir a los eventos</Link>
           </div>
         ) : (
           <>
             <div className="summary-note">
-              Total a preparar sumando {weekend.events.length} evento{weekend.events.length === 1 ? "" : "s"} ·{" "}
+              Total a preparar sumando {period.events.length} evento{period.events.length === 1 ? "" : "s"} ·{" "}
               {rows.length} producto{rows.length === 1 ? "" : "s"}
               {extras.length > 0 ? ` · ${extras.length} extra${extras.length === 1 ? "" : "s"}` : ""}
               {overCount > 0 ? <span className="over"> · ⚠ {overCount} sin stock suficiente</span> : " · ✓ todo alcanza"}

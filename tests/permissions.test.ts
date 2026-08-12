@@ -4,7 +4,7 @@ import {
   ROLES,
   ROLE_LABEL,
   canEditOrders,
-  canManageWeekends,
+  canManagePeriods,
   canEditStock,
   canManageCatalog,
   canManageUsers,
@@ -24,7 +24,7 @@ const MATRIZ = {
   ADMIN: {
     canView: true,
     canEditOrders: true,
-    canManageWeekends: true,
+    canManagePeriods: true,
     canEditStock: true,
     canManageCatalog: true,
     canManageUsers: true,
@@ -33,7 +33,7 @@ const MATRIZ = {
   ARMADOR: {
     canView: true,
     canEditOrders: true,
-    canManageWeekends: true,
+    canManagePeriods: true,
     canEditStock: false,
     canManageCatalog: false,
     canManageUsers: false,
@@ -42,7 +42,7 @@ const MATRIZ = {
   LOGISTICA: {
     canView: true,
     canEditOrders: false,
-    canManageWeekends: false,
+    canManagePeriods: false,
     canEditStock: false,
     canManageCatalog: false,
     canManageUsers: false,
@@ -53,7 +53,7 @@ const MATRIZ = {
 const FN = {
   canView,
   canEditOrders,
-  canManageWeekends,
+  canManagePeriods,
   canEditStock,
   canManageCatalog,
   canManageUsers,
@@ -70,7 +70,7 @@ for (const rol of Object.keys(MATRIZ) as (keyof typeof MATRIZ)[]) {
 }
 
 test("el encargado de logística NO puede escribir nada salvo el responsable", () => {
-  const escrituras = [canEditOrders, canManageWeekends, canEditStock, canManageCatalog, canManageUsers];
+  const escrituras = [canEditOrders, canManagePeriods, canEditStock, canManageCatalog, canManageUsers];
   for (const puede of escrituras) assert.equal(puede("LOGISTICA"), false);
   assert.equal(canSetResponsable("LOGISTICA"), true);
 });
@@ -80,7 +80,7 @@ test("un rol desconocido no puede hacer absolutamente nada", () => {
   assert.equal(isRole(inventado), false);
   assert.equal(canView(inventado), false);
   assert.equal(canEditOrders(inventado), false);
-  assert.equal(canManageWeekends(inventado), false);
+  assert.equal(canManagePeriods(inventado), false);
   assert.equal(canEditStock(inventado), false);
   assert.equal(canManageCatalog(inventado), false);
   assert.equal(canManageUsers(inventado), false);

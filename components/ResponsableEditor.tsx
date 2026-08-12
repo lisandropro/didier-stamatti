@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { setEventResponsable } from "@/app/actions/weekend";
+import { setEventResponsable } from "@/app/actions/period";
 
 const IconPerson = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">

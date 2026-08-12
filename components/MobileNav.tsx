@@ -10,7 +10,7 @@ import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 const ITEMS = [
   {
     href: "/",
-    label: "Finde",
+    label: "Período",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M3 10.5 12 4l9 6.5" /><path d="M5 9.5V20h14V9.5" />

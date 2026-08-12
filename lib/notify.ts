@@ -22,7 +22,7 @@ export type ChangeKind =
   | "LUGAR"
   | "FECHA"
   | "INVITADOS"
-  | "FINDE";
+  | "PERIODO";
 
 export type OrderChangeInput = {
   itemName: string;

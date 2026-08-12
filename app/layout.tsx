@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Didier Stamatti — Stock y Pedidos",
-  description: "Control de stock y armado de pedidos por fin de semana",
+  description: "Control de stock y armado de pedidos por período operativo",
   // Para que iPhone/Android la reconozcan como app instalable.
   applicationName: "Didier Stamatti",
   appleWebApp: { capable: true, title: "Didier Stamatti", statusBarStyle: "default" },

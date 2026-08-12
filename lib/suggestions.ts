@@ -78,10 +78,13 @@ export const LIMITS = {
  */
 export function screenLabel(path: string): string {
   if (!path) return "Desconocida";
-  if (path === "/") return "Fin de semana";
+  if (path === "/") return "Períodos";
   if (/^\/evento\/[^/]+\/pdf/.test(path)) return "Hoja para imprimir";
   if (/^\/evento\/[^/]+$/.test(path)) return "Pedido de un evento";
-  if (/^\/finde\//.test(path)) return "Resumen del depósito";
+  // Se aceptan las dos rutas a propósito: la pantalla se mudó de /finde/ a
+  // /periodo/, pero las sugerencias ya enviadas guardaron la ruta vieja y tienen
+  // que seguir diciendo de dónde salieron.
+  if (/^\/(periodo|finde)\//.test(path)) return "Resumen del depósito";
   if (path.startsWith("/inventario")) return "Inventario";
   if (path.startsWith("/historial")) return "Historial";
   if (path.startsWith("/notificaciones")) return "Avisos";

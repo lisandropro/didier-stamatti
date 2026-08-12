@@ -8,7 +8,7 @@ import { computeShortage } from "@/lib/shortage-rule";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditEventModal } from "@/components/EditEventModal";
 import { ResponsableEditor } from "@/components/ResponsableEditor";
-import { setEventStatus } from "@/app/actions/weekend";
+import { setEventStatus } from "@/app/actions/period";
 
 type ProductRow = {
   id: string;
@@ -23,7 +23,7 @@ type ProductRow = {
   note: string;
 };
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
-type SourceEvent = { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number };
+type SourceEvent = { id: string; lugar: string; dateLabel: string; periodLabel: string; lineCount: number };
 type Data = {
   event: {
     id: string;
@@ -33,7 +33,7 @@ type Data = {
     responsable: string | null;
     dateLocal: string;
     guests: number;
-    findeLabel: string;
+    periodoLabel: string;
   };
   products: ProductRow[];
   customLines: CustomLine[];
@@ -319,7 +319,7 @@ export function OrderBuilder({ data }: { data: Data }) {
 
         <div className="hint">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
-          Lo vacío no va en el pedido. “Otros eventos” es lo que ya pidieron los demás eventos de este fin de semana del mismo depósito.
+          Lo vacío no va en el pedido. “Otros eventos” es lo que ya pidieron los demás eventos de este período del mismo depósito.
         </div>
       </div>
 
@@ -345,7 +345,7 @@ export function OrderBuilder({ data }: { data: Data }) {
             lugar: data.event.lugar,
             dateLocal: data.event.dateLocal,
             guests: data.event.guests,
-            findeLabel: data.event.findeLabel,
+            periodoLabel: data.event.periodoLabel,
           }}
           onClose={() => setShowEdit(false)}
           onSaved={() => setShowEdit(false)}
@@ -388,7 +388,7 @@ function CopyOrderModal({
 
   const q = norm(query.trim());
   const list = q
-    ? sourceEvents.filter((e) => norm(`${e.lugar} ${e.weekendLabel}`).includes(q))
+    ? sourceEvents.filter((e) => norm(`${e.lugar} ${e.periodLabel}`).includes(q))
     : sourceEvents;
 
   return (
@@ -420,14 +420,14 @@ function CopyOrderModal({
               <>
                 <label className="search" style={{ marginBottom: "var(--sp-3)" }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
-                  <input placeholder="Buscar por lugar o fin de semana…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                  <input placeholder="Buscar por lugar o período…" value={query} onChange={(e) => setQuery(e.target.value)} />
                 </label>
                 <div className="copy-list">
                   {list.map((e) => (
                     <button key={e.id} className="copy-row" onClick={() => setSelected(e)}>
                       <div>
                         <div className="copy-lugar">{e.lugar}</div>
-                        <div className="copy-meta">{e.weekendLabel} · {e.dateLabel}</div>
+                        <div className="copy-meta">{e.periodLabel} · {e.dateLabel}</div>
                       </div>
                       <span className="chip neutral">{e.lineCount} prod.</span>
                     </button>

@@ -4,15 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  createWeekend,
+  createPeriod,
   createEvent,
-  deleteWeekend,
+  deletePeriod,
   deleteEvent,
-  restoreWeekend,
+  restorePeriod,
   restoreEvent,
-} from "@/app/actions/weekend";
-import { saveWeekendSnapshot, discardWeekendChanges, restoreWeekendVersion } from "@/app/actions/snapshot";
+} from "@/app/actions/period";
+import { savePeriodSnapshot, discardPeriodChanges, restorePeriodVersion } from "@/app/actions/snapshot";
 import { ShortagesModal } from "@/components/ShortagesModal";
+import { EditPeriodModal } from "@/components/EditPeriodModal";
 
 type EventItem = {
   id: string;
@@ -25,10 +26,14 @@ type EventItem = {
   shortageCount: number;
 };
 type HubData = {
-  weekends: { id: string; label: string; rangeLabel: string; eventCount: number }[];
+  periodos: { id: string; label: string; rangeLabel: string; eventCount: number }[];
   selected: {
     id: string;
     label: string;
+    /** El nombre propio, vacío si se muestra por el rango. */
+    labelPropio: string;
+    startDay: string;
+    endDay: string;
     rangeLabel: string;
     isPast: boolean;
     snapshotTakenAt: string | null;
@@ -44,9 +49,9 @@ type HubData = {
    *  mira no se le ofrece "armar" nada. */
   canEdit: boolean;
   trash: {
-    weekends: { id: string; label: string; rangeLabel: string; eventCount: number; deletedLabel: string }[];
-    events: { id: string; lugar: string; dateLabel: string; weekendLabel: string; lineCount: number; deletedLabel: string }[];
-    versions: { id: string; weekendLabel: string; kind: string; lineCount: number; actorName: string; atLabel: string }[];
+    periodos: { id: string; label: string; rangeLabel: string; eventCount: number; deletedLabel: string }[];
+    events: { id: string; lugar: string; dateLabel: string; periodLabel: string; lineCount: number; deletedLabel: string }[];
+    versions: { id: string; periodLabel: string; kind: string; lineCount: number; actorName: string; atLabel: string }[];
   };
 };
 
@@ -77,28 +82,34 @@ const IconList = (
 const IconHistory = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /><path d="M12 8v4l3 2" /></svg>
 );
+const IconEdit = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);
 const IconUndo = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-1" /></svg>
 );
 
-export function WeekendHub({ data }: { data: HubData }) {
+export function PeriodHub({ data }: { data: HubData }) {
   const router = useRouter();
-  const [showWeekend, setShowWeekend] = useState(false);
+  const [showPeriodo, setShowPeriodo] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showEditPeriodo, setShowEditPeriodo] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
   const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
-  const { selected, weekends, alert, trash, canManage, canEdit } = data;
-  const trashCount = trash.weekends.length + trash.events.length + trash.versions.length;
+  const { selected, periodos, alert, trash, canManage, canEdit } = data;
+  const trashCount = trash.periodos.length + trash.events.length + trash.versions.length;
 
   async function updateSnapshot() {
     if (!selected) return;
     setSavingSnapshot(true);
-    await saveWeekendSnapshot(selected.id);
+    await savePeriodSnapshot(selected.id);
     setSavingSnapshot(false);
     router.refresh();
   }
@@ -107,22 +118,22 @@ export function WeekendHub({ data }: { data: HubData }) {
     <>
       <div className="topbar">
         <div>
-          <h1>{selected ? selected.label : "Fin de semana"}</h1>
+          <h1>{selected ? selected.label : "Período"}</h1>
           <div className="sub">
             {selected
               ? `${selected.rangeLabel} · ${selected.events.length} ${selected.events.length === 1 ? "evento" : "eventos"}`
-              : "Creá tu primer fin de semana para empezar"}
+              : "Creá tu primer período operativo para empezar"}
           </div>
         </div>
         <div className="spacer" />
-        {weekends.length > 1 && selected && (
+        {periodos.length > 1 && selected && (
           <select
             className="wk-select"
             value={selected.id}
             onChange={(e) => router.push(`/?w=${e.target.value}`)}
-            aria-label="Elegir fin de semana"
+            aria-label="Elegir período"
           >
-            {weekends.map((w) => (
+            {periodos.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.label} ({w.eventCount})
               </option>
@@ -130,8 +141,8 @@ export function WeekendHub({ data }: { data: HubData }) {
           </select>
         )}
         {canManage && (
-          <button className="btn ghost" onClick={() => setShowWeekend(true)}>
-            {IconPlus} Nuevo fin de semana
+          <button className="btn ghost" onClick={() => setShowPeriodo(true)}>
+            {IconPlus} Nuevo período
           </button>
         )}
         {canManage && selected && (
@@ -145,7 +156,12 @@ export function WeekendHub({ data }: { data: HubData }) {
           </button>
         )}
         {canManage && selected && (
-          <button className="btn btn-del" onClick={() => setShowDelete(true)} title="Borrar fin de semana">
+          <button className="btn ghost" onClick={() => setShowEditPeriodo(true)} title="Editar las fechas o el nombre">
+            {IconEdit} Editar período
+          </button>
+        )}
+        {canManage && selected && (
+          <button className="btn btn-del" onClick={() => setShowDelete(true)} title="Borrar período">
             {IconTrash} Borrar
           </button>
         )}
@@ -156,7 +172,7 @@ export function WeekendHub({ data }: { data: HubData }) {
           <div className="snapshot-bar">
             {IconHistory}
             <span>
-              Este fin de semana ya pasó · Versión guardada{" "}
+              Este período ya pasó · Versión guardada{" "}
               {selected.snapshotTakenAt ? <b>{selected.snapshotTakenAt}</b> : "…"}
             </span>
             <span className="spacer" />
@@ -174,11 +190,11 @@ export function WeekendHub({ data }: { data: HubData }) {
         )}
         {!selected ? (
           <div className="empty-card">
-            <p className="empty-title">Todavía no hay fines de semana</p>
-            <p>{canManage ? "Creá un fin de semana y empezá a cargar sus eventos y pedidos." : "Cuando el equipo cree uno, lo vas a ver acá."}</p>
+            <p className="empty-title">Todavía no hay períodos</p>
+            <p>{canManage ? "Creá un período y empezá a cargar sus eventos y pedidos." : "Cuando el equipo cree uno, lo vas a ver acá."}</p>
             {canManage && (
-              <button className="btn primary" onClick={() => setShowWeekend(true)}>
-                {IconPlus} Crear fin de semana
+              <button className="btn primary" onClick={() => setShowPeriodo(true)}>
+                {IconPlus} Crear período
               </button>
             )}
           </div>
@@ -216,7 +232,7 @@ export function WeekendHub({ data }: { data: HubData }) {
               <div className="banner ok">
                 {IconCheck}
                 <div>
-                  <b>Todo alcanza para este fin de semana</b>
+                  <b>Todo alcanza para este período</b>
                   <p>Ningún producto se pasa del stock disponible.</p>
                 </div>
               </div>
@@ -226,7 +242,7 @@ export function WeekendHub({ data }: { data: HubData }) {
               Eventos <span className="count-pill">{selected.events.length}</span>
               <span className="spacer" style={{ flex: 1 }} />
               {selected.events.length > 0 && (
-                <Link className="btn ghost" href={`/finde/${selected.id}`}>
+                <Link className="btn ghost" href={`/periodo/${selected.id}`}>
                   {IconList} Resumen del depósito
                 </Link>
               )}
@@ -234,7 +250,7 @@ export function WeekendHub({ data }: { data: HubData }) {
 
             {selected.events.length === 0 ? (
               <div className="empty-card">
-                <p className="empty-title">Este fin de semana no tiene eventos todavía</p>
+                <p className="empty-title">Este período no tiene eventos todavía</p>
                 <button className="btn primary" onClick={() => setShowEvent(true)}>{IconPlus} Agregar evento</button>
               </div>
             ) : (
@@ -302,19 +318,18 @@ export function WeekendHub({ data }: { data: HubData }) {
         )}
       </div>
 
-      {showWeekend && (
-        <NewWeekendModal
-          onClose={() => setShowWeekend(false)}
+      {showPeriodo && (
+        <NewPeriodModal
+          onClose={() => setShowPeriodo(false)}
           onCreated={(id) => {
-            setShowWeekend(false);
+            setShowPeriodo(false);
             router.push(`/?w=${id}`);
             router.refresh();
           }}
         />
       )}
-      {showEvent && selected && (
+      {showEvent && (
         <NewEventModal
-          weekendId={selected.id}
           onClose={() => setShowEvent(false)}
           onCreated={() => {
             setShowEvent(false);
@@ -322,8 +337,18 @@ export function WeekendHub({ data }: { data: HubData }) {
           }}
         />
       )}
+      {showEditPeriodo && selected && (
+        <EditPeriodModal
+          periodo={selected}
+          onClose={() => setShowEditPeriodo(false)}
+          onSaved={() => {
+            setShowEditPeriodo(false);
+            router.refresh();
+          }}
+        />
+      )}
       {showDelete && selected && (
-        <ConfirmDeleteWeekend
+        <ConfirmDeletePeriod
           id={selected.id}
           label={selected.label}
           eventCount={selected.events.length}
@@ -370,9 +395,9 @@ export function WeekendHub({ data }: { data: HubData }) {
         <TrashModal
           trash={trash}
           onClose={() => setShowTrash(false)}
-          onRestored={(weekendId) => {
+          onRestored={(periodId) => {
             setShowTrash(false);
-            if (weekendId) router.push(`/?w=${weekendId}`);
+            if (periodId) router.push(`/?w=${periodId}`);
             router.refresh();
           }}
         />
@@ -410,7 +435,7 @@ function ConfirmDeleteEvent({
           {event.lineCount > 0
             ? `Se va a la papelera junto con sus ${event.lineCount} producto${event.lineCount > 1 ? "s" : ""} del pedido.`
             : "Todavía no tiene pedido cargado."}{" "}
-          El resto del fin de semana no se toca, y lo podés recuperar desde la papelera.
+          El resto del período no se toca, y lo podés recuperar desde la papelera.
         </p>
         {err && <div className="form-error">{err}</div>}
         <div className="modal-actions">
@@ -431,23 +456,23 @@ function TrashModal({
 }: {
   trash: HubData["trash"];
   onClose: () => void;
-  onRestored: (weekendId?: string) => void;
+  onRestored: (periodId?: string) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  async function recuperar(kind: "weekend" | "event" | "version", id: string) {
+  async function recuperar(kind: "period" | "event" | "version", id: string) {
     setBusy(id);
     setErr(null);
     // Recuperar un finde o un evento lleva al finde recuperado; restaurar una
     // versión de pedidos deja donde estás, porque el finde no se movió.
     if (kind === "version") {
-      const res = await restoreWeekendVersion(id);
+      const res = await restorePeriodVersion(id);
       setBusy(null);
       if (!res.ok) return setErr(res.error ?? "No se pudo restaurar.");
       return onRestored();
     }
-    const res = kind === "weekend" ? await restoreWeekend(id) : await restoreEvent(id);
+    const res = kind === "period" ? await restorePeriod(id) : await restoreEvent(id);
     setBusy(null);
     if (!res.ok) return setErr(res.error ?? "No se pudo recuperar.");
     onRestored(res.id);
@@ -463,15 +488,15 @@ Nada se borra del todo. Recuperá lo que necesites y vuelve con sus pedidos como
         {err && <div className="form-error">{err}</div>}
 
         <div className="trash-list">
-          {trash.weekends.map((w) => (
+          {trash.periodos.map((w) => (
             <div className="trash-item" key={w.id}>
               <div>
                 <b>{w.label}</b>
                 <div className="trash-meta">
-                  Fin de semana · {w.rangeLabel} · {w.eventCount} {w.eventCount === 1 ? "evento" : "eventos"} · borrado el {w.deletedLabel}
+                  Período · {w.rangeLabel} · {w.eventCount} {w.eventCount === 1 ? "evento" : "eventos"} · borrado el {w.deletedLabel}
                 </div>
               </div>
-              <button className="btn ghost" onClick={() => recuperar("weekend", w.id)} disabled={busy === w.id}>
+              <button className="btn ghost" onClick={() => recuperar("period", w.id)} disabled={busy === w.id}>
                 {IconUndo} {busy === w.id ? "Recuperando…" : "Recuperar"}
               </button>
             </div>
@@ -481,7 +506,7 @@ Nada se borra del todo. Recuperá lo que necesites y vuelve con sus pedidos como
               <div>
                 <b>{e.lugar}</b>
                 <div className="trash-meta">
-                  Evento de {e.weekendLabel} · {e.dateLabel} ·{" "}
+                  Evento de {e.periodLabel} · {e.dateLabel} ·{" "}
                   {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""}` : "sin pedido"} · borrado el {e.deletedLabel}
                 </div>
               </div>
@@ -493,7 +518,7 @@ Nada se borra del todo. Recuperá lo que necesites y vuelve con sus pedidos como
           {trash.versions.map((v) => (
             <div className="trash-item" key={v.id}>
               <div>
-                <b>Pedidos de {v.weekendLabel}</b>
+                <b>Pedidos de {v.periodLabel}</b>
                 <div className="trash-meta">
                   {v.kind === "PRE_DESCARTE" ? "Antes de descartar cambios" : "Antes de restaurar otra versión"} ·{" "}
                   {v.lineCount} {v.lineCount === 1 ? "producto" : "productos"} · {v.actorName} · {v.atLabel}
@@ -537,7 +562,7 @@ function ConfirmDiscardChanges({
   async function confirm() {
     setSaving(true);
     setError(null);
-    const res = await discardWeekendChanges(id);
+    const res = await discardPeriodChanges(id);
     setSaving(false);
     if (res.ok) onDiscarded();
     else setError(res.error ?? "No se pudo descartar los cambios.");
@@ -554,11 +579,11 @@ function ConfirmDiscardChanges({
           </p>
           <p>
             <b>Qué se reemplaza:</b> los {currentLines} {currentLines === 1 ? "producto cargado" : "productos cargados"} hoy
-            en {eventCount === 1 ? "el evento" : `los ${eventCount} eventos`} de este fin de semana, con sus cantidades y
+            en {eventCount === 1 ? "el evento" : `los ${eventCount} eventos`} de este período, con sus cantidades y
             sus notas.
           </p>
           <p>
-            <b>Qué NO se toca:</b> el fin de semana, los eventos, el stock del depósito ni el historial de movimientos.
+            <b>Qué NO se toca:</b> el período, los eventos, el stock del depósito ni el historial de movimientos.
           </p>
         </div>
         <div className="banner ok" style={{ marginBottom: "var(--sp-4)" }}>
@@ -579,7 +604,7 @@ function ConfirmDiscardChanges({
   );
 }
 
-function ConfirmDeleteWeekend({
+function ConfirmDeletePeriod({
   id,
   label,
   eventCount,
@@ -598,7 +623,7 @@ function ConfirmDeleteWeekend({
   async function confirm() {
     setSaving(true);
     setError(null);
-    const res = await deleteWeekend(id);
+    const res = await deletePeriod(id);
     setSaving(false);
     if (res.ok) onDeleted();
     else setError(res.error ?? "No se pudo borrar.");
@@ -607,7 +632,7 @@ function ConfirmDeleteWeekend({
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>¿Borrar este fin de semana?</h2>
+        <h2>¿Borrar este período?</h2>
         <div className="msub">
           Se va a borrar <b>{label}</b>
           {eventCount > 0
@@ -627,45 +652,84 @@ function ConfirmDeleteWeekend({
   );
 }
 
-function NewWeekendModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+function NewPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [label, setLabel] = useState("");
-  const [startDate, setStart] = useState("");
-  const [endDate, setEnd] = useState("");
+  const [startDay, setStart] = useState("");
+  const [endDay, setEnd] = useState("");
+  const [unSoloDia, setUnSoloDia] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicado, setDuplicado] = useState<{ nombre: string } | null>(null);
 
-  async function save() {
+  const hasta = unSoloDia ? startDay : endDay;
+
+  async function save(permitirDuplicado = false) {
     setSaving(true);
     setError(null);
-    const res = await createWeekend({ label, startDate, endDate });
+    const res = await createPeriod({ label, startDay, endDay: hasta, permitirDuplicado });
     setSaving(false);
+    if (res.duplicado) return setDuplicado({ nombre: res.duplicado.nombre });
     if (res.ok && res.id) onCreated(res.id);
     else setError(res.error ?? "No se pudo crear.");
+  }
+
+  if (duplicado) {
+    return (
+      <div className="overlay" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h2>Ya existe uno igual</h2>
+          <div className="msub">
+            <b>{duplicado.nombre}</b> ya cubre exactamente esas fechas. Podés usar ese, o crear otro igual si de
+            verdad son dos grupos distintos de vajilla.
+          </div>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={onClose} disabled={saving}>Usar el que existe</button>
+            <button className="btn primary" onClick={() => save(true)} disabled={saving}>
+              {saving ? "Creando…" : "Crear otro igual"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Nuevo fin de semana</h2>
-        <div className="msub">Elegí las fechas. El nombre es opcional (si lo dejás vacío, uso las fechas).</div>
+        <h2>Nuevo período operativo</h2>
+        <div className="msub">
+          Los eventos de un período comparten la misma vajilla. Puede ser una sola jornada o los días que hagan
+          falta, cualquier día de la semana.
+        </div>
         <div className="field">
           <label>Nombre (opcional)</label>
-          <input type="text" placeholder="Ej: Finde largo de julio" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <input
+            type="text"
+            placeholder="Si lo dejás vacío, se muestran las fechas"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+          />
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <div className="field" style={{ flex: 1 }}>
             <label>Desde</label>
-            <input type="date" value={startDate} onChange={(e) => setStart(e.target.value)} autoFocus />
+            <input type="date" value={startDay} onChange={(e) => setStart(e.target.value)} autoFocus />
           </div>
-          <div className="field" style={{ flex: 1 }}>
-            <label>Hasta</label>
-            <input type="date" value={endDate} onChange={(e) => setEnd(e.target.value)} />
-          </div>
+          {!unSoloDia && (
+            <div className="field" style={{ flex: 1 }}>
+              <label>Hasta</label>
+              <input type="date" value={endDay} onChange={(e) => setEnd(e.target.value)} />
+            </div>
+          )}
         </div>
-        {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
+        <label className="check-line">
+          <input type="checkbox" checked={unSoloDia} onChange={(e) => setUnSoloDia(e.target.checked)} />
+          Es un solo día
+        </label>
+        {error && <div className="login-error">{error}</div>}
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn primary" onClick={save} disabled={saving || !startDate || !endDate}>
+          <button className="btn primary" onClick={() => save()} disabled={saving || !startDay || !hasta}>
             {saving ? "Creando…" : "Crear"}
           </button>
         </div>
@@ -674,7 +738,7 @@ function NewWeekendModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
-function NewEventModal({ weekendId, onClose, onCreated }: { weekendId: string; onClose: () => void; onCreated: () => void }) {
+function NewEventModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [lugar, setLugar] = useState("");
   const [date, setDate] = useState("");
   const [guests, setGuests] = useState("");
@@ -682,26 +746,78 @@ function NewEventModal({ weekendId, onClose, onCreated }: { weekendId: string; o
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function save() {
+  // El período no se pide: sale de la fecha, que es el dato que la persona
+  // tiene. Solo se pregunta cuando hay más de uno que la cubre, o ninguno.
+  const [elegir, setElegir] = useState<{ id: string; nombre: string; rango: string }[] | null>(null);
+  const [falta, setFalta] = useState<{ label: string } | null>(null);
+
+  async function save(opciones: { periodoElegidoId?: string; crearPeriodo?: boolean } = {}) {
     setSaving(true);
     setError(null);
     const res = await createEvent({
-      weekendId,
       lugar,
       date,
       guests: guests.trim() === "" ? 0 : Number(guests),
       responsable,
+      ...opciones,
     });
     setSaving(false);
+    if (res.elegirPeriodo) return setElegir(res.elegirPeriodo);
+    if (res.faltaPeriodo) return setFalta({ label: res.faltaPeriodo.label });
     if (res.ok) onCreated();
     else setError(res.error ?? "No se pudo crear.");
+  }
+
+  if (elegir) {
+    return (
+      <div className="overlay" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h2>¿A qué período va?</h2>
+          <div className="msub">
+            Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
+            se cuenta el pedido.
+          </div>
+          <div className="sug-list">
+            {elegir.map((p) => (
+              <button key={p.id} className="sug-row" onClick={() => save({ periodoElegidoId: p.id })} disabled={saving}>
+                <span className="sug-row-title">{p.nombre}</span>
+                <span className="sug-row-meta">{p.rango}</span>
+              </button>
+            ))}
+          </div>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setElegir(null)} disabled={saving}>Volver</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (falta) {
+    return (
+      <div className="overlay" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h2>Falta el período de esa fecha</h2>
+          <div className="msub">
+            Ningún período incluye ese día. Se puede crear <b>{falta.label}</b> y poner el evento ahí; después
+            podés estirarlo si el trabajo abarca más días.
+          </div>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setFalta(null)} disabled={saving}>Volver</button>
+            <button className="btn primary" onClick={() => save({ crearPeriodo: true })} disabled={saving}>
+              {saving ? "Creando…" : "Crear y agregar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Nuevo evento</h2>
-        <div className="msub">Cargá los datos del evento del fin de semana.</div>
+        <div className="msub">Cargá los datos del evento. El período sale de la fecha.</div>
         <div className="field">
           <label>Lugar</label>
           <input type="text" placeholder="Ej: Puerto, Salón Roble…" value={lugar} onChange={(e) => setLugar(e.target.value)} autoFocus />
@@ -723,7 +839,7 @@ function NewEventModal({ weekendId, onClose, onCreated }: { weekendId: string; o
         {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn primary" onClick={save} disabled={saving || !lugar.trim() || !date}>
+          <button className="btn primary" onClick={() => save()} disabled={saving || !lugar.trim() || !date}>
             {saving ? "Creando…" : "Crear evento"}
           </button>
         </div>

@@ -7,7 +7,7 @@ export type ShortagesResult = {
   ok: boolean;
   error?: string;
   lugar?: string;
-  weekendLabel?: string;
+  periodLabel?: string;
   rows?: ShortageRow[];
 };
 
@@ -27,5 +27,5 @@ export async function getEventShortages(eventId: string): Promise<ShortagesResul
   const data = await eventShortages(eventId);
   if (!data) return { ok: false, error: "No se encontró el evento." };
 
-  return { ok: true, lugar: data.lugar, weekendLabel: data.weekendLabel, rows: data.rows };
+  return { ok: true, lugar: data.lugar, periodLabel: data.periodLabel, rows: data.rows };
 }

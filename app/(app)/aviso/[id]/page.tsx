@@ -16,7 +16,7 @@ const KIND_LABEL: Record<string, string> = {
   LUGAR: "Nombre",
   FECHA: "Fecha",
   INVITADOS: "Invitados",
-  FINDE: "Fin de semana",
+  PERIODO: "Período",
 };
 const KIND_CLASS: Record<string, string> = {
   AGREGADO: "ok",
@@ -28,7 +28,7 @@ const KIND_CLASS: Record<string, string> = {
   LUGAR: "warn",
   FECHA: "warn",
   INVITADOS: "warn",
-  FINDE: "crit",
+  PERIODO: "crit",
 };
 
 export default async function AvisoPage({ params }: { params: Promise<{ id: string }> }) {
@@ -78,7 +78,7 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
           <div className="banner crit">
             <div>
               <b>Este evento está en la papelera</b>
-              <p>Se borró después de estos cambios. Se puede recuperar desde Fin de semana → Papelera.</p>
+              <p>Se borró después de estos cambios. Se puede recuperar desde Períodos → Papelera.</p>
             </div>
           </div>
         )}
