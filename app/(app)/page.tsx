@@ -112,6 +112,9 @@ export default async function Home({
       ? {
           id: selected.id,
           label: nombreDe(selected),
+          labelPropio: selected.label ?? "",
+          startDay: selected.startDay,
+          endDay: selected.endDay,
           rangeLabel: fmtRangoDias(selected.startDay, selected.endDay),
           isPast,
           snapshotTakenAt,

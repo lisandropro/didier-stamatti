@@ -13,6 +13,7 @@ import {
 } from "@/app/actions/period";
 import { savePeriodSnapshot, discardPeriodChanges, restorePeriodVersion } from "@/app/actions/snapshot";
 import { ShortagesModal } from "@/components/ShortagesModal";
+import { EditPeriodModal } from "@/components/EditPeriodModal";
 
 type EventItem = {
   id: string;
@@ -29,6 +30,10 @@ type HubData = {
   selected: {
     id: string;
     label: string;
+    /** El nombre propio, vacío si se muestra por el rango. */
+    labelPropio: string;
+    startDay: string;
+    endDay: string;
     rangeLabel: string;
     isPast: boolean;
     snapshotTakenAt: string | null;
@@ -77,6 +82,11 @@ const IconList = (
 const IconHistory = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /><path d="M12 8v4l3 2" /></svg>
 );
+const IconEdit = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);
 const IconUndo = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-1" /></svg>
 );
@@ -86,6 +96,7 @@ export function PeriodHub({ data }: { data: HubData }) {
   const [showPeriodo, setShowPeriodo] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showEditPeriodo, setShowEditPeriodo] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -142,6 +153,11 @@ export function PeriodHub({ data }: { data: HubData }) {
         {canManage && trashCount > 0 && (
           <button className="btn ghost" onClick={() => setShowTrash(true)} title="Recuperar algo borrado">
             {IconUndo} Papelera <span className="count-pill">{trashCount}</span>
+          </button>
+        )}
+        {canManage && selected && (
+          <button className="btn ghost" onClick={() => setShowEditPeriodo(true)} title="Editar las fechas o el nombre">
+            {IconEdit} Editar período
           </button>
         )}
         {canManage && selected && (
@@ -317,6 +333,16 @@ export function PeriodHub({ data }: { data: HubData }) {
           onClose={() => setShowEvent(false)}
           onCreated={() => {
             setShowEvent(false);
+            router.refresh();
+          }}
+        />
+      )}
+      {showEditPeriodo && selected && (
+        <EditPeriodModal
+          periodo={selected}
+          onClose={() => setShowEditPeriodo(false)}
+          onSaved={() => {
+            setShowEditPeriodo(false);
             router.refresh();
           }}
         />

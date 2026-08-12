@@ -952,3 +952,12 @@ tbody tr:hover{background:var(--surface-2)}
   .mobnav button svg{width:22px; height:22px}
   .sug-facts{grid-template-columns:1fr 1fr}
 }
+
+/* Casilla de "es un solo día" en los formularios de período. Un período de una
+   sola jornada es un caso normal, no una excepción: se ofrece en el mismo lugar
+   donde se eligen las fechas y no escondido en otra pantalla. */
+.check-line{
+  display:flex; align-items:center; gap:var(--sp-2); min-height:var(--tap);
+  font-size:var(--t-base); color:var(--ink); cursor:pointer; user-select:none;
+}
+.check-line input[type="checkbox"]{width:18px; height:18px; accent-color:var(--gold); cursor:pointer; flex:0 0 auto}
