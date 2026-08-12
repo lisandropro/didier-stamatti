@@ -157,38 +157,48 @@ model StockMovement {
   createdAt DateTime @default(now())
 }
 
-// Un fin de semana agrupa hasta ~11 eventos que comparten el mismo stock
-model Weekend {
-  id        String            @id @default(cuid())
-  label     String
-  startDate DateTime
-  endDate   DateTime
-  createdAt DateTime          @default(now())
-  // Borrar no destruye: se marca la fecha y el finde pasa a la papelera, de
+// Un período operativo agrupa los eventos que comparten la misma vajilla y el
+// mismo mobiliario. Es un rango de fechas cualquiera: puede empezar y terminar
+// cualquier día, durar una sola jornada o una semana entera.
+//
+// Antes esto se llamaba "fin de semana" y la palabra mentía: la empresa trabaja
+// todos los días, y en los datos reales ya había un período de un solo martes.
+model OperationalPeriod {
+  id        String          @id @default(cuid())
+  // Nombre opcional. Vacío = se muestra el rango de fechas. Guardar un nombre
+  // derivado de las fechas lo dejaría desactualizado apenas se editen.
+  label     String?
+  // Días de calendario "AAAA-MM-DD", NO instantes. Un período va del 17 al 19 y
+  // punto: sin hora no hay zona horaria que pueda correrlo un día.
+  startDay  String
+  endDay    String
+  createdAt DateTime        @default(now())
+  // Borrar no destruye: se marca la fecha y el período pasa a la papelera, de
   // donde se puede recuperar con sus eventos y pedidos intactos.
   deletedAt DateTime?
   events    Event[]
-  snapshot  WeekendSnapshot?
-  versions  WeekendVersion[]
+  snapshot  PeriodSnapshot?
+  versions  PeriodVersion[]
 
   @@index([deletedAt])
+  @@index([startDay, endDay])
 }
 
-// Copia recuperable de los pedidos de un finde. Se guarda ANTES de cualquier
+// Copia recuperable de los pedidos de un período. Se guarda ANTES de cualquier
 // acción que los reemplace, para que descartar cambios no sea un camino de ida.
-model WeekendVersion {
-  id         String    @id @default(cuid())
-  weekendId  String
-  weekend    Weekend   @relation(fields: [weekendId], references: [id], onDelete: Cascade)
+model PeriodVersion {
+  id         String            @id @default(cuid())
+  periodId   String
+  period     OperationalPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
   kind       String // PRE_DESCARTE | PRE_RESTAURACION
-  data       String // JSON de las líneas, mismo formato que WeekendSnapshot
-  lineCount  Int       @default(0)
+  data       String // JSON de las líneas, mismo formato que PeriodSnapshot
+  lineCount  Int               @default(0)
   actorId    String?
   actorName  String
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime          @default(now())
   restoredAt DateTime?
 
-  @@index([weekendId, createdAt])
+  @@index([periodId, createdAt])
 }
 
 // Historial de modificaciones del catálogo: qué campo, quién y con qué valores.
@@ -207,21 +217,23 @@ model ProductChange {
   @@index([productId, createdAt])
 }
 
-// "Versión guardada" (checkpoint) de los pedidos de un fin de semana ya pasado.
+// "Versión guardada" (checkpoint) de los pedidos de un período ya pasado.
 // Permite descartar cambios accidentales y volver a este estado.
-model WeekendSnapshot {
-  id        String   @id @default(cuid())
-  weekendId String   @unique
-  weekend   Weekend  @relation(fields: [weekendId], references: [id], onDelete: Cascade)
-  takenAt   DateTime @default(now())
-  data      String // JSON: [{ eventId, productId, customName, customUnit, qty, note }]
+model PeriodSnapshot {
+  id       String            @id @default(cuid())
+  periodId String            @unique
+  period   OperationalPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  takenAt  DateTime          @default(now())
+  data     String // JSON: [{ eventId, productId, customName, customUnit, qty, note }]
 }
 
 model Event {
-  id          String      @id @default(cuid())
-  weekendId   String
-  weekend     Weekend     @relation(fields: [weekendId], references: [id], onDelete: Cascade)
+  id          String            @id @default(cuid())
+  periodId    String
+  period      OperationalPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
   lugar       String
+  // Instante real: el evento tiene hora. Su día de calendario se calcula
+  // siempre en Argentina (ver lib/dates.ts), nunca con la zona del proceso.
   date        DateTime
   guests      Int         @default(0)
   responsable String?
@@ -232,7 +244,7 @@ model Event {
   lines       OrderLine[]
   changes     OrderChange[]
 
-  @@index([weekendId, deletedAt])
+  @@index([periodId, deletedAt])
 }
 
 // Una línea de pedido dentro de un evento.

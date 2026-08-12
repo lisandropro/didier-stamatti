@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/db";
-import { WeekendHub } from "@/components/WeekendHub";
-import { fmtEventDate, fmtRange, fmtDateTime, startOfToday } from "@/lib/format";
-import { ensureWeekendSnapshot } from "@/lib/snapshot";
+import { PeriodHub } from "@/components/PeriodHub";
+import { fmtEvento, fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
+import { nombreDe } from "@/lib/period-fit";
+import { ensurePeriodSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
 import { getSessionUser } from "@/lib/auth";
-import { canManageWeekends, canEditOrders } from "@/lib/permissions";
+import { canManagePeriods, canEditOrders } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,9 @@ export default async function Home({
   const session = await getSessionUser();
 
   // Lo que está en la papelera no aparece en ningún lado ni suma al stock.
-  const weekends = await prisma.weekend.findMany({
+  const periodos = await prisma.operationalPeriod.findMany({
     where: { deletedAt: null },
-    orderBy: { startDate: "desc" },
+    orderBy: { startDay: "desc" },
     include: {
       events: {
         where: { deletedAt: null },
@@ -29,12 +30,12 @@ export default async function Home({
     },
   });
 
-  const selected = weekends.find((w) => w.id === sp.w) ?? weekends[0] ?? null;
+  const selected = periodos.find((w) => w.id === sp.w) ?? periodos[0] ?? null;
 
-  const today = startOfToday();
-  // El selector de "Fin de semana" solo muestra los actuales/próximos —
+  const today = hoy();
+  // El selector de "Período" solo muestra los actuales/próximos —
   // los que ya pasaron viven en Historial (salvo el que estás mirando ahora).
-  const dropdownWeekends = weekends.filter((w) => w.endDate >= today || w.id === selected?.id);
+  const periodosDelSelector = periodos.filter((w) => w.endDay >= today || w.id === selected?.id);
 
   // Aviso de stock: suma de cada reutilizable entre todos los eventos del finde
   const overProducts: { name: string; total: number; stock: number }[] = [];
@@ -46,11 +47,11 @@ export default async function Home({
   let faltantesPorEvento = new Map<string, number>();
 
   if (selected) {
-    isPast = selected.endDate < today;
+    isPast = selected.endDay < today;
     faltantesPorEvento = await shortageCountByEvent(selected.id);
 
     const lines = await prisma.orderLine.findMany({
-      where: { event: { weekendId: selected.id, deletedAt: null } },
+      where: { event: { periodId: selected.id, deletedAt: null } },
       select: { productId: true, qty: true },
     });
     const totals = new Map<string, number>();
@@ -71,14 +72,14 @@ export default async function Home({
 
     if (isPast) {
       // Primera vez que se ve este finde ya pasado: se guarda un resguardo automático.
-      const snap = await ensureWeekendSnapshot(selected.id);
-      snapshotTakenAt = fmtDateTime(snap.takenAt);
+      const snap = await ensurePeriodSnapshot(selected.id);
+      snapshotTakenAt = fmtMomento(snap.takenAt);
     }
   }
 
   // Papelera: lo borrado sigue existiendo hasta que alguien lo recupere.
-  const [trashedWeekends, trashedEvents, versions] = await Promise.all([
-    prisma.weekend.findMany({
+  const [periodosBorrados, trashedEvents, versions] = await Promise.all([
+    prisma.operationalPeriod.findMany({
       where: { deletedAt: { not: null } },
       orderBy: { deletedAt: "desc" },
       take: 20,
@@ -88,36 +89,36 @@ export default async function Home({
       where: { deletedAt: { not: null } },
       orderBy: { deletedAt: "desc" },
       take: 20,
-      include: { _count: { select: { lines: true } }, weekend: { select: { label: true } } },
+      include: { _count: { select: { lines: true } }, period: { select: { label: true, startDay: true, endDay: true } } },
     }),
     // Copias guardadas antes de descartar o restaurar pedidos. Se muestran las
     // que todavía nadie usó para volver atrás.
-    prisma.weekendVersion.findMany({
-      where: { restoredAt: null, weekend: { deletedAt: null } },
+    prisma.periodVersion.findMany({
+      where: { restoredAt: null, period: { deletedAt: null } },
       orderBy: { createdAt: "desc" },
       take: 10,
-      include: { weekend: { select: { label: true } } },
+      include: { period: { select: { label: true, startDay: true, endDay: true } } },
     }),
   ]);
 
   const data = {
-    weekends: dropdownWeekends.map((w) => ({
+    periodos: periodosDelSelector.map((w) => ({
       id: w.id,
-      label: w.label,
-      rangeLabel: fmtRange(w.startDate, w.endDate),
+      label: nombreDe(w),
+      rangeLabel: fmtRangoDias(w.startDay, w.endDay),
       eventCount: w.events.length,
     })),
     selected: selected
       ? {
           id: selected.id,
-          label: selected.label,
-          rangeLabel: fmtRange(selected.startDate, selected.endDate),
+          label: nombreDe(selected),
+          rangeLabel: fmtRangoDias(selected.startDay, selected.endDay),
           isPast,
           snapshotTakenAt,
           events: selected.events.map((e) => ({
             id: e.id,
             lugar: e.lugar,
-            dateLabel: fmtEventDate(e.date),
+            dateLabel: fmtEvento(e.date),
             guests: e.guests,
             responsable: e.responsable,
             status: e.status,
@@ -127,34 +128,34 @@ export default async function Home({
         }
       : null,
     alert: { overProducts, okCount, totalReut },
-    canManage: canManageWeekends(session?.role ?? ""),
+    canManage: canManagePeriods(session?.role ?? ""),
     canEdit: canEditOrders(session?.role ?? ""),
     trash: {
-      weekends: trashedWeekends.map((w) => ({
+      periodos: periodosBorrados.map((w) => ({
         id: w.id,
-        label: w.label,
-        rangeLabel: fmtRange(w.startDate, w.endDate),
+        label: nombreDe(w),
+        rangeLabel: fmtRangoDias(w.startDay, w.endDay),
         eventCount: w._count.events,
-        deletedLabel: fmtDateTime(w.deletedAt!),
+        deletedLabel: fmtMomento(w.deletedAt!),
       })),
       events: trashedEvents.map((e) => ({
         id: e.id,
         lugar: e.lugar,
-        dateLabel: fmtEventDate(e.date),
-        weekendLabel: e.weekend.label,
+        dateLabel: fmtEvento(e.date),
+        periodLabel: nombreDe(e.period),
         lineCount: e._count.lines,
-        deletedLabel: fmtDateTime(e.deletedAt!),
+        deletedLabel: fmtMomento(e.deletedAt!),
       })),
       versions: versions.map((v) => ({
         id: v.id,
-        weekendLabel: v.weekend.label,
+        periodLabel: nombreDe(v.period),
         kind: v.kind,
         lineCount: v.lineCount,
         actorName: v.actorName,
-        atLabel: fmtDateTime(v.createdAt),
+        atLabel: fmtMomento(v.createdAt),
       })),
     },
   };
 
-  return <WeekendHub data={data} />;
+  return <PeriodHub data={data} />;
 }

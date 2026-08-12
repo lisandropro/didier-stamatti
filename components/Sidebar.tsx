@@ -42,7 +42,7 @@ const ICONS = {
 };
 
 const NAV = [
-  { href: "/", label: "Fin de semana", icon: ICONS.finde },
+  { href: "/", label: "Período", icon: ICONS.finde },
   { href: "/inventario", label: "Inventario", icon: ICONS.inventario },
   { href: "/historial", label: "Historial", icon: ICONS.historial },
   { href: "/notificaciones", label: "Avisos", icon: ICONS.avisos },

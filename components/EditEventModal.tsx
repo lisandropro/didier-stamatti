@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { updateEvent } from "@/app/actions/weekend";
+import { updateEvent } from "@/app/actions/period";
 
 /**
  * Corregir el nombre, la fecha y los invitados de un evento que ya tiene el
@@ -10,7 +10,7 @@ import { updateEvent } from "@/app/actions/weekend";
  *
  * Dos pasos a propósito: primero se edita, después se muestra **qué va a
  * cambiar** y recién ahí se guarda. Cambiar la fecha puede mudar el evento a
- * otro fin de semana, y eso mueve de lugar lo que cuenta contra el stock de
+ * otro período, y eso mueve de lugar lo que cuenta contra el stock de
  * cada uno: no es algo para que pase sin que la persona lo haya leído.
  *
  * El pedido no se toca. Las líneas cuelgan del evento, no de su nombre ni de su
@@ -21,7 +21,7 @@ export function EditEventModal({
   onClose,
   onSaved,
 }: {
-  evento: { id: string; lugar: string; dateLocal: string; guests: number; findeLabel: string };
+  evento: { id: string; lugar: string; dateLocal: string; guests: number; periodoLabel: string };
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -33,7 +33,8 @@ export function EditEventModal({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Cuando la fecha nueva no cae en ningún finde existente.
-  const [findeAFaltar, setFindeAFaltar] = useState<{ label: string } | null>(null);
+  const [faltaPeriodo, setFaltaPeriodo] = useState<{ label: string } | null>(null);
+  const [elegir, setElegir] = useState<{ id: string; nombre: string; rango: string }[] | null>(null);
 
   const invitados = Math.max(0, Math.round(Number(guests) || 0));
   const cambios: { campo: string; antes: string; ahora: string }[] = [];
@@ -47,44 +48,75 @@ export function EditEventModal({
     cambios.push({ campo: "Invitados", antes: String(evento.guests), ahora: String(invitados) });
   }
 
-  async function guardar(crearFinde = false) {
+  async function guardar(opciones: { crearPeriodo?: boolean; periodoElegidoId?: string } = {}) {
     if (guardando) return;
     setGuardando(true);
     setError(null);
-    const r = await updateEvent({ eventId: evento.id, lugar, date, guests: invitados, crearFinde });
+    const r = await updateEvent({ eventId: evento.id, lugar, date, guests: invitados, ...opciones });
     setGuardando(false);
 
-    if (r.faltaFinde) {
-      // No existe un finde para esa fecha: se pregunta antes de crear uno.
-      setFindeAFaltar({ label: r.faltaFinde.label });
-      return;
-    }
+    if (r.elegirPeriodo) return setElegir(r.elegirPeriodo);
+    if (r.faltaPeriodo) return setFaltaPeriodo({ label: r.faltaPeriodo.label });
     if (!r.ok) {
       setError(r.error ?? "No se pudo guardar.");
-      setFindeAFaltar(null);
+      setFaltaPeriodo(null);
       return;
     }
     router.refresh();
     onSaved();
   }
 
-  // --- Falta el fin de semana: se pide permiso para crearlo -------------------
-  if (findeAFaltar) {
+  // --- Falta el período: se pide permiso para crearlo -------------------
+  if (faltaPeriodo) {
     return (
       <div className="overlay" onClick={onClose}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <h2>Falta ese fin de semana</h2>
+          <h2>Falta el período de esa fecha</h2>
           <div className="msub">
-            No hay ningún fin de semana que incluya la fecha nueva. Se puede crear{" "}
-            <b>{findeAFaltar.label}</b> y mover el evento ahí, con su pedido entero.
+            Ningún período incluye la fecha nueva. Se puede crear <b>{faltaPeriodo.label}</b> y mover el evento
+            ahí, con su pedido entero.
           </div>
           {error && <div className="login-error">{error}</div>}
           <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setFindeAFaltar(null)} disabled={guardando}>
+            <button className="btn ghost" onClick={() => setFaltaPeriodo(null)} disabled={guardando}>
               Volver
             </button>
-            <button className="btn primary" onClick={() => guardar(true)} disabled={guardando}>
+            <button className="btn primary" onClick={() => guardar({ crearPeriodo: true })} disabled={guardando}>
               {guardando ? "Guardando…" : "Crear y mover"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Varios períodos cubren la fecha: elige la persona ----------------------
+  if (elegir) {
+    return (
+      <div className="overlay" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h2>¿A qué período va?</h2>
+          <div className="msub">
+            Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
+            se cuenta el pedido.
+          </div>
+          <div className="sug-list">
+            {elegir.map((p) => (
+              <button
+                key={p.id}
+                className="sug-row"
+                disabled={guardando}
+                onClick={() => guardar({ periodoElegidoId: p.id })}
+              >
+                <span className="sug-row-title">{p.nombre}</span>
+                <span className="sug-row-meta">{p.rango}</span>
+              </button>
+            ))}
+          </div>
+          {error && <div className="login-error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setElegir(null)} disabled={guardando}>
+              Volver
             </button>
           </div>
         </div>
@@ -141,8 +173,8 @@ export function EditEventModal({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Editar evento</h2>
         <div className="msub">
-          Corregí los datos del evento. Está en <b>{evento.findeLabel}</b>; si cambiás la fecha a otro fin de
-          semana, se muda solo con todo su pedido.
+          Corregí los datos del evento. Está en <b>{evento.periodoLabel}</b>; si la fecha nueva cae en otro
+          período, se muda con todo su pedido.
         </div>
         <div className="field">
           <label htmlFor="ev-lugar">Lugar</label>

@@ -78,7 +78,7 @@ export const LIMITS = {
  */
 export function screenLabel(path: string): string {
   if (!path) return "Desconocida";
-  if (path === "/") return "Fin de semana";
+  if (path === "/") return "Períodos";
   if (/^\/evento\/[^/]+\/pdf/.test(path)) return "Hoja para imprimir";
   if (/^\/evento\/[^/]+$/.test(path)) return "Pedido de un evento";
   if (/^\/finde\//.test(path)) return "Resumen del depósito";

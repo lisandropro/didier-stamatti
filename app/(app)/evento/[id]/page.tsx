@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
-import { fmtEventDate, toDatetimeLocal } from "@/lib/format";
+import { fmtEvento, aLocal } from "@/lib/dates";
+import { nombreDe } from "@/lib/period-fit";
 import { OrderBuilder } from "@/components/OrderBuilder";
 import { OrderReadOnly } from "@/components/OrderReadOnly";
 import { getSessionUser } from "@/lib/auth";
@@ -20,7 +21,7 @@ export default async function EventoPage({
   if (!session) redirect("/login");
 
   const { id } = await params;
-  const ev = await prisma.event.findUnique({ where: { id }, include: { weekend: { select: { label: true } } } });
+  const ev = await prisma.event.findUnique({ where: { id }, include: { period: { select: { label: true, startDay: true, endDay: true } } } });
   // Un evento en la papelera no se puede abrir ni editar.
   if (!ev || ev.deletedAt) notFound();
 
@@ -35,9 +36,9 @@ export default async function EventoPage({
   const myLines = await prisma.orderLine.findMany({ where: { eventId: id } });
   const mine = new Map(myLines.filter((l) => l.productId).map((l) => [l.productId as string, l]));
 
-  // Reservado por los OTROS eventos del mismo fin de semana
+  // Reservado por los OTROS eventos del mismo período
   const otherLines = await prisma.orderLine.findMany({
-    where: { event: { weekendId: ev.weekendId, deletedAt: null }, eventId: { not: id } },
+    where: { event: { periodId: ev.periodId, deletedAt: null }, eventId: { not: id } },
     select: { productId: true, qty: true },
   });
   const reserved = new Map<string, number>();
@@ -52,7 +53,7 @@ export default async function EventoPage({
     take: 40,
     include: {
       _count: { select: { lines: true } },
-      weekend: { select: { label: true } },
+      period: { select: { label: true, startDay: true, endDay: true } },
     },
   });
 
@@ -60,13 +61,13 @@ export default async function EventoPage({
     event: {
       id: ev.id,
       lugar: ev.lugar,
-      subLabel: `${fmtEventDate(ev.date)} · ${ev.guests} invitados${ev.responsable ? ` · ${ev.responsable}` : ""}`,
+      subLabel: `${fmtEvento(ev.date)} · ${ev.guests} invitados${ev.responsable ? ` · ${ev.responsable}` : ""}`,
       status: ev.status,
       responsable: ev.responsable,
       // Para el formulario de corregir el evento.
-      dateLocal: toDatetimeLocal(ev.date),
+      dateLocal: aLocal(ev.date),
       guests: ev.guests,
-      findeLabel: ev.weekend.label,
+      periodoLabel: nombreDe(ev.period),
     },
     products: products.map((p) => ({
       id: p.id,
@@ -93,8 +94,8 @@ export default async function EventoPage({
     sourceEvents: sourceEventsRaw.map((e) => ({
       id: e.id,
       lugar: e.lugar,
-      dateLabel: fmtEventDate(e.date),
-      weekendLabel: e.weekend.label,
+      dateLabel: fmtEvento(e.date),
+      periodLabel: nombreDe(e.period),
       lineCount: e._count.lines,
     })),
   };

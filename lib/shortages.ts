@@ -1,18 +1,19 @@
 import { prisma } from "@/lib/db";
 import { computeShortage, type ShortageRow } from "@/lib/shortage-rule";
+import { nombreDe } from "@/lib/period-fit";
 
 export { computeShortage };
 export type { ShortageRow };
 
-type LineaFinde = { eventId: string; productId: string | null; qty: number };
+type LineaPeriodo = { eventId: string; productId: string | null; qty: number };
 
 /** Trae, de una sola vez, las líneas de catálogo de todos los eventos vivos de
  *  un finde y los productos involucrados. Base común de las dos funciones. */
-async function cargarFinde(weekendId: string) {
+async function cargarPeriodo(periodId: string) {
   const lines = (await prisma.orderLine.findMany({
-    where: { event: { weekendId, deletedAt: null }, productId: { not: null } },
+    where: { event: { periodId, deletedAt: null }, productId: { not: null } },
     select: { eventId: true, productId: true, qty: true },
-  })) as LineaFinde[];
+  })) as LineaPeriodo[];
 
   const productIds = [...new Set(lines.map((l) => l.productId!).filter(Boolean))];
   const products = await prisma.product.findMany({
@@ -32,8 +33,8 @@ async function cargarFinde(weekendId: string) {
 
 /** Cuántos productos le faltan a cada evento del finde. Se usa en la vista
  *  general para saber en qué tarjetas mostrar el aviso, sin abrir cada pedido. */
-export async function shortageCountByEvent(weekendId: string): Promise<Map<string, number>> {
-  const { lines, products, totalPorProducto } = await cargarFinde(weekendId);
+export async function shortageCountByEvent(periodId: string): Promise<Map<string, number>> {
+  const { lines, products, totalPorProducto } = await cargarPeriodo(periodId);
   const porId = new Map(products.map((p) => [p.id, p]));
 
   // Lo que pide cada evento de cada producto.
@@ -62,17 +63,17 @@ export async function shortageCountByEvent(weekendId: string): Promise<Map<strin
 /** El detalle de los faltantes de un evento. Solo lee. */
 export async function eventShortages(eventId: string): Promise<{
   lugar: string;
-  weekendLabel: string;
+  periodLabel: string;
   rows: ShortageRow[];
 } | null> {
   const ev = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { id: true, lugar: true, weekendId: true, deletedAt: true, weekend: { select: { label: true, deletedAt: true } } },
+    select: { id: true, lugar: true, periodId: true, deletedAt: true, period: { select: { label: true, startDay: true, endDay: true, deletedAt: true } } },
   });
   // Un evento (o un finde) en la papelera no se consulta.
-  if (!ev || ev.deletedAt || ev.weekend.deletedAt) return null;
+  if (!ev || ev.deletedAt || ev.period.deletedAt) return null;
 
-  const { lines, products, totalPorProducto } = await cargarFinde(ev.weekendId);
+  const { lines, products, totalPorProducto } = await cargarPeriodo(ev.periodId);
   const porId = new Map(products.map((p) => [p.id, p]));
 
   const pedido = new Map<string, number>();
@@ -92,5 +93,5 @@ export async function eventShortages(eventId: string): Promise<{
 
   // Primero lo que más falta.
   rows.sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name));
-  return { lugar: ev.lugar, weekendLabel: ev.weekend.label, rows };
+  return { lugar: ev.lugar, periodLabel: nombreDe(ev.period), rows };
 }

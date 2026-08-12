@@ -23,7 +23,7 @@ export function ShortagesModal({
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<ShortageRow[] | null>(null);
-  const [weekendLabel, setWeekendLabel] = useState<string | null>(null);
+  const [periodLabel, setPeriodLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export function ShortagesModal({
       if (!vivo) return;
       if (!res.ok) return setError(res.error ?? "No se pudieron calcular los faltantes.");
       setRows(res.rows ?? []);
-      setWeekendLabel(res.weekendLabel ?? null);
+      setPeriodLabel(res.periodLabel ?? null);
     });
     return () => {
       vivo = false;
@@ -54,7 +54,7 @@ export function ShortagesModal({
         <div className="sheet-head">
           <h2>Faltantes de {lugar}</h2>
           <p className="modal-sub">
-            El depósito es uno solo para todo el fin de semana{weekendLabel ? ` (${weekendLabel})` : ""}: lo que piden los
+            El depósito es uno solo para todo el período{periodLabel ? ` (${periodLabel})` : ""}: lo que piden los
             otros eventos también descuenta. Es solo informativo — no cambia ningún pedido.
           </p>
         </div>
@@ -66,7 +66,7 @@ export function ShortagesModal({
           {rows?.length === 0 && (
             <div className="empty-card">
               <p className="empty-title">No falta nada para este evento</p>
-              <p>Todo lo que pide entra en el stock disponible del fin de semana.</p>
+              <p>Todo lo que pide entra en el stock disponible del período.</p>
             </div>
           )}
 
@@ -82,7 +82,7 @@ export function ShortagesModal({
                         : `${compartidos} productos ya estaban agotados antes de este evento`}
                     </b>
                     <p>
-                      Los otros eventos del finde solos se pasan del stock, así que el faltante es del fin de semana y no
+                      Los otros eventos del período solos se pasan del stock, así que el faltante es del conjunto y no
                       de este pedido. Están marcados abajo.
                     </p>
                   </div>
@@ -148,7 +148,7 @@ export function ShortagesModal({
                     <dl className="falta-nums">
                       <dt>Pide este evento</dt><dd>{r.requested}</dd>
                       <dt>Piden los otros eventos</dt><dd>{r.otherRequested}</dd>
-                      <dt>Total del fin de semana</dt><dd>{r.totalRequested}</dd>
+                      <dt>Total del período</dt><dd>{r.totalRequested}</dd>
                       <dt>Hay en el depósito</dt><dd>{r.stock}</dd>
                       <dt>Le queda a este evento</dt>
                       <dd className={r.available === 0 ? "destacado" : undefined}>{r.available}</dd>

@@ -40,7 +40,7 @@ export function canEditOrders(role: string): boolean {
 
 /** Crear, borrar y recuperar findes y eventos, marcarlos listos, y las
  *  versiones guardadas (guardar, descartar y restaurar). */
-export function canManageWeekends(role: string): boolean {
+export function canManagePeriods(role: string): boolean {
   return role === "ADMIN" || role === "ARMADOR";
 }
 

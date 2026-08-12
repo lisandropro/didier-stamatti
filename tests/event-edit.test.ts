@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { findeCubre, elegirFinde, proponerFinde, soloDia, aISO } from "../lib/weekend-fit";
 import { planEventEdit } from "../lib/event-edit";
 import {
-  canManageWeekends,
+  canManagePeriods,
   canEditOrders,
   canEditStock,
   canSetResponsable,
@@ -29,7 +29,7 @@ const PUEDE_EDITAR = { ADMIN: true, ARMADOR: true, LOGISTICA: false } as const;
 
 for (const rol of Object.keys(PUEDE_EDITAR) as (keyof typeof PUEDE_EDITAR)[]) {
   test(`${rol}: puede corregir un evento = ${PUEDE_EDITAR[rol]}`, () => {
-    assert.equal(canManageWeekends(rol), PUEDE_EDITAR[rol]);
+    assert.equal(canManagePeriods(rol), PUEDE_EDITAR[rol]);
   });
 }
 
@@ -38,7 +38,7 @@ test("la tabla cubre todos los roles: si se agrega uno, esta prueba falla", () =
 });
 
 test("al encargado de logística no se le tocó ningún permiso", () => {
-  assert.equal(canManageWeekends("LOGISTICA"), false);
+  assert.equal(canManagePeriods("LOGISTICA"), false);
   assert.equal(canEditOrders("LOGISTICA"), false);
   assert.equal(canEditStock("LOGISTICA"), false);
   // Lo único que sí podía y sigue pudiendo.
@@ -46,8 +46,8 @@ test("al encargado de logística no se le tocó ningún permiso", () => {
 });
 
 test("un rol inventado no puede corregir eventos", () => {
-  assert.equal(canManageWeekends("SUPERUSUARIO"), false);
-  assert.equal(canManageWeekends(""), false);
+  assert.equal(canManagePeriods("SUPERUSUARIO"), false);
+  assert.equal(canManagePeriods(""), false);
 });
 
 // --- A qué finde pertenece una fecha -------------------------------------------

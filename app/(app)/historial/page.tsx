@@ -1,15 +1,16 @@
 import { prisma } from "@/lib/db";
 import { Historial } from "@/components/Historial";
-import { fmtRange, fmtDateTime, startOfToday } from "@/lib/format";
+import { fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
+import { nombreDe } from "@/lib/period-fit";
 
 export const dynamic = "force-dynamic";
 
 export default async function HistorialPage() {
-  const today = startOfToday();
+  const today = hoy();
 
-  const pastWeekends = await prisma.weekend.findMany({
-    where: { endDate: { lt: today }, deletedAt: null },
-    orderBy: { startDate: "desc" },
+  const periodosPasados = await prisma.operationalPeriod.findMany({
+    where: { endDay: { lt: today }, deletedAt: null },
+    orderBy: { startDay: "desc" },
     include: {
       events: { select: { id: true } },
       snapshot: { select: { takenAt: true } },
@@ -25,10 +26,10 @@ export default async function HistorialPage() {
   });
 
   const data = {
-    weekends: pastWeekends.map((w) => ({
+    periodos: periodosPasados.map((w) => ({
       id: w.id,
-      label: w.label,
-      rangeLabel: fmtRange(w.startDate, w.endDate),
+      label: nombreDe(w),
+      rangeLabel: fmtRangoDias(w.startDay, w.endDay),
       eventCount: w.events.length,
       hasSnapshot: !!w.snapshot,
     })),
@@ -41,7 +42,7 @@ export default async function HistorialPage() {
       note: m.note,
       // Los movimientos viejos (y los de un usuario que se borró) no tienen autor.
       userName: m.user?.name ?? null,
-      dateLabel: fmtDateTime(m.createdAt),
+      dateLabel: fmtMomento(m.createdAt),
     })),
   };
 

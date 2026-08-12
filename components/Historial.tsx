@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-type WeekendRow = {
+type PeriodRow = {
   id: string;
   label: string;
   rangeLabel: string;
@@ -20,7 +20,7 @@ type MovementRow = {
   userName: string | null;
   dateLabel: string;
 };
-type Data = { weekends: WeekendRow[]; movements: MovementRow[] };
+type Data = { periodos: PeriodRow[]; movements: MovementRow[] };
 
 const REASONS = [
   { v: "TODOS", l: "Todos" },
@@ -42,7 +42,7 @@ const IconHistory = (
 );
 
 export function Historial({ data }: { data: Data }) {
-  const [tab, setTab] = useState<"weekends" | "movements">("weekends");
+  const [tab, setTab] = useState<"periodos" | "movements">("periodos");
 
   return (
     <>
@@ -55,33 +55,33 @@ export function Historial({ data }: { data: Data }) {
 
       <div className="content">
         <div className="seg" style={{ maxWidth: 360, marginBottom: 20 }}>
-          <button className={tab === "weekends" ? "active" : ""} onClick={() => setTab("weekends")}>
-            Fines de semana ({data.weekends.length})
+          <button className={tab === "periodos" ? "active" : ""} onClick={() => setTab("periodos")}>
+            Fines de semana ({data.periodos.length})
           </button>
           <button className={tab === "movements" ? "active" : ""} onClick={() => setTab("movements")}>
             Movimientos de stock ({data.movements.length})
           </button>
         </div>
 
-        {tab === "weekends" ? <PastWeekends weekends={data.weekends} /> : <Movements movements={data.movements} />}
+        {tab === "periodos" ? <PeriodosPasados periodos={data.periodos} /> : <Movements movements={data.movements} />}
       </div>
     </>
   );
 }
 
-function PastWeekends({ weekends }: { weekends: WeekendRow[] }) {
-  if (weekends.length === 0) {
+function PeriodosPasados({ periodos }: { periodos: PeriodRow[] }) {
+  if (periodos.length === 0) {
     return (
       <div className="empty-card">
-        <p className="empty-title">Todavía no hay fines de semana pasados</p>
-        <p>Cuando termine un fin de semana, va a aparecer acá para consultarlo cuando quieras.</p>
+        <p className="empty-title">Todavía no hay períodos pasados</p>
+        <p>Cuando termine un período, va a aparecer acá para consultarlo cuando quieras.</p>
       </div>
     );
   }
 
   return (
     <div className="event-grid">
-      {weekends.map((w) => (
+      {periodos.map((w) => (
         <Link key={w.id} href={`/?w=${w.id}`} className="event">
           <div className="row1">
             <h3>{w.label}</h3>

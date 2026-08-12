@@ -20,7 +20,7 @@ import {
   canSendSuggestions,
   canManageSuggestions,
   canEditOrders,
-  canManageWeekends,
+  canManagePeriods,
   canEditStock,
   canManageCatalog,
   canManageUsers,
@@ -71,7 +71,7 @@ test("abrirle el canal al encargado de logística no le amplió nada más", () =
   // existe para que quede escrito que lo uno no arrastró lo otro.
   assert.equal(canSendSuggestions("LOGISTICA"), true);
   assert.equal(canEditOrders("LOGISTICA"), false);
-  assert.equal(canManageWeekends("LOGISTICA"), false);
+  assert.equal(canManagePeriods("LOGISTICA"), false);
   assert.equal(canEditStock("LOGISTICA"), false);
   assert.equal(canManageCatalog("LOGISTICA"), false);
   assert.equal(canManageUsers("LOGISTICA"), false);
