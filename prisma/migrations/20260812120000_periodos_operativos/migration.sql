@@ -35,6 +35,33 @@ INSERT INTO "OperationalPeriod" ("id", "label", "startDay", "endDay", "createdAt
 SELECT
     "id",
     CASE
+      -- Tres formas posibles, las mismas que arma fmtRangoDias: mismo mes,
+      -- mismo año con meses distintos, y años distintos (Año Nuevo).
+      WHEN "label" IN (
+        -- a) mismo mes: "15 al 16 ago"
+        CAST(substr("startDate", 9, 2) AS INTEGER) || ' al ' ||
+        CAST(substr("endDate", 9, 2) AS INTEGER) || ' ' ||
+        (CASE substr("endDate", 6, 2)
+           WHEN '01' THEN 'ene' WHEN '02' THEN 'feb' WHEN '03' THEN 'mar'
+           WHEN '04' THEN 'abr' WHEN '05' THEN 'may' WHEN '06' THEN 'jun'
+           WHEN '07' THEN 'jul' WHEN '08' THEN 'ago' WHEN '09' THEN 'sep'
+           WHEN '10' THEN 'oct' WHEN '11' THEN 'nov' ELSE 'dic' END),
+        -- b) años distintos: "31 dic 2026 al 1 ene 2027"
+        CAST(substr("startDate", 9, 2) AS INTEGER) || ' ' ||
+        (CASE substr("startDate", 6, 2)
+           WHEN '01' THEN 'ene' WHEN '02' THEN 'feb' WHEN '03' THEN 'mar'
+           WHEN '04' THEN 'abr' WHEN '05' THEN 'may' WHEN '06' THEN 'jun'
+           WHEN '07' THEN 'jul' WHEN '08' THEN 'ago' WHEN '09' THEN 'sep'
+           WHEN '10' THEN 'oct' WHEN '11' THEN 'nov' ELSE 'dic' END) || ' ' ||
+        substr("startDate", 1, 4) || ' al ' ||
+        CAST(substr("endDate", 9, 2) AS INTEGER) || ' ' ||
+        (CASE substr("endDate", 6, 2)
+           WHEN '01' THEN 'ene' WHEN '02' THEN 'feb' WHEN '03' THEN 'mar'
+           WHEN '04' THEN 'abr' WHEN '05' THEN 'may' WHEN '06' THEN 'jun'
+           WHEN '07' THEN 'jul' WHEN '08' THEN 'ago' WHEN '09' THEN 'sep'
+           WHEN '10' THEN 'oct' WHEN '11' THEN 'nov' ELSE 'dic' END) || ' ' ||
+        substr("endDate", 1, 4)
+      ) THEN NULL
       WHEN "label" = (
         CASE WHEN substr("startDate", 1, 7) = substr("endDate", 1, 7)
           THEN CAST(substr("startDate", 9, 2) AS INTEGER) || ' al ' ||

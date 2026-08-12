@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { instanteDe } from "../lib/dates";
 
 /**
  * El agrupamiento de avisos, contra una base de verdad.
@@ -42,11 +43,18 @@ before(async () => {
   const admin = await mk("Ana", "ADMIN");
   const logistica = await mk("Pablo", "LOGISTICA");
   const armador = await mk("Enrique", "ARMADOR");
-  const wk = await prisma.weekend.create({
-    data: { label: "Prueba", startDate: new Date("2026-08-15"), endDate: new Date("2026-08-16") },
+  // Período operativo: días de calendario como texto, sin hora. El evento sí es
+  // un instante, y se arma con la hora de pared argentina (21hs del 15).
+  const periodo = await prisma.operationalPeriod.create({
+    data: { label: "Prueba", startDay: "2026-08-15", endDay: "2026-08-16" },
   });
   const ev = await prisma.event.create({
-    data: { weekendId: wk.id, lugar: "El Carmen Center", date: new Date("2026-08-15"), guests: 100 },
+    data: {
+      periodId: periodo.id,
+      lugar: "El Carmen Center",
+      date: instanteDe("2026-08-15", "21:00"),
+      guests: 100,
+    },
   });
   ids = { admin: admin.id, logistica: logistica.id, armador: armador.id, evento: ev.id };
 });

@@ -117,10 +117,16 @@ export async function updatePeriod(input: {
   if (!p) return { ok: false, error: "No se encontró el período." };
   if (p.deletedAt) return { ok: false, error: "Ese período está en la papelera." };
 
-  const existentes = await periodosVivos();
-  const igual = duplicadoDe(existentes, startDay, endDay, p.id);
-  if (igual && !input.permitirDuplicado) {
-    return { ok: false, duplicado: { id: igual.id, nombre: nombreDe(igual) } };
+  // Solo se avisa de duplicado si el rango CAMBIA. Si no, renombrar un período
+  // que ya convive a propósito con otro del mismo rango volvería a preguntar
+  // por algo que la persona ya aceptó cuando lo creó.
+  const cambioElRango = startDay !== p.startDay || endDay !== p.endDay;
+  if (cambioElRango) {
+    const existentes = await periodosVivos();
+    const igual = duplicadoDe(existentes, startDay, endDay, p.id);
+    if (igual && !input.permitirDuplicado) {
+      return { ok: false, duplicado: { id: igual.id, nombre: nombreDe(igual) } };
+    }
   }
 
   const fuera = eventosQueQuedanFuera(p.events, startDay, endDay);

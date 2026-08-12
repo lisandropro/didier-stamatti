@@ -105,14 +105,34 @@ test("no se acepta un tipo ni un estado inventados", () => {
 // ---------------------------------------------------------------------------
 
 test("la pantalla se traduce a algo legible", () => {
-  assert.equal(screenLabel("/"), "Fin de semana");
+  // La portada dejó de ser "Fin de semana" cuando el finde se volvió período
+  // operativo. Si alguien vuelve a poner el texto viejo, esto lo frena.
+  assert.equal(screenLabel("/"), "Períodos");
   assert.equal(screenLabel("/evento/abc123"), "Pedido de un evento");
   assert.equal(screenLabel("/evento/abc123/pdf"), "Hoja para imprimir");
   assert.equal(screenLabel("/inventario"), "Inventario");
+  assert.equal(screenLabel("/historial"), "Historial");
+  assert.equal(screenLabel("/notificaciones"), "Avisos");
+  assert.equal(screenLabel("/sugerencias"), "Sugerencias");
+  assert.equal(screenLabel("/cuenta"), "Mi cuenta");
+  assert.equal(screenLabel("/usuarios"), "Usuarios");
+  assert.equal(screenLabel("/aviso/abc123"), "Detalle de un aviso");
 });
 
 test("una ruta desconocida se muestra tal cual en vez de inventar", () => {
   assert.equal(screenLabel("/algo-nuevo"), "/algo-nuevo");
+});
+
+test("sin ruta no se inventa una pantalla", () => {
+  assert.equal(screenLabel(""), "Desconocida");
+});
+
+test("el resumen del depósito se reconoce por la ruta nueva y también por la vieja", () => {
+  // La pantalla se mudó de /finde/ a /periodo/. Se aceptan las dos a propósito:
+  // las sugerencias ya enviadas guardaron la ruta vieja en su columna `screen` y
+  // tienen que seguir diciendo de dónde salieron.
+  assert.equal(screenLabel("/periodo/abc123"), "Resumen del depósito");
+  assert.equal(screenLabel("/finde/abc123"), "Resumen del depósito");
 });
 
 test("se reconoce el evento cuando la sugerencia sale de un pedido", () => {
@@ -170,11 +190,18 @@ before(async () => {
   const admin = await mk("Ana", "ADMIN");
   const armador = await mk("Enrique", "ARMADOR");
   const logistica = await mk("Pablo", "LOGISTICA");
-  const wk = await prisma.weekend.create({
-    data: { label: "Prueba", startDate: new Date("2026-08-15"), endDate: new Date("2026-08-16") },
+  // El período va del 15 al 16: días de calendario en texto, sin hora y sin zona.
+  const periodo = await prisma.operationalPeriod.create({
+    data: { label: "Prueba", startDay: "2026-08-15", endDay: "2026-08-16" },
   });
+  // El evento sí es un instante: 22:00 UTC = 19:00 en Argentina, del día 15.
   const ev = await prisma.event.create({
-    data: { weekendId: wk.id, lugar: "El Carmen Center", date: new Date("2026-08-15"), guests: 100 },
+    data: {
+      periodId: periodo.id,
+      lugar: "El Carmen Center",
+      date: new Date("2026-08-15T22:00:00.000Z"),
+      guests: 100,
+    },
   });
   ids = { admin: admin.id, armador: armador.id, logistica: logistica.id, evento: ev.id };
 });
