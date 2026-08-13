@@ -85,6 +85,16 @@ export function canManageSuggestions(role: string): boolean {
   return role === "ADMIN";
 }
 
+/** Ver los controles de datos ("Para revisar").
+ *
+ *  Solo la administradora. No es un permiso sobre datos —son cosas que ya se
+ *  pueden ver— sino sobre a quién le corresponde ocuparse: mostrarle a todo el
+ *  equipo una lista de pendientes que no le toca resolver la convierte en ruido,
+ *  y una lista que se ignora deja de controlar. */
+export function canSeeChecks(role: string): boolean {
+  return role === "ADMIN";
+}
+
 // ---------------------------------------------------------------------------
 // Notificaciones
 // ---------------------------------------------------------------------------

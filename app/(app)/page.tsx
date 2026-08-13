@@ -6,7 +6,6 @@ import { ensurePeriodSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
 import { getSessionUser } from "@/lib/auth";
 import { canManagePeriods, canEditOrders } from "@/lib/permissions";
-import { revisarTodo } from "@/lib/checks";
 
 export const dynamic = "force-dynamic";
 
@@ -132,9 +131,6 @@ export default async function Home({
         }
       : null,
     alert: { overProducts, okCount, totalReut },
-    // Controles de datos: incoherencias del pedido y avisos sin activar. Solo
-    // señalan; no corrigen nada.
-    hallazgos: canManagePeriods(session?.role ?? "") ? await revisarTodo() : [],
     canManage: canManagePeriods(session?.role ?? ""),
     canEdit: canEditOrders(session?.role ?? ""),
     trash: {
