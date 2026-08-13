@@ -25,15 +25,23 @@ export default async function EventoPage({
   // Un evento en la papelera no se puede abrir ni editar.
   if (!ev || ev.deletedAt) notFound();
 
-  // Catálogo completo, ordenado como el Excel
+  // Líneas ya cargadas de ESTE evento
+  const myLines = await prisma.orderLine.findMany({ where: { eventId: id } });
+
+  // Catálogo, ordenado como el Excel.
+  //
+  // Se traen los productos activos **y además** los que este pedido ya usa,
+  // aunque estén dados de baja. Filtrar solo por `active` dejaba el renglón
+  // invisible en la única pantalla donde se puede sacar, mientras seguía
+  // saliendo impreso en la hoja del depósito y contando contra el stock. Pasó
+  // de verdad: un evento pedía 398 tenedores de postre dados de baja y nadie
+  // podía verlo ni quitarlo.
+  const yaPedidos = myLines.map((l) => l.productId).filter((x): x is string => Boolean(x));
   const products = await prisma.product.findMany({
-    where: { active: true },
+    where: { OR: [{ active: true }, { id: { in: yaPedidos } }] },
     orderBy: [{ rubro: "asc" }, { name: "asc" }],
   });
   products.sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9));
-
-  // Líneas ya cargadas de ESTE evento
-  const myLines = await prisma.orderLine.findMany({ where: { eventId: id } });
   const mine = new Map(myLines.filter((l) => l.productId).map((l) => [l.productId as string, l]));
 
   // Reservado por los OTROS eventos del mismo período
@@ -80,6 +88,9 @@ export default async function EventoPage({
       reserved: reserved.get(p.id) ?? 0,
       qty: mine.get(p.id)?.qty ?? 0,
       note: mine.get(p.id)?.note ?? "",
+      // Dado de baja del catálogo pero todavía pedido: se muestra marcado para
+      // poder sacarlo, y no se ofrece para agregar a otros pedidos.
+      deBaja: !p.active,
     })),
     customLines: myLines
       .filter((l) => !l.productId)

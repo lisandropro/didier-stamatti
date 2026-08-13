@@ -21,6 +21,8 @@ type ProductRow = {
   reserved: number; // pedido por los OTROS eventos del finde
   qty: number;
   note: string;
+  /** Dado de baja del catálogo. Solo llega si este pedido ya lo tiene cargado. */
+  deBaja?: boolean;
 };
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
 type SourceEvent = { id: string; lugar: string; dateLabel: string; periodLabel: string; lineCount: number };
@@ -142,6 +144,9 @@ export function OrderBuilder({ data }: { data: Data }) {
   const q = norm(query.trim());
   const searching = q.length > 0;
   const visible = items.filter((p) => {
+    // Un producto dado de baja se muestra solo si este pedido ya lo tiene: hay
+    // que poder sacarlo, pero no ofrecerlo para agregar a un pedido nuevo.
+    if (p.deBaja && p.qty === 0) return false;
     if (searching) return norm(`${p.name} ${p.rubro ?? ""}`).includes(q);
     return p.category === tab;
   });
@@ -250,11 +255,15 @@ export function OrderBuilder({ data }: { data: Data }) {
               return (
                 <div key={p.id} className={`orow${p.qty > 0 ? " has-qty" : ""}`}>
                   <div className="ocol-name">
-                    <div className="pname">{p.name}</div>
+                    <div className="pname">
+                      {p.name}
+                      {p.deBaja && <span className="chip crit chip-baja">Dado de baja</span>}
+                    </div>
                     <div className="rubro">
                       {searching ? `${CATS.find((c) => c.v === p.category)?.l ?? p.category} · ` : ""}
                       {p.rubro}
                       {p.unit !== "Unidad" ? ` · por ${p.unit.toLowerCase()}` : ""}
+                      {p.deBaja ? " · ya no está en el catálogo, poné 0 para sacarlo" : ""}
                     </div>
                     <button
                       className={`note-toggle${p.note ? " has-note" : ""}`}

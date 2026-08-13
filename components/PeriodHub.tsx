@@ -44,6 +44,7 @@ type HubData = {
     okCount: number;
     totalReut: number;
   };
+  hallazgos: { code: string; message: string; url?: string; gravedad: "alta" | "media" | "baja" }[];
   canManage: boolean;
   /** Puede modificar los pedidos. Cambia el texto de las tarjetas: a quien solo
    *  mira no se le ofrece "armar" nada. */
@@ -103,7 +104,7 @@ export function PeriodHub({ data }: { data: HubData }) {
   const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
   const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
-  const { selected, periodos, alert, trash, canManage, canEdit } = data;
+  const { selected, periodos, alert, trash, canManage, canEdit, hallazgos } = data;
   const trashCount = trash.periodos.length + trash.events.length + trash.versions.length;
 
   async function updateSnapshot() {
@@ -168,6 +169,24 @@ export function PeriodHub({ data }: { data: HubData }) {
       </div>
 
       <div className="content">
+        {/* Controles de datos. Señalan, no corrigen: cada uno lleva al lugar
+            donde la persona decide qué hacer. Si no hay nada, no ocupan lugar. */}
+        {hallazgos.length > 0 && (
+          <div className="revision">
+            <div className="revision-head">
+              {IconWarn}
+              <b>Para revisar</b>
+              <span className="count-pill">{hallazgos.length}</span>
+            </div>
+            <ul className="revision-list">
+              {hallazgos.map((h, i) => (
+                <li key={h.code + i} className={`revision-item grav-${h.gravedad}`}>
+                  {h.url ? <Link href={h.url}>{h.message}</Link> : <span>{h.message}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {selected?.isPast && (
           <div className="snapshot-bar">
             {IconHistory}

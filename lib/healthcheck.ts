@@ -63,7 +63,31 @@ async function checkStockLoaded(): Promise<HealthProblem | null> {
 
 export async function collectProblems(): Promise<HealthProblem[]> {
   const results = await Promise.all([checkBackup(), checkStockLoaded()]);
-  return results.filter((r): r is HealthProblem => r !== null);
+  const base = results.filter((r): r is HealthProblem => r !== null);
+
+  // Los controles de datos y de avisos. Van acá y no aparte para heredar lo que
+  // esta revisión ya resuelve bien: avisa solo a las administradoras, no repite
+  // un aviso idéntico antes de una semana, y un fallo suyo nunca afecta a la app.
+  // Se agrupan por código: si tres eventos tienen el mismo problema, es un solo
+  // aviso — la revisión diaria no puede convertirse en algo que se ignora.
+  try {
+    const { revisarTodo } = await import("@/lib/checks");
+    const hallazgos = await revisarTodo();
+    const porCodigo = new Map<string, string[]>();
+    for (const h of hallazgos) {
+      if (!porCodigo.has(h.code)) porCodigo.set(h.code, []);
+      porCodigo.get(h.code)!.push(h.message);
+    }
+    for (const [code, mensajes] of porCodigo) {
+      base.push({
+        code,
+        message: mensajes.length === 1 ? mensajes[0] : `${mensajes.length} avisos: ${mensajes[0]} (y ${mensajes.length - 1} más)`,
+      });
+    }
+  } catch {
+    // Un control que falla no puede tumbar la revisión entera.
+  }
+  return base;
 }
 
 /** Revisión diaria. Sólo avisa a los administradores si hay algo mal, y no
