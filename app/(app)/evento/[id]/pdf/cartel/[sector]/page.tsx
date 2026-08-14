@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fmtEventDate } from "@/lib/format";
-import { PrintButton } from "@/components/PrintButton";
+import { PrintPlainButton } from "@/components/PrintButton";
 import { Cartel } from "@/components/Cartel";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export default async function CartelSectorPage({
         </div>
         <div className="spacer" />
         <Link className="btn ghost" href={`/evento/${ev.id}/pdf`}>Volver al pedido</Link>
-        <PrintButton />
+        <PrintPlainButton />
       </div>
 
       <div className="content pdf-content">

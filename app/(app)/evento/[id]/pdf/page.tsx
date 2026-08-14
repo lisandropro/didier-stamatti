@@ -1,9 +1,9 @@
-import { Fragment } from "react";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fmtEventDate } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
+import { PrintablePedido, type Bloque } from "@/components/PrintablePedido";
 import { ShareOrderButton } from "@/components/ShareOrderButton";
 import { Cartel } from "@/components/Cartel";
 import { PickList } from "@/components/PickList";
@@ -69,12 +69,47 @@ export default async function EventoPdfPage({
     </div>
   );
 
+  // Los bloques que se imprimen, en el orden en que salen de la impresora y
+  // etiquetados por tipo: así cada botón manda a imprimir solo lo suyo.
+  const bloques: Bloque[] = [];
+  for (const sector of SECTORS) {
+    const bucket = bySector.get(sector)!;
+    if (bucket.products.length === 0 && bucket.customs.length === 0) continue;
+    if (AUTO_CARTEL.has(sector)) {
+      bloques.push({
+        clave: `cartel-${sector}`,
+        tipo: "cartel",
+        nodo: <Cartel sector={sector} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} />,
+      });
+    }
+    bloques.push({
+      clave: `sec-${sector}`,
+      tipo: "seccion",
+      nodo: (
+        <div className="pdf-section">
+          <div className="pdf-header">
+            <span className="logo-mark pdf-logo" role="img" aria-label="Didier Stamatti Catering" />
+            <h1 className="pdf-title">{CAT_LABEL[sector]}</h1>
+          </div>
+          {eventInfo}
+          <PickList products={bucket.products} customs={bucket.customs} />
+          <div className="pdf-footer">
+            Preparado por: _______________________ &nbsp;&nbsp;&nbsp; Revisado por: _______________________
+          </div>
+        </div>
+      ),
+    });
+  }
+  const carteles = bloques.filter((b) => b.tipo === "cartel").length;
+
   return (
     <>
       <div className="topbar no-print">
         <div>
           <h1>PDF del pedido</h1>
-          <div className="sub">{ev.lugar} · una hoja por sector</div>
+          <div className="sub">
+            {ev.lugar} · una hoja por sector{carteles > 0 ? ` · ${carteles} cartelito${carteles === 1 ? "" : "s"}` : ""}
+          </div>
         </div>
         <div className="spacer" />
         <Link className="btn ghost" href={`/evento/${ev.id}`}>Volver</Link>
@@ -85,7 +120,7 @@ export default async function EventoPdfPage({
           </svg>
           Descargar
         </a>
-        <PrintButton />
+        <PrintButton hayCarteles={carteles > 0} />
         <ShareOrderButton eventId={ev.id} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} disabled={totalItems === 0} />
       </div>
 
@@ -104,34 +139,10 @@ export default async function EventoPdfPage({
             <p className="empty-title">Este pedido todavía no tiene productos cargados</p>
           </div>
         ) : (
-          SECTORS.filter((sector) => {
-            const b = bySector.get(sector)!;
-            return b.products.length > 0 || b.customs.length > 0;
-          }).map((sector) => {
-            const bucket = bySector.get(sector)!;
-            return (
-              // Cartel y sección van como HERMANOS directos de .pdf-content (no anidados),
-              // así ".pdf-content > *:not(:last-child)" corta hoja entre cada uno al imprimir.
-              <Fragment key={sector}>
-                {AUTO_CARTEL.has(sector) && <Cartel sector={sector} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} />}
-
-                <div className="pdf-section">
-                  <div className="pdf-header">
-                    <span className="logo-mark pdf-logo" role="img" aria-label="Didier Stamatti Catering" />
-                    <h1 className="pdf-title">{CAT_LABEL[sector]}</h1>
-                  </div>
-
-                  {eventInfo}
-
-                  <PickList products={bucket.products} customs={bucket.customs} />
-
-                  <div className="pdf-footer">
-                    Preparado por: _______________________ &nbsp;&nbsp;&nbsp; Revisado por: _______________________
-                  </div>
-                </div>
-              </Fragment>
-            );
-          })
+          // Cartel y sección van como HERMANOS directos de .pdf-content (no anidados),
+          // así ".pdf-content > *:not(:last-child)" corta hoja entre cada uno al imprimir.
+          // Se arman etiquetados para que cada botón imprima solo su parte.
+          <PrintablePedido bloques={bloques} />
         )}
       </div>
     </>

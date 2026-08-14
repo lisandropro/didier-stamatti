@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fmtEvento, fmtRangoDias } from "@/lib/dates";
 import { nombreDe } from "@/lib/period-fit";
-import { PrintButton } from "@/components/PrintButton";
+import { PrintPlainButton } from "@/components/PrintButton";
 
 export const dynamic = "force-dynamic";
 
@@ -148,7 +148,7 @@ export default async function ResumenPage({
         </div>
         <div className="spacer" />
         <Link className="btn ghost no-print" href={`/?w=${period.id}`}>Volver</Link>
-        <PrintButton />
+        <PrintPlainButton />
       </div>
 
       <div className="content">

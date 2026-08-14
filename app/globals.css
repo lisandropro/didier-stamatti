@@ -796,8 +796,11 @@ tbody tr:hover{background:var(--surface-2)}
   .pdf-content{padding:0}
 
   /* Cada cartel ocupa su propia hoja A4 horizontal; el resto del pedido sigue en A4 vertical */
+  /* El corte de hoja lo pone la regla de abajo, que respeta al último bloque.
+     Si el cartel cortara siempre, imprimir solo los cartelitos terminaba con
+     una hoja en blanco (el último también cortaba). */
   .cartel-page{
-    page:cartel; break-after:page;
+    page:cartel;
     width:297mm; height:210mm; max-width:none; aspect-ratio:auto;
     border:none; box-shadow:none; border-radius:0; margin:0; padding:0;
   }
