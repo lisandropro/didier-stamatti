@@ -17,6 +17,25 @@ export async function register() {
   void flush();
   setInterval(() => void flush(), MINUTE);
 
+  // --- Vaciado de la papelera ----------------------------------------------
+  // Va antes del respaldo y fuera de su condición: limpiar la papelera no
+  // depende de tener el respaldo configurado. La regla es por fecha, así que
+  // correrlo al arrancar y una vez por día alcanza — ver lib/trash.ts.
+  const { vaciarPapelera } = await import("@/lib/trash");
+  const vaciar = async () => {
+    try {
+      const { periodos, eventos, avisos, corte } = await vaciarPapelera();
+      if (periodos + eventos + avisos > 0) {
+        console.log(`[papelera] vaciada hasta el lunes ${corte}: ${periodos} períodos, ${eventos} eventos, ${avisos} avisos`);
+      }
+    } catch (e) {
+      // Que no se caiga el arranque por esto: la papelera se limpia al día siguiente.
+      console.error(`[papelera] error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  void vaciar();
+  setInterval(() => void vaciar(), DAY);
+
   // --- Respaldo y revisión diaria ------------------------------------------
   if (!process.env.BACKUP_S3_BUCKET) return; // sin configurar (ej. en desarrollo local): no hace nada
 

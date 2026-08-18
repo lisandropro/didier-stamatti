@@ -513,7 +513,9 @@ function TrashModal({
       <div className="modal modal-wide" onClick={(ev) => ev.stopPropagation()}>
         <h2>Papelera</h2>
         <p className="modal-sub">
-Nada se borra del todo. Recuperá lo que necesites y vuelve con sus pedidos como estaban.
+          Recuperá lo que necesites y vuelve con sus pedidos como estaban. Esto
+          se vacía solo los lunes: lo que tires esta semana se borra para siempre
+          el lunes que viene.
         </p>
         {err && <div className="form-error">{err}</div>}
 

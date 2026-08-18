@@ -77,7 +77,8 @@ export default async function Home({
     }
   }
 
-  // Papelera: lo borrado sigue existiendo hasta que alguien lo recupere.
+  // Papelera: lo borrado sigue existiendo hasta que alguien lo recupere, o
+  // hasta el lunes siguiente, cuando el barrido de lib/trash.ts lo borra en serio.
   const [periodosBorrados, trashedEvents, versions] = await Promise.all([
     prisma.operationalPeriod.findMany({
       where: { deletedAt: { not: null } },

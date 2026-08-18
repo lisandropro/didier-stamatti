@@ -138,6 +138,19 @@ export function sumarDias(dia: string, n: number): string {
   return `${t.getUTCFullYear()}-${dd(t.getUTCMonth() + 1)}-${dd(t.getUTCDate())}`;
 }
 
+/**
+ * El lunes más reciente que ya llegó, contando hoy si hoy es lunes.
+ *
+ * Lo usa el vaciado de la papelera como corte. Vive acá, con el resto de la
+ * aritmética de calendario, y no en `lib/trash`: así se puede probar sin
+ * arrastrar la base detrás.
+ */
+export function lunesMasReciente(dia: string): string {
+  // diaSemana: 0 domingo … 6 sábado. El domingo el lunes más reciente fue hace
+  // seis días, no mañana.
+  return sumarDias(dia, -((diaSemana(dia) + 6) % 7));
+}
+
 // ---------------------------------------------------------------------------
 // Cómo se muestran
 // ---------------------------------------------------------------------------
