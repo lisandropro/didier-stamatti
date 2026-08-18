@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { PeriodHub } from "@/components/PeriodHub";
 import { fmtEvento, fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
-import { nombreDe } from "@/lib/period-fit";
+import { nombreDe, separarPorFecha } from "@/lib/period-fit";
 import { ensurePeriodSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
 import { getSessionUser } from "@/lib/auth";
@@ -101,6 +101,22 @@ export default async function Home({
     }),
   ]);
 
+  // Lo que ya se hizo se pliega abajo; arriba queda solo lo que falta.
+  const { porHacer, pasados } = selected
+    ? separarPorFecha(selected.events, today)
+    : { porHacer: [], pasados: [] };
+
+  const tarjetaDeEvento = (e: (typeof porHacer)[number]) => ({
+    id: e.id,
+    lugar: e.lugar,
+    dateLabel: fmtEvento(e.date),
+    guests: e.guests,
+    responsable: e.responsable,
+    status: e.status,
+    lineCount: e._count.lines,
+    shortageCount: faltantesPorEvento.get(e.id) ?? 0,
+  });
+
   const data = {
     periodos: periodosDelSelector.map((w) => ({
       id: w.id,
@@ -118,16 +134,10 @@ export default async function Home({
           rangeLabel: fmtRangoDias(selected.startDay, selected.endDay),
           isPast,
           snapshotTakenAt,
-          events: selected.events.map((e) => ({
-            id: e.id,
-            lugar: e.lugar,
-            dateLabel: fmtEvento(e.date),
-            guests: e.guests,
-            responsable: e.responsable,
-            status: e.status,
-            lineCount: e._count.lines,
-            shortageCount: faltantesPorEvento.get(e.id) ?? 0,
-          })),
+          // Los que ya se hicieron van aparte: en la pantalla se pliegan, así
+          // quien arma un pedido no lee fechas para saber qué le falta.
+          events: porHacer.map(tarjetaDeEvento),
+          pasados: pasados.map(tarjetaDeEvento),
         }
       : null,
     alert: { overProducts, okCount, totalReut },

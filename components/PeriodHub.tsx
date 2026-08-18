@@ -37,7 +37,10 @@ type HubData = {
     rangeLabel: string;
     isPast: boolean;
     snapshotTakenAt: string | null;
+    /** Los que faltan hacer: es la lista que se ve. */
     events: EventItem[];
+    /** Los que ya se hicieron. Se pliegan al pie para que no estorben. */
+    pasados: EventItem[];
   } | null;
   alert: {
     overProducts: { name: string; total: number; stock: number }[];
@@ -105,6 +108,67 @@ export function PeriodHub({ data }: { data: HubData }) {
 
   const { selected, periodos, alert, trash, canManage, canEdit } = data;
   const trashCount = trash.periodos.length + trash.events.length + trash.versions.length;
+  // El período tiene todos sus eventos aunque abajo se muestren en dos listas.
+  const totalEventos = selected ? selected.events.length + selected.pasados.length : 0;
+
+  // La misma tarjeta para las dos listas, la de lo que falta y la de lo ya hecho.
+  // La tarjeta NO es un enlace: el enlace del título se estira sobre toda la
+  // tarjeta (`.event-link::after`), y así los botones pueden vivir adentro y
+  // tocarse sin abrir el evento.
+  const tarjetaDeEvento = (e: EventItem) => (
+    <div key={e.id} className="event">
+      <div className="row1">
+        <h3>
+          <Link className="event-link" href={`/evento/${e.id}`}>{e.lugar}</Link>
+        </h3>
+        {e.status === "LISTO" ? (
+          <span className="chip ok">{IconCheck}Listo</span>
+        ) : (
+          <span className="chip neutral">No listo</span>
+        )}
+      </div>
+      <div className="meta">
+        <span className="metaicon">{IconCal}<b>{e.dateLabel}</b></span>
+        <span className="metaicon">{IconPeople}<b>{e.guests}</b> invitados</span>
+        {e.responsable && <span className="metaicon">{IconPerson}{e.responsable}</span>}
+      </div>
+
+      {/* El aviso ES el botón: un solo elemento en vez de una franja y un
+          botón repitiendo lo mismo. */}
+      {e.shortageCount > 0 && (
+        <button
+          className="event-falta"
+          onClick={() => setFaltantesDe(e)}
+          title={`Ver los faltantes de ${e.lugar}`}
+        >
+          {IconWarn}
+          <span>
+            {e.shortageCount === 1
+              ? "1 producto sin stock suficiente"
+              : `${e.shortageCount} productos sin stock suficiente`}
+          </span>
+          <span className="event-falta-cta"><span>Ver faltantes →</span></span>
+        </button>
+      )}
+
+      <div className="event-foot">
+        <span>
+          {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} ·{" "}
+          {canEdit ? "Armar pedido" : "Ver pedido"} →
+        </span>
+        {canManage && (
+          <button
+            className="event-del"
+            onClick={() => setEventToDelete(e)}
+            title={`Borrar el evento de ${e.lugar}`}
+            aria-label={`Borrar el evento de ${e.lugar}`}
+          >
+            {IconTrash}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   async function updateSnapshot() {
     if (!selected) return;
@@ -121,7 +185,7 @@ export function PeriodHub({ data }: { data: HubData }) {
           <h1>{selected ? selected.label : "Período"}</h1>
           <div className="sub">
             {selected
-              ? `${selected.rangeLabel} · ${selected.events.length} ${selected.events.length === 1 ? "evento" : "eventos"}`
+              ? `${selected.rangeLabel} · ${totalEventos} ${totalEventos === 1 ? "evento" : "eventos"}`
               : "Creá tu primer período operativo para empezar"}
           </div>
         </div>
@@ -203,7 +267,7 @@ export function PeriodHub({ data }: { data: HubData }) {
             <div className="tiles">
               <div className="tile">
                 <div className="k"><span className="dot" style={{ background: "var(--ink)" }} />Eventos</div>
-                <div className="v">{selected.events.length}</div>
+                <div className="v">{totalEventos}</div>
               </div>
               <div className="tile">
                 <div className="k"><span className="dot" style={{ background: "var(--ok)" }} />Productos que alcanzan</div>
@@ -239,80 +303,45 @@ export function PeriodHub({ data }: { data: HubData }) {
             )}
 
             <div className="section-title">
-              Eventos <span className="count-pill">{selected.events.length}</span>
+              Por hacer <span className="count-pill">{selected.events.length}</span>
               <span className="spacer" style={{ flex: 1 }} />
-              {selected.events.length > 0 && (
+              {totalEventos > 0 && (
                 <Link className="btn ghost" href={`/periodo/${selected.id}`}>
                   {IconList} Resumen del depósito
                 </Link>
               )}
             </div>
 
-            {selected.events.length === 0 ? (
+            {totalEventos === 0 ? (
               <div className="empty-card">
                 <p className="empty-title">Este período no tiene eventos todavía</p>
                 <button className="btn primary" onClick={() => setShowEvent(true)}>{IconPlus} Agregar evento</button>
               </div>
-            ) : (
-              <div className="event-grid">
-                {selected.events.map((e) => (
-                  // La tarjeta NO es un enlace: el enlace del título se estira
-                  // sobre toda la tarjeta (`.event-link::after`), y así los
-                  // botones pueden vivir adentro y tocarse sin abrir el evento.
-                  <div key={e.id} className="event">
-                    <div className="row1">
-                      <h3>
-                        <Link className="event-link" href={`/evento/${e.id}`}>{e.lugar}</Link>
-                      </h3>
-                      {e.status === "LISTO" ? (
-                        <span className="chip ok">{IconCheck}Listo</span>
-                      ) : (
-                        <span className="chip neutral">No listo</span>
-                      )}
-                    </div>
-                    <div className="meta">
-                      <span className="metaicon">{IconCal}<b>{e.dateLabel}</b></span>
-                      <span className="metaicon">{IconPeople}<b>{e.guests}</b> invitados</span>
-                      {e.responsable && <span className="metaicon">{IconPerson}{e.responsable}</span>}
-                    </div>
-
-                    {/* El aviso ES el botón: un solo elemento en vez de una
-                        franja y un botón repitiendo lo mismo. */}
-                    {e.shortageCount > 0 && (
-                      <button
-                        className="event-falta"
-                        onClick={() => setFaltantesDe(e)}
-                        title={`Ver los faltantes de ${e.lugar}`}
-                      >
-                        {IconWarn}
-                        <span>
-                          {e.shortageCount === 1
-                            ? "1 producto sin stock suficiente"
-                            : `${e.shortageCount} productos sin stock suficiente`}
-                        </span>
-                        <span className="event-falta-cta"><span>Ver faltantes →</span></span>
-                      </button>
-                    )}
-
-                    <div className="event-foot">
-                      <span>
-                        {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} ·{" "}
-                        {canEdit ? "Armar pedido" : "Ver pedido"} →
-                      </span>
-                      {canManage && (
-                        <button
-                          className="event-del"
-                          onClick={() => setEventToDelete(e)}
-                          title={`Borrar el evento de ${e.lugar}`}
-                          aria-label={`Borrar el evento de ${e.lugar}`}
-                        >
-                          {IconTrash}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+            ) : selected.events.length === 0 ? (
+              // El período sigue abierto pero ya se hizo todo lo que tenía.
+              // Decir "no tiene eventos" sería mentira: están abajo, plegados.
+              <div className="empty-card">
+                <p className="empty-title">No queda nada por hacer en este período</p>
+                <p>
+                  {selected.pasados.length === 1
+                    ? "Su único evento ya se hizo y está acá abajo."
+                    : `Sus ${selected.pasados.length} eventos ya se hicieron y están acá abajo.`}
+                </p>
               </div>
+            ) : (
+              <div className="event-grid">{selected.events.map(tarjetaDeEvento)}</div>
+            )}
+
+            {selected.pasados.length > 0 && (
+              // <details> nativo: se pliega sin estado propio y anda con el teclado.
+              <details className="pasados">
+                <summary>
+                  {IconHistory}
+                  <span>Ya pasaron</span>
+                  <span className="count-pill">{selected.pasados.length}</span>
+                </summary>
+                <div className="event-grid">{selected.pasados.map(tarjetaDeEvento)}</div>
+              </details>
             )}
           </>
         )}
@@ -351,7 +380,7 @@ export function PeriodHub({ data }: { data: HubData }) {
         <ConfirmDeletePeriod
           id={selected.id}
           label={selected.label}
-          eventCount={selected.events.length}
+          eventCount={totalEventos}
           onClose={() => setShowDelete(false)}
           onDeleted={() => {
             setShowDelete(false);
@@ -365,8 +394,9 @@ export function PeriodHub({ data }: { data: HubData }) {
           id={selected.id}
           label={selected.label}
           takenAt={selected.snapshotTakenAt}
-          currentLines={selected.events.reduce((n, e) => n + e.lineCount, 0)}
-          eventCount={selected.events.length}
+          // Borrar y descartar alcanzan al período entero, también a lo ya hecho.
+          currentLines={[...selected.events, ...selected.pasados].reduce((n, e) => n + e.lineCount, 0)}
+          eventCount={totalEventos}
           onClose={() => setShowDiscard(false)}
           onDiscarded={() => {
             setShowDiscard(false);

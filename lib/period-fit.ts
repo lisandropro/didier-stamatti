@@ -127,4 +127,25 @@ export function periodoDeHoy(hoyDia: string): { startDay: string; endDay: string
   return { startDay: hoyDia, endDay: hoyDia };
 }
 
+/**
+ * Parte los eventos de un período en los que faltan y los que ya se hicieron.
+ *
+ * Un evento ya pasó cuando su día es anterior a hoy: en el depósito se trabaja
+ * por jornada, no por reloj, así que uno de hoy a las nueve de la mañana sigue
+ * contando como pendiente toda la jornada.
+ *
+ * No mueve, ni cierra, ni archiva nada — solo dice de qué lado va cada uno,
+ * para que la pantalla no mezcle lo hecho con lo que falta. Conserva el orden
+ * que traía la lista.
+ */
+export function separarPorFecha<T extends { date: Date }>(
+  eventos: T[],
+  hoyDia: string
+): { porHacer: T[]; pasados: T[] } {
+  const porHacer: T[] = [];
+  const pasados: T[] = [];
+  for (const e of eventos) (diaDe(e.date) < hoyDia ? pasados : porHacer).push(e);
+  return { porHacer, pasados };
+}
+
 export { sumarDias };

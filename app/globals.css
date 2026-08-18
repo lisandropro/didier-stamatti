@@ -492,6 +492,28 @@ tbody tr:hover{background:var(--surface-2)}
 .count-pill{font-size:var(--t-sm); font-weight:600; color:var(--muted); background:var(--surface-2); border:1px solid var(--hair); padding:2px var(--sp-2); border-radius:var(--r-pill)}
 
 .event-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--sp-4)}
+
+/* Los eventos que ya se hicieron, plegados al pie del período. Se ven como un
+   renglón discreto: están para consultar, no para trabajar. */
+.pasados{margin-top:var(--sp-6)}
+.pasados > summary{
+  display:flex; align-items:center; gap:var(--sp-2); cursor:pointer; list-style:none;
+  font-size:var(--t-md); font-weight:600; color:var(--muted);
+  padding:var(--sp-3) var(--sp-4); border:1px dashed var(--hair); border-radius:var(--radius);
+  background:var(--surface-2);
+}
+.pasados > summary::-webkit-details-marker{display:none}
+.pasados > summary:hover{color:var(--ink); border-color:var(--ink)}
+.pasados > summary:focus-visible{outline:2px solid var(--ink); outline-offset:2px}
+.pasados > summary svg{width:18px; height:18px; flex:none}
+/* La flechita la ponemos nosotros: la nativa se esconde arriba para que el
+   renglón se vea igual en todos los navegadores. */
+.pasados > summary::after{content:"▸"; margin-left:auto; font-size:var(--t-sm)}
+.pasados[open] > summary::after{content:"▾"}
+.pasados[open] > summary{margin-bottom:var(--sp-4); border-style:solid}
+/* Ya se hicieron: se muestran apagadas hasta que alguien las mira de cerca. */
+.pasados .event{opacity:.72}
+.pasados .event:hover, .pasados .event:focus-within{opacity:1}
 /* La tarjeta es un div, no un enlace: así puede tener botones adentro. El
    enlace del título se estira sobre toda la tarjeta con ::after, y los botones
    se apoyan por encima con z-index. */
