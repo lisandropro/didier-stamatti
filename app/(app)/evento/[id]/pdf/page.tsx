@@ -7,15 +7,12 @@ import { PrintablePedido, type Bloque } from "@/components/PrintablePedido";
 import { ShareOrderButton } from "@/components/ShareOrderButton";
 import { Cartel } from "@/components/Cartel";
 import { PickList } from "@/components/PickList";
+import { CATEGORIES as SECTORS, llevaCartel, nombreDeCategoria } from "@/lib/categories";
 import type { PickItem } from "@/lib/picklist";
 
 export const dynamic = "force-dynamic";
 
-const SECTORS = ["ENSERES", "MOBILIARIO", "BEBIDA"];
-const CAT_LABEL: Record<string, string> = { ENSERES: "Enseres", BEBIDA: "Bebida", MOBILIARIO: "Mobiliario" };
-// Solo Enseres y Bebida llevan cartel automático (van a depósitos distintos).
-// Mobiliario se puede imprimir aparte desde /pdf/cartel/MOBILIARIO si hace falta.
-const AUTO_CARTEL = new Set(["ENSERES", "BEBIDA"]);
+
 
 export default async function EventoPdfPage({
   params,
@@ -75,7 +72,7 @@ export default async function EventoPdfPage({
   for (const sector of SECTORS) {
     const bucket = bySector.get(sector)!;
     if (bucket.products.length === 0 && bucket.customs.length === 0) continue;
-    if (AUTO_CARTEL.has(sector)) {
+    if (llevaCartel(sector)) {
       bloques.push({
         clave: `cartel-${sector}`,
         tipo: "cartel",
@@ -89,7 +86,7 @@ export default async function EventoPdfPage({
         <div className="pdf-section">
           <div className="pdf-header">
             <span className="logo-mark pdf-logo" role="img" aria-label="Didier Stamatti Catering" />
-            <h1 className="pdf-title">{CAT_LABEL[sector]}</h1>
+            <h1 className="pdf-title">{nombreDeCategoria(sector)}</h1>
           </div>
           {eventInfo}
           <PickList products={bucket.products} customs={bucket.customs} />
@@ -129,7 +126,7 @@ export default async function EventoPdfPage({
           <span>Reimprimir un solo cartel:</span>
           {SECTORS.map((s) => (
             <Link key={s} className="btn ghost" href={`/evento/${ev.id}/pdf/cartel/${s}`}>
-              {CAT_LABEL[s]}
+              {nombreDeCategoria(s)}
             </Link>
           ))}
         </div>

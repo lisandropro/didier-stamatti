@@ -3,11 +3,7 @@
 import { useEffect, useState } from "react";
 import { createProduct, listRubros } from "@/app/actions/products";
 
-const CATS = [
-  { v: "ENSERES", l: "Enseres" },
-  { v: "MOBILIARIO", l: "Mobiliario" },
-  { v: "BEBIDA", l: "Bebida" },
-];
+import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
 
 // Unidades que ya se usan en el catálogo, para no inventar variantes nuevas.
 const UNITS = ["Unidad", "Juego", "Módulo", "Caja", "Cajón", "Pack", "Paquete", "Bolsa", "Botella", "Lata", "Litro", "Kg"];

@@ -6,11 +6,12 @@ import { OrderBuilder } from "@/components/OrderBuilder";
 import { OrderReadOnly } from "@/components/OrderReadOnly";
 import { getSessionUser } from "@/lib/auth";
 import { canEditOrders, canSetResponsable } from "@/lib/permissions";
+import { ordenDeCategoria } from "@/lib/categories";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-const CAT_ORDER: Record<string, number> = { ENSERES: 0, MOBILIARIO: 1, BEBIDA: 2 };
+
 
 export default async function EventoPage({
   params,
@@ -41,7 +42,7 @@ export default async function EventoPage({
     where: { OR: [{ active: true }, { id: { in: yaPedidos } }] },
     orderBy: [{ rubro: "asc" }, { name: "asc" }],
   });
-  products.sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9));
+  products.sort((a, b) => ordenDeCategoria(a.category) - ordenDeCategoria(b.category));
   const mine = new Map(myLines.filter((l) => l.productId).map((l) => [l.productId as string, l]));
 
   // Reservado por los OTROS eventos del mismo período

@@ -4,11 +4,11 @@ import Link from "next/link";
 import { fmtEvento, fmtRangoDias } from "@/lib/dates";
 import { nombreDe } from "@/lib/period-fit";
 import { PrintPlainButton } from "@/components/PrintButton";
+import { nombreDeCategoria, ordenDeCategoria } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
-const CAT_ORDER: Record<string, number> = { ENSERES: 0, MOBILIARIO: 1, BEBIDA: 2 };
-const CAT_LABEL: Record<string, string> = { ENSERES: "Enseres", BEBIDA: "Bebida", MOBILIARIO: "Mobiliario" };
+
 
 type Row = {
   productId: string;
@@ -71,7 +71,7 @@ export default async function ResumenPage({
   const rows = [...byProduct.values()].filter((r) => r.total > 0);
   rows.sort(
     (a, b) =>
-      (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9) ||
+      ordenDeCategoria(a.category) - ordenDeCategoria(b.category) ||
       (a.rubro ?? "").localeCompare(b.rubro ?? "") ||
       a.name.localeCompare(b.name)
   );
@@ -102,7 +102,7 @@ export default async function ResumenPage({
       lastCat = r.category;
       rendered.push(
         <tr key={`cat-${r.category}`} className="cat-row">
-          <td colSpan={5}>{CAT_LABEL[r.category] ?? r.category}</td>
+          <td colSpan={5}>{nombreDeCategoria(r.category)}</td>
         </tr>
       );
     }

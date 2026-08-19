@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 
 export type ProductResult = { ok: boolean; error?: string; id?: string };
 
-const CATEGORIES = ["ENSERES", "MOBILIARIO", "BEBIDA"];
+import { esCategoria } from "@/lib/categories";
 const TYPES = ["REUTILIZABLE", "CONSUMIBLE"];
 
 /** Compara nombres sin acentos ni mayúsculas: el mismo producto cargado dos
@@ -55,7 +55,7 @@ export async function createProduct(input: {
 
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Poné el nombre del producto." };
-  if (!CATEGORIES.includes(input.category)) return { ok: false, error: "Elegí la categoría." };
+  if (!esCategoria(input.category)) return { ok: false, error: "Elegí la categoría." };
   if (!TYPES.includes(input.type)) return { ok: false, error: "Elegí si lleva control de stock." };
 
   const existentes = await prisma.product.findMany({ select: { id: true, name: true, active: true } });
@@ -138,7 +138,7 @@ export async function updateProduct(input: {
 
   const name = input.name.trim();
   if (!name) return { ok: false, error: "El nombre no puede quedar vacío." };
-  if (!CATEGORIES.includes(input.category)) return { ok: false, error: "Elegí la categoría." };
+  if (!esCategoria(input.category)) return { ok: false, error: "Elegí la categoría." };
   if (!TYPES.includes(input.type)) return { ok: false, error: "Elegí si lleva control de stock." };
 
   if (normal(name) !== normal(p.name)) {

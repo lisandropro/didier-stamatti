@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { notifyOrderChange, type OrderChangeInput } from "@/lib/notify";
 import { revalidatePath } from "next/cache";
 import { canEditOrders } from "@/lib/permissions";
+import { esCategoria } from "@/lib/categories";
 
 export type OrderResult = { ok: boolean; error?: string; lineId?: string; count?: number };
 
@@ -71,7 +72,6 @@ export async function setLine(input: {
   return { ok: true };
 }
 
-const CATEGORIES = ["ENSERES", "BEBIDA", "MOBILIARIO"];
 
 /** Agrega un ítem fuera de catálogo (sin control de stock). Necesita categoría
  *  para poder imprimirse en el pedido del sector que corresponde. */
@@ -87,7 +87,7 @@ export async function addCustomLine(input: {
   if (!user) return { ok: false, error: permiso! };
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Poné el nombre del ítem." };
-  if (!CATEGORIES.includes(input.category)) return { ok: false, error: "Elegí a qué sector pertenece." };
+  if (!esCategoria(input.category)) return { ok: false, error: "Elegí a qué sector pertenece." };
   const qty = Math.max(1, Math.round(input.qty || 1));
 
   const line = await prisma.orderLine.create({

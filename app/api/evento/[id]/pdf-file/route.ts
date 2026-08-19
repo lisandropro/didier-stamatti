@@ -3,15 +3,12 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { fmtEventDate } from "@/lib/format";
 import { renderOrderPdf, type PdfSection, type PdfLine } from "@/lib/pdf/OrderPdf";
+import { CATEGORIES, CATEGORY_LABEL } from "@/lib/categories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SECTORS: { key: string; label: string }[] = [
-  { key: "ENSERES", label: "Enseres" },
-  { key: "MOBILIARIO", label: "Mobiliario" },
-  { key: "BEBIDA", label: "Bebida" },
-];
+const SECTORS = CATEGORIES.map((key) => ({ key, label: CATEGORY_LABEL[key] }));
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSessionUser();

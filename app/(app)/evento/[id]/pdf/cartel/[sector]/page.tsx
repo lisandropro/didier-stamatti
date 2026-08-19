@@ -4,11 +4,11 @@ import Link from "next/link";
 import { fmtEventDate } from "@/lib/format";
 import { PrintPlainButton } from "@/components/PrintButton";
 import { Cartel } from "@/components/Cartel";
+import { CATEGORIES as SECTORS, esCategoria, nombreDeCategoria } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
-const SECTORS = ["ENSERES", "MOBILIARIO", "BEBIDA"];
-const CAT_LABEL: Record<string, string> = { ENSERES: "Enseres", BEBIDA: "Bebida", MOBILIARIO: "Mobiliario" };
+
 
 export default async function CartelSectorPage({
   params,
@@ -17,7 +17,7 @@ export default async function CartelSectorPage({
 }) {
   const { id, sector: sectorParam } = await params;
   const sector = sectorParam.toUpperCase();
-  if (!SECTORS.includes(sector)) notFound();
+  if (!esCategoria(sector)) notFound();
 
   const ev = await prisma.event.findUnique({ where: { id } });
   if (!ev || ev.deletedAt) notFound();
@@ -26,7 +26,7 @@ export default async function CartelSectorPage({
     <>
       <div className="topbar no-print">
         <div>
-          <h1>Cartel — {CAT_LABEL[sector]}</h1>
+          <h1>Cartel — {nombreDeCategoria(sector)}</h1>
           <div className="sub">{ev.lugar} · para reimprimir las veces que haga falta</div>
         </div>
         <div className="spacer" />

@@ -1,11 +1,9 @@
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { InventoryTable } from "@/components/InventoryTable";
+import { ordenDeCategoria } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
-
-// Orden de categorías: Enseres, Mobiliario, Bebida
-const CAT_ORDER: Record<string, number> = { ENSERES: 0, MOBILIARIO: 1, BEBIDA: 2 };
 
 export default async function InventarioPage() {
   const session = await getSessionUser();
@@ -15,7 +13,7 @@ export default async function InventarioPage() {
     orderBy: [{ rubro: "asc" }, { name: "asc" }],
   });
   // sort estable por categoría, conservando rubro/nombre dentro de cada una
-  products.sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9));
+  products.sort((a, b) => ordenDeCategoria(a.category) - ordenDeCategoria(b.category));
 
   const reutCount = products.filter((p) => p.type === "REUTILIZABLE").length;
   const bajaCount = products.filter((p) => !p.active).length;

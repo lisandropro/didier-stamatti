@@ -9,6 +9,7 @@ import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditEventModal } from "@/components/EditEventModal";
 import { ResponsableEditor } from "@/components/ResponsableEditor";
 import { setEventStatus } from "@/app/actions/period";
+import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
 
 type ProductRow = {
   id: string;
@@ -42,11 +43,6 @@ type Data = {
   sourceEvents: SourceEvent[];
 };
 
-const CATS = [
-  { v: "ENSERES", l: "Enseres" },
-  { v: "MOBILIARIO", l: "Mobiliario" },
-  { v: "BEBIDA", l: "Bebida" },
-];
 
 const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 

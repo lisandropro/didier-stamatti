@@ -5,6 +5,7 @@ import { updateStock } from "@/app/actions/stock";
 import { NewProductModal } from "@/components/NewProductModal";
 import { ProductAdminModal } from "@/components/ProductAdminModal";
 import { RowMenu } from "@/components/RowMenu";
+import { OPCIONES_CATEGORIA, nombreDeCategoria } from "@/lib/categories";
 import { useRouter } from "next/navigation";
 
 type Product = {
@@ -19,18 +20,9 @@ type Product = {
   active: boolean;
 };
 
-const CATS = [
-  { v: "TODOS", l: "Todos" },
-  { v: "ENSERES", l: "Enseres" },
-  { v: "MOBILIARIO", l: "Mobiliario" },
-  { v: "BEBIDA", l: "Bebida" },
-];
-
-const CAT_LABEL: Record<string, string> = {
-  ENSERES: "Enseres",
-  BEBIDA: "Bebida",
-  MOBILIARIO: "Mobiliario",
-};
+// "Todos" no es una categoría: es el filtro apagado, y por eso no vive en
+// lib/categories junto a los sectores del depósito.
+const CATS = [{ v: "TODOS", l: "Todos" }, ...OPCIONES_CATEGORIA];
 
 const norm = (s: string) =>
   s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -124,7 +116,7 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
                   <td>
                     <div className="prod">{p.name}</div>
                     <div className="rubro">
-                      {CAT_LABEL[p.category] ?? p.category}{p.rubro ? ` · ${p.rubro}` : ""}
+                      {nombreDeCategoria(p.category)}{p.rubro ? ` · ${p.rubro}` : ""}
                       {p.description ? ` · ${p.description}` : ""}
                     </div>
                   </td>

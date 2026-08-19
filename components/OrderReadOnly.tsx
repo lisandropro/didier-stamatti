@@ -1,5 +1,7 @@
 "use client";
 
+import { CATEGORIES as ORDEN, nombreDeCategoria } from "@/lib/categories";
+
 import Link from "next/link";
 import { useState } from "react";
 import { ShortagesModal } from "@/components/ShortagesModal";
@@ -27,8 +29,6 @@ type Row = {
 };
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
 
-const CAT_LABEL: Record<string, string> = { ENSERES: "Enseres", MOBILIARIO: "Mobiliario", BEBIDA: "Bebida" };
-const ORDEN = ["ENSERES", "MOBILIARIO", "BEBIDA"];
 
 /**
  * El pedido en modo lectura, para quien no puede modificarlo.
@@ -113,7 +113,7 @@ export function OrderReadOnly({
             return (
               <section key={cat} className="ro-section">
                 <div className="section-title">
-                  {CAT_LABEL[cat] ?? cat}
+                  {nombreDeCategoria(cat)}
                   <span className="count-pill">{delSector.length + extras.length}</span>
                 </div>
                 <div className="tablewrap">

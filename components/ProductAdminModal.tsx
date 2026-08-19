@@ -22,11 +22,7 @@ export type AdminProduct = {
   active: boolean;
 };
 
-const CATS = [
-  { v: "ENSERES", l: "Enseres" },
-  { v: "MOBILIARIO", l: "Mobiliario" },
-  { v: "BEBIDA", l: "Bebida" },
-];
+import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
 const UNITS = ["Unidad", "Juego", "Módulo", "Caja", "Cajón", "Pack", "Paquete", "Bolsa", "Botella", "Lata", "Litro", "Kg"];
 
 function fecha(iso: string) {
