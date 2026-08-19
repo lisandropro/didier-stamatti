@@ -14,7 +14,8 @@
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
     "set-password": "tsx scripts/set-password.ts",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "revertir:sin-recuento": "node --import tsx scripts/reversion/revertir-stock-sin-recuento.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
