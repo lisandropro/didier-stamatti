@@ -2,15 +2,22 @@ import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fmtEventDate } from "@/lib/format";
-import { PrintButton } from "@/components/PrintButton";
+import { PrintButton, PrintSectorButton } from "@/components/PrintButton";
 import { PrintablePedido, type Bloque } from "@/components/PrintablePedido";
 import { ShareOrderButton } from "@/components/ShareOrderButton";
 import { Cartel } from "@/components/Cartel";
 import { PickList } from "@/components/PickList";
-import { CATEGORIES as SECTORS, llevaCartel, nombreDeCategoria } from "@/lib/categories";
+import { CATEGORIES as SECTORS, CATEGORY_LABEL, llevaCartel } from "@/lib/categories";
+import { sectoresConPedido } from "@/lib/order-sections";
 import type { PickItem } from "@/lib/picklist";
 
 export const dynamic = "force-dynamic";
+
+const IconDown = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M12 3v12M8 11l4 4 4-4" /><path d="M4 17v2.5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V17" />
+  </svg>
+);
 
 
 
@@ -76,17 +83,19 @@ export default async function EventoPdfPage({
       bloques.push({
         clave: `cartel-${sector}`,
         tipo: "cartel",
+        sector,
         nodo: <Cartel sector={sector} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} />,
       });
     }
     bloques.push({
       clave: `sec-${sector}`,
       tipo: "seccion",
+      sector,
       nodo: (
         <div className="pdf-section">
           <div className="pdf-header">
             <span className="logo-mark pdf-logo" role="img" aria-label="Didier Stamatti Catering" />
-            <h1 className="pdf-title">{nombreDeCategoria(sector)}</h1>
+            <h1 className="pdf-title">{CATEGORY_LABEL[sector]}</h1>
           </div>
           {eventInfo}
           <PickList products={bucket.products} customs={bucket.customs} />
@@ -98,6 +107,15 @@ export default async function EventoPdfPage({
     });
   }
   const carteles = bloques.filter((b) => b.tipo === "cartel").length;
+
+  // Los sectores que se pueden despachar solos. Sale de la misma función que
+  // usa la ruta del PDF, así el botón nunca ofrece algo que el archivo no trae.
+  const sectores = sectoresConPedido(
+    lines.map((l) => ({
+      categoria: l.product ? l.product.category : (l.customCategory ?? "ENSERES"),
+      esDeCatalogo: Boolean(l.product),
+    }))
+  );
 
   return (
     <>
@@ -112,24 +130,50 @@ export default async function EventoPdfPage({
         <Link className="btn ghost" href={`/evento/${ev.id}`}>Volver</Link>
         {/* Enlace común, no <Link>: la ruta devuelve un archivo, no una pantalla. */}
         <a className="btn ghost" href={`/api/evento/${ev.id}/pdf-file`} download>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M12 3v12M8 11l4 4 4-4" /><path d="M4 17v2.5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V17" />
-          </svg>
-          Descargar
+          {IconDown} Descargar
         </a>
         <PrintButton hayCarteles={carteles > 0} />
         <ShareOrderButton eventId={ev.id} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} disabled={totalItems === 0} />
       </div>
 
       <div className="content pdf-content">
-        <div className="no-print reprint-row">
-          <span>Reimprimir un solo cartel:</span>
-          {SECTORS.map((s) => (
-            <Link key={s} className="btn ghost" href={`/evento/${ev.id}/pdf/cartel/${s}`}>
-              {nombreDeCategoria(s)}
-            </Link>
-          ))}
-        </div>
+        {/* Cada sector, por separado: a quien prepara la bebida no le sirven las
+            hojas de mobiliario, y mandárselas lo obliga a buscar la suya entre
+            papeles que no le tocan. Solo se ofrecen los que tienen algo pedido. */}
+        {sectores.length > 0 && (
+          <div className="no-print sector-block">
+            <div className="sector-title">Mandar un sector solo</div>
+            {sectores.map((s) => (
+              <div key={s.key} className="sector-row">
+                <div className="sector-name">
+                  <b>{s.label}</b>
+                  <span className="sector-count">
+                    {s.lineas} {s.lineas === 1 ? "producto" : "productos"}
+                  </span>
+                </div>
+                <div className="sector-acts">
+                  <PrintSectorButton sector={s.key} />
+                  <a className="btn ghost" href={`/api/evento/${ev.id}/pdf-file?sector=${s.key}`} download>
+                    {IconDown} Descargar
+                  </a>
+                  <ShareOrderButton
+                    eventId={ev.id}
+                    lugar={ev.lugar}
+                    dateLabel={fmtEventDate(ev.date)}
+                    sector={s.key}
+                    label={`Compartir ${s.label}`}
+                    variant="ghost"
+                  />
+                  {llevaCartel(s.key) && (
+                    <Link className="btn ghost" href={`/evento/${ev.id}/pdf/cartel/${s.key}`}>
+                      Cartel
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {totalItems === 0 ? (
           <div className="empty-card">

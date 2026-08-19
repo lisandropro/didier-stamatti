@@ -27,16 +27,25 @@ const IconCartel = (
 export function PrintButton({ hayCarteles = true }: { hayCarteles?: boolean }) {
   return (
     <>
-      <button className="btn primary no-print" onClick={() => imprimirParte("pedido")}>
+      <button className="btn primary no-print" onClick={() => imprimirParte({ que: "pedido" })}>
         {IconPrint} Imprimir pedido
       </button>
       {/* Si este pedido no lleva ningún cartel, el botón no tiene qué imprimir. */}
       {hayCarteles && (
-        <button className="btn ghost no-print" onClick={() => imprimirParte("carteles")}>
+        <button className="btn ghost no-print" onClick={() => imprimirParte({ que: "carteles" })}>
           {IconCartel} Imprimir cartelitos
         </button>
       )}
     </>
+  );
+}
+
+/** Imprime un solo sector del pedido: la hoja de bebida sin las de mobiliario. */
+export function PrintSectorButton({ sector, label = "Imprimir" }: { sector: string; label?: string }) {
+  return (
+    <button className="btn ghost no-print" onClick={() => imprimirParte({ que: "pedido", sector })}>
+      {IconPrint} {label}
+    </button>
   );
 }
 

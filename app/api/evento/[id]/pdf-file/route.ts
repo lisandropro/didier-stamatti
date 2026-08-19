@@ -3,14 +3,15 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { fmtEventDate } from "@/lib/format";
 import { renderOrderPdf, type PdfSection, type PdfLine } from "@/lib/pdf/OrderPdf";
-import { CATEGORIES, CATEGORY_LABEL } from "@/lib/categories";
+import { CATEGORIES, CATEGORY_LABEL, esCategoria } from "@/lib/categories";
+import { nombreDeArchivo, sePuedeDespachar } from "@/lib/order-sections";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SECTORS = CATEGORIES.map((key) => ({ key, label: CATEGORY_LABEL[key] }));
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSessionUser();
   if (!session) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
 
@@ -20,7 +21,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const lines = await prisma.orderLine.findMany({ where: { eventId: id }, include: { product: true } });
 
-  const sections: PdfSection[] = SECTORS.map((sec) => {
+  // `?sector=BEBIDA` devuelve una sola hoja, para mandarle a cada uno lo suyo.
+  // Sin el parámetro sale el pedido entero, que es como venía funcionando.
+  const pedido = lines.map((l) => ({
+    categoria: l.product ? l.product.category : (l.customCategory ?? "ENSERES"),
+    esDeCatalogo: Boolean(l.product),
+  }));
+  const sector = new URL(req.url).searchParams.get("sector");
+  if (sector !== null) {
+    // Un sector vacío no se despacha: una hoja sin renglones le hace creer a
+    // quien la recibe que no falta cargar nada.
+    if (!esCategoria(sector) || !sePuedeDespachar(pedido, sector)) {
+      return NextResponse.json({ error: "Ese sector no tiene nada pedido." }, { status: 404 });
+    }
+  }
+
+  const sections: PdfSection[] = SECTORS.filter((sec) => sector === null || sec.key === sector).map((sec) => {
     const products: PdfLine[] = lines
       .filter((l) => l.product && l.product.category === sec.key)
       .map((l) => ({ name: l.product!.name, unit: l.product!.unit, qty: l.qty, note: l.note, rubro: l.product!.rubro }))
@@ -39,7 +55,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     sections,
   });
 
-  const base = `Pedido - ${ev.lugar} - ${fmtEventDate(ev.date)}`.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  const base = nombreDeArchivo(ev.lugar, fmtEventDate(ev.date), sector);
   // Cabecera HTTP = solo ASCII. Se manda un nombre "plano" como respaldo y el
   // nombre real (con acentos) codificado según RFC 5987 (filename*).
   // NFD separa el acento de la letra; luego se descarta todo lo no-ASCII.

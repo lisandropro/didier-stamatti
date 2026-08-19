@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { nombreDeArchivo } from "@/lib/order-sections";
 
 const IconShare = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -8,18 +9,25 @@ const IconShare = (
   </svg>
 );
 
-const cleanName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
 
 export function ShareOrderButton({
   eventId,
   lugar,
   dateLabel,
   disabled,
+  sector,
+  label = "Compartir",
+  variant = "primary",
 }: {
   eventId: string;
   lugar: string;
   dateLabel: string;
   disabled?: boolean;
+  /** Sin sector se comparte el pedido entero. Con sector, solo esa hoja:
+   *  a quien prepara la bebida no le sirven las de mobiliario. */
+  sector?: string;
+  label?: string;
+  variant?: "primary" | "ghost";
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -28,10 +36,10 @@ export function ShareOrderButton({
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch(`/api/evento/${eventId}/pdf-file`);
+      const res = await fetch(`/api/evento/${eventId}/pdf-file${sector ? `?sector=${sector}` : ""}`);
       if (!res.ok) throw new Error("No se pudo generar el PDF.");
       const blob = await res.blob();
-      const filename = `${cleanName(`Pedido - ${lugar} - ${dateLabel}`)}.pdf`;
+      const filename = `${nombreDeArchivo(lugar, dateLabel, sector)}.pdf`;
       const file = new File([blob], filename, { type: "application/pdf" });
 
       // Compartir nativo del celular (WhatsApp, mail, etc.) si el dispositivo lo permite.
@@ -41,7 +49,7 @@ export function ShareOrderButton({
       };
       if (nav.canShare && nav.share && nav.canShare({ files: [file] })) {
         try {
-          await nav.share({ files: [file], title: filename, text: `Pedido — ${lugar} (${dateLabel})` });
+          await nav.share({ files: [file], title: filename, text: `${sector ? `${label} — ` : ""}Pedido — ${lugar} (${dateLabel})` });
           return;
         } catch (e) {
           if (e instanceof Error && e.name === "AbortError") return; // el usuario cerró el menú: no es error
@@ -68,8 +76,8 @@ export function ShareOrderButton({
 
   return (
     <div className="share-wrap">
-      <button className="btn primary" onClick={share} disabled={busy || disabled}>
-        {IconShare} {busy ? "Preparando…" : "Compartir"}
+      <button className={`btn ${variant}`} onClick={share} disabled={busy || disabled}>
+        {IconShare} {busy ? "Preparando…" : label}
       </button>
       {msg && <span className="share-msg">{msg}</span>}
     </div>

@@ -3,14 +3,31 @@
 import { Fragment, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
-export type Bloque = { clave: string; tipo: "cartel" | "seccion"; nodo: React.ReactNode };
-export type Modo = "todo" | "pedido" | "carteles";
+export type Bloque = {
+  clave: string;
+  tipo: "cartel" | "seccion";
+  /** A qué sector pertenece. Es lo que permite mandar a la impresora una sola
+   *  hoja: la de bebida, sin las de mobiliario. */
+  sector: string;
+  nodo: React.ReactNode;
+};
 
-/** Qué bloques salen por la impresora en cada modo. */
-export function bloquesVisibles<T extends { tipo: "cartel" | "seccion" }>(bloques: T[], modo: Modo): T[] {
-  if (modo === "todo") return bloques;
-  const buscado = modo === "carteles" ? "cartel" : "seccion";
-  return bloques.filter((b) => b.tipo === buscado);
+/** Qué se manda a la impresora. `todo` es lo que se ve en pantalla. */
+export type Modo =
+  | { que: "todo" }
+  | { que: "pedido"; sector?: string }
+  | { que: "carteles"; sector?: string };
+
+const TODO: Modo = { que: "todo" };
+
+/** Los bloques que salen por la impresora en cada modo. */
+export function bloquesVisibles<T extends { tipo: "cartel" | "seccion"; sector: string }>(
+  bloques: T[],
+  modo: Modo
+): T[] {
+  if (modo.que === "todo") return bloques;
+  const buscado = modo.que === "carteles" ? "cartel" : "seccion";
+  return bloques.filter((b) => b.tipo === buscado && (!modo.sector || b.sector === modo.sector));
 }
 
 /**
@@ -23,23 +40,23 @@ export function bloquesVisibles<T extends { tipo: "cartel" | "seccion" }>(bloque
  * `:last-child`, que sigue apuntando al bloque escondido. Escondiendo con CSS
  * salía una hoja en blanco al final.
  *
- * Los botones viven en la barra de arriba, fuera de este componente, así que se
- * hablan por un evento del navegador — el mismo mecanismo que ya usa el
- * formulario de sugerencias.
+ * Los botones viven en la barra de arriba y en el bloque de sectores, fuera de
+ * este componente, así que se hablan por un evento del navegador — el mismo
+ * mecanismo que ya usa el formulario de sugerencias.
  */
 export function PrintablePedido({ bloques }: { bloques: Bloque[] }) {
-  const [modo, setModo] = useState<Modo>("todo");
+  const [modo, setModo] = useState<Modo>(TODO);
 
   useEffect(() => {
     function imprimir(e: Event) {
-      const que = (e as CustomEvent<"pedido" | "carteles">).detail;
+      const que = (e as CustomEvent<Modo>).detail;
       // flushSync obliga a que React pinte ANTES de abrir el diálogo de
       // impresión: window.print() es sincrónico y no espera al siguiente render.
       flushSync(() => setModo(que));
       try {
         window.print();
       } finally {
-        setModo("todo");
+        setModo(TODO);
       }
     }
     window.addEventListener("imprimir-parte", imprimir);
@@ -61,7 +78,7 @@ export function PrintablePedido({ bloques }: { bloques: Bloque[] }) {
   );
 }
 
-/** Lo llaman los botones de la barra. */
-export function imprimirParte(que: "pedido" | "carteles") {
-  window.dispatchEvent(new CustomEvent("imprimir-parte", { detail: que }));
+/** Lo llaman los botones de la barra y los de cada sector. */
+export function imprimirParte(modo: Modo) {
+  window.dispatchEvent(new CustomEvent("imprimir-parte", { detail: modo }));
 }
