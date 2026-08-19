@@ -31,7 +31,9 @@ export async function updateStock(input: {
   }
 
   const newStock = Math.max(0, Math.round(input.newStock));
-  const delta = newStock - product.stock;
+  // Si nunca se había contado, el movimiento es la cantidad entera: ese número
+  // es el primer recuento, no un ajuste contra un cero que nadie verificó.
+  const delta = newStock - (product.stock ?? 0);
   const reason = ["ROTURA", "PERDIDA", "COMPRA", "AJUSTE"].includes(input.reason)
     ? input.reason
     : "AJUSTE";

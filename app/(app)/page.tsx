@@ -41,6 +41,7 @@ export default async function Home({
   const overProducts: { name: string; total: number; stock: number }[] = [];
   let okCount = 0;
   let totalReut = 0;
+  let sinRecuento = 0;
   let isPast = false;
   let snapshotTakenAt: string | null = null;
   // Cuántos productos le faltan a cada evento, con la misma regla del pedido.
@@ -62,10 +63,14 @@ export default async function Home({
       where: { type: "REUTILIZABLE" },
       select: { id: true, name: true, stock: true },
     });
-    totalReut = reut.length;
-    for (const p of reut) {
+    // Los que nunca se contaron no entran en la cuenta: no se sabe si alcanzan
+    // ni si faltan. Decir que "alcanzan" sería tan falso como decir que faltan.
+    const contados = reut.filter((p) => p.stock !== null);
+    sinRecuento = reut.length - contados.length;
+    totalReut = contados.length;
+    for (const p of contados) {
       const t = totals.get(p.id) ?? 0;
-      if (t > p.stock) overProducts.push({ name: p.name, total: t, stock: p.stock });
+      if (t > p.stock!) overProducts.push({ name: p.name, total: t, stock: p.stock! });
       else okCount++;
     }
     overProducts.sort((a, b) => b.total - b.stock - (a.total - a.stock));
@@ -141,7 +146,7 @@ export default async function Home({
           pasados: pasados.map(tarjetaDeEvento),
         }
       : null,
-    alert: { overProducts, okCount, totalReut },
+    alert: { overProducts, okCount, totalReut, sinRecuento },
     canManage: canManagePeriods(session?.role ?? ""),
     canEdit: canEditOrders(session?.role ?? ""),
     trash: {

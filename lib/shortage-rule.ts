@@ -18,7 +18,8 @@ export type ShortageRow = {
   otherRequested: number;
   /** La suma de todos los eventos del finde. */
   totalRequested: number;
-  /** Lo que hay en el depósito. */
+  /** Lo que hay en el depósito. Acá nunca es nulo: un faltante solo existe
+   *  contra una cantidad conocida. Lo no contado se informa aparte. */
   stock: number;
   /** Lo que le queda a este evento una vez servidos los otros. */
   available: number;
@@ -35,7 +36,7 @@ export type ShortageInput = {
   unit: string;
   rubro: string | null;
   type: string;
-  stock: number;
+  stock: number | null;
   requested: number;
   otherRequested: number;
 };
@@ -49,6 +50,11 @@ export type ShortageInput = {
  */
 export function computeShortage(input: ShortageInput): ShortageRow | null {
   if (input.type !== "REUTILIZABLE") return null;
+  // Sin recuento no hay faltante que calcular: no se sabe cuánto hay. Decir
+  // que faltan 130 almohadones cuando nadie los contó es inventar un número,
+  // y un aviso que miente deja de leerse. Eso se informa aparte, con
+  // `necesitaRecuento`, que pide contar en vez de pedir comprar.
+  if (input.stock === null) return null;
   const totalRequested = input.requested + input.otherRequested;
   if (totalRequested <= input.stock) return null;
 
@@ -68,3 +74,15 @@ export function computeShortage(input: ShortageInput): ShortageRow | null {
     causedByOthers: input.otherRequested > input.stock,
   };
 }
+
+/**
+ * Un producto que este evento pide pero que nadie contó todavía.
+ *
+ * No es un faltante: es una tarea de depósito. La acción que pide es
+ * distinta —contar, no comprar— y le toca a otra persona, así que se muestra
+ * en su propio bloque y no mezclado con lo que de verdad falta.
+ */
+export function necesitaRecuento(input: ShortageInput): boolean {
+  return input.type === "REUTILIZABLE" && input.stock === null && input.requested > 0;
+}
+

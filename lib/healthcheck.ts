@@ -51,13 +51,14 @@ async function checkBackup(): Promise<HealthProblem | null> {
 /** Productos que deberían llevar control de stock pero están en cero: para
  *  esos, la app no puede avisar si falta mercadería. */
 async function checkStockLoaded(): Promise<HealthProblem | null> {
-  const sinCargar = await prisma.product.count({
-    where: { active: true, type: "REUTILIZABLE", stock: 0 },
+  // `null` = nunca se contó. Un cero contado NO es un problema: es un dato.
+  const sinContar = await prisma.product.count({
+    where: { active: true, type: "REUTILIZABLE", stock: null },
   });
-  if (sinCargar === 0) return null;
+  if (sinContar === 0) return null;
   return {
     code: "stock-empty",
-    message: `${sinCargar} producto${sinCargar === 1 ? "" : "s"} sin stock cargado (no se puede avisar si falta)`,
+    message: `${sinContar} producto${sinContar === 1 ? "" : "s"} sin contar (hasta contarlos no se puede avisar si faltan)`,
   };
 }
 

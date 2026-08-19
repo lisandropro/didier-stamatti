@@ -18,7 +18,8 @@ type ProductRow = {
   rubro: string | null;
   type: string;
   unit: string;
-  stock: number;
+  /** null = nunca se contó: no se puede saber si alcanza. */
+  stock: number | null;
   reserved: number; // pedido por los OTROS eventos del finde
   qty: number;
   note: string;
@@ -237,13 +238,19 @@ export function OrderBuilder({ data }: { data: Data }) {
             {visible.map((p) => {
               const reutil = p.type === "REUTILIZABLE";
               const total = p.qty + p.reserved;
-              const pct = reutil && p.stock > 0 ? Math.min(100, Math.round((total / p.stock) * 100)) : total > 0 ? 100 : 0;
+              // Sin recuento no se puede decir si alcanza: no se sabe cuánto hay.
+              // Se avisa que falta contarlo, que es lo único cierto.
+              const contado = reutil && p.stock !== null;
+              const hay = p.stock ?? 0;
+              const pct = contado && hay > 0 ? Math.min(100, Math.round((total / hay) * 100)) : total > 0 ? 100 : 0;
               const st =
                 !reutil
                   ? null
-                  : total > p.stock
-                    ? { cls: "crit", txt: `Faltan ${total - p.stock}`, fill: "var(--crit)" }
-                    : total === p.stock && total > 0
+                  : !contado
+                    ? { cls: "neutral", txt: "Sin contar", fill: "var(--muted)" }
+                  : total > hay
+                    ? { cls: "crit", txt: `Faltan ${total - hay}`, fill: "var(--crit)" }
+                    : total === hay && total > 0
                       ? { cls: "warn", txt: "Al límite", fill: "var(--warn)" }
                       : p.qty > 0
                         ? { cls: "ok", txt: "Alcanza", fill: "var(--ok)" }
@@ -288,7 +295,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                       <>
                         <div className="bar"><div className="fill" style={{ width: `${pct}%`, background: st?.fill ?? "var(--muted)" }} /></div>
                         <div className="line">
-                          Depósito: <b>{p.stock}</b> · Otros eventos: <b>{p.reserved}</b>
+                          Depósito: <b>{p.stock ?? "sin contar"}</b> · Otros eventos: <b>{p.reserved}</b>
                           {st && <span className={`chip ${st.cls}`}>{st.txt}</span>}
                         </div>
                       </>

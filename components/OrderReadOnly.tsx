@@ -22,7 +22,7 @@ type Row = {
   rubro: string | null;
   type: string;
   unit: string;
-  stock: number;
+  stock: number | null;
   reserved: number;
   qty: number;
   note: string;

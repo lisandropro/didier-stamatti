@@ -17,7 +17,7 @@ type Row = {
   rubro: string | null;
   type: string;
   unit: string;
-  stock: number;
+  stock: number | null;
   total: number;
   parts: { lugar: string; qty: number; note: string | null; order: number }[];
 };
@@ -91,7 +91,9 @@ export default async function ResumenPage({
     }))
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
 
-  const overCount = rows.filter((r) => r.type === "REUTILIZABLE" && r.total > r.stock).length;
+  // Lo no contado no cuenta como faltante: no se sabe cuánto hay.
+  const overCount = rows.filter((r) => r.type === "REUTILIZABLE" && r.stock !== null && r.total > r.stock).length;
+  const sinContar = rows.filter((r) => r.type === "REUTILIZABLE" && r.stock === null).length;
   const multiEvent = period.events.length > 1;
 
   // Filas con separador de categoría
@@ -109,6 +111,8 @@ export default async function ResumenPage({
     const reutil = r.type === "REUTILIZABLE";
     const st = !reutil
       ? { cls: "neutral", txt: "Se compra" }
+      : r.stock === null
+        ? { cls: "warn", txt: "Sin contar" }
       : r.total > r.stock
         ? { cls: "crit", txt: `Faltan ${r.total - r.stock}` }
         : r.total === r.stock
@@ -130,7 +134,7 @@ export default async function ResumenPage({
           ))}
         </td>
         <td><span className="stocknum">{r.total}</span></td>
-        <td className="dim">{reutil ? r.stock : "—"}</td>
+        <td className="dim">{!reutil ? "—" : (r.stock ?? "sin contar")}</td>
         <td><span className={`chip ${st.cls}`}>{st.txt}</span></td>
       </tr>
     );
@@ -164,7 +168,8 @@ export default async function ResumenPage({
               Total a preparar sumando {period.events.length} evento{period.events.length === 1 ? "" : "s"} ·{" "}
               {rows.length} producto{rows.length === 1 ? "" : "s"}
               {extras.length > 0 ? ` · ${extras.length} extra${extras.length === 1 ? "" : "s"}` : ""}
-              {overCount > 0 ? <span className="over"> · ⚠ {overCount} sin stock suficiente</span> : " · ✓ todo alcanza"}
+              {overCount > 0 ? <span className="over"> · ⚠ {overCount} sin stock suficiente</span> : sinContar === 0 ? " · ✓ todo alcanza" : ""}
+              {sinContar > 0 ? ` · ${sinContar} sin contar` : ""}
             </div>
 
             {rows.length > 0 && (

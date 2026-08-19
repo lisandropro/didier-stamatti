@@ -18,7 +18,7 @@ export type AdminProduct = {
   rubro: string | null;
   type: string;
   unit: string;
-  stock: number;
+  stock: number | null;
   active: boolean;
 };
 
@@ -181,7 +181,14 @@ export function ProductAdminModal({
 
         <div className="admin-row">
           <div>
-            <b>Cantidad disponible: {product.type === "REUTILIZABLE" ? product.stock : "no se cuenta"}</b>
+            <b>
+              Cantidad disponible:{" "}
+              {product.type !== "REUTILIZABLE"
+                ? "no se cuenta"
+                : product.stock === null
+                  ? "sin contar todavía"
+                  : product.stock}
+            </b>
             <p className="trash-meta">Se ajusta desde &quot;Editar stock&quot;, para que quede registrado el motivo.</p>
           </div>
           <button className="btn ghost" onClick={abrirHistoria}>Ver historial</button>
@@ -225,7 +232,7 @@ export function ProductAdminModal({
           <div className="form-error">
             <p>
               {type === "CONSUMIBLE"
-                ? `Va a dejar de contarse: no aparece más en los avisos de falta de stock. La cantidad (${product.stock}) se conserva y vuelve si lo pasás de nuevo a reutilizable.`
+                ? `Va a dejar de contarse: no aparece más en los avisos de falta de stock. La cantidad (${product.stock ?? "sin contar"}) se conserva y vuelve si lo pasás de nuevo a reutilizable.`
                 : "Va a empezar a contarse y a sumar en los avisos de falta de stock."}
             </p>
             <div className="modal-actions">

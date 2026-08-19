@@ -144,16 +144,42 @@ export async function eventosFueraDeSuPeriodo(): Promise<Hallazgo[]> {
 }
 
 /** Todas las incoherencias del pedido, juntas. */
+export async function pedidosDeProductoSinContar(): Promise<Hallazgo[]> {
+  const filas = await prisma.orderLine.findMany({
+    where: {
+      qty: { gt: 0 },
+      event: { deletedAt: null, period: { deletedAt: null } },
+      product: { active: true, type: "REUTILIZABLE", stock: null },
+    },
+    select: { product: { select: { name: true } }, event: { select: { id: true, lugar: true } } },
+  });
+  // Se agrupa por producto: lo que hay que hacer es contarlo una vez, no una
+  // vez por evento que lo pidió.
+  const porProducto = new Map<string, Set<string>>();
+  for (const f of filas) {
+    const n = f.product!.name;
+    if (!porProducto.has(n)) porProducto.set(n, new Set());
+    porProducto.get(n)!.add(f.event.lugar);
+  }
+  return [...porProducto.entries()].map(([nombre, lugares]) => ({
+    code: "producto-sin-contar",
+    gravedad: "media" as const,
+    message: `"${nombre}" lo ${lugares.size === 1 ? "pide" : "piden"} ${[...lugares].join(" y ")}, y todavía nadie lo contó`,
+    url: "/inventario",
+  }));
+}
+
 export async function incoherenciasDePedido(): Promise<Hallazgo[]> {
-  const [baja, sinInv, sinResp, sinPedido, fuera] = await Promise.all([
+  const [baja, sinInv, sinResp, sinPedido, fuera, sinContar] = await Promise.all([
     pedidosConProductoDeBaja(),
     eventosSinInvitados(),
     eventosListosSinResponsable(),
     eventosProximosSinPedido(),
     eventosFueraDeSuPeriodo(),
+    pedidosDeProductoSinContar(),
   ]);
   const orden = { alta: 0, media: 1, baja: 2 };
-  return [...baja, ...fuera, ...sinPedido, ...sinInv, ...sinResp].sort(
+  return [...baja, ...fuera, ...sinPedido, ...sinInv, ...sinResp, ...sinContar].sort(
     (a, b) => orden[a.gravedad] - orden[b.gravedad]
   );
 }

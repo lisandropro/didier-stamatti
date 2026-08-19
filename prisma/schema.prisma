@@ -134,7 +134,11 @@ model Product {
   type       String          // REUTILIZABLE | CONSUMIBLE
   unit       String          @default("Unidad")
   description String?        // aclaración opcional: para qué es, cómo distinguirlo
-  stock      Int             @default(0) // solo aplica a reutilizables
+  // Solo aplica a reutilizables. NULL = **nunca se contó**, que no es lo mismo
+  // que cero: "hay cero braseros" es un hecho y "nunca contamos los braseros"
+  // es la ausencia de un hecho. Mezclarlos hacía que el aviso de faltante
+  // gritara por productos que nadie había inventariado todavía.
+  stock      Int?
   active     Boolean         @default(true)
   createdAt  DateTime        @default(now())
   movements  StockMovement[]

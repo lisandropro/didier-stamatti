@@ -16,7 +16,8 @@ type Product = {
   rubro: string | null;
   type: string;
   unit: string;
-  stock: number;
+  /** null = nunca se contó. No es lo mismo que cero. */
+  stock: number | null;
   active: boolean;
 };
 
@@ -134,10 +135,13 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
                       <span className="chip crit">Dado de baja</span>
                     ) : !reutil ? (
                       <span className="chip neutral">Se compra por evento</span>
+                    ) : p.stock === null ? (
+                      // Nunca se contó. No es "hay cero": es que no se sabe.
+                      <span className="chip warn">{IconWarn}Sin contar</span>
                     ) : p.stock > 0 ? (
                       <span className="chip ok">{IconCheck}Cargado</span>
                     ) : (
-                      <span className="chip warn">{IconWarn}Falta cargar</span>
+                      <span className="chip neutral">Contado: no hay</span>
                     )}
                   </td>
                   {canEdit && (
@@ -229,14 +233,16 @@ function EditStockModal({
 
   const parsed = val.trim() === "" ? NaN : Math.round(Number(val));
   const valid = Number.isFinite(parsed) && parsed >= 0;
-  const total = valid ? parsed : product.stock;
-  const delta = total - product.stock;
+  // Sin recuento previo se parte de cero para poder escribir el primero.
+  const previo = product.stock ?? 0;
+  const total = valid ? parsed : previo;
+  const delta = total - previo;
 
   function step(d: number) {
     // updater funcional: clicks rápidos seguidos acumulan correctamente
     setVal((prev) => {
-      const n = prev.trim() === "" ? product.stock : Math.round(Number(prev));
-      const base = Number.isFinite(n) ? n : product.stock;
+      const n = prev.trim() === "" ? previo : Math.round(Number(prev));
+      const base = Number.isFinite(n) ? n : previo;
       return String(Math.max(0, base + d));
     });
   }
