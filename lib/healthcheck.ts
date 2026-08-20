@@ -114,7 +114,9 @@ export async function runHealthCheck(): Promise<{ problems: HealthProblem[]; not
       if (yaAvisado) continue;
 
       await prisma.notification.create({
-        data: { recipientId: admin.id, actorName: "Sistema", type: signature, message },
+        // El push sale acá mismo: la fila nace marcada como enviada. Sin esto
+        // quedaba para siempre como "pendiente", mintiendo sobre lo que pasó.
+        data: { recipientId: admin.id, actorName: "Sistema", type: signature, message, pushedAt: new Date() },
       });
       await sendPushToUser(admin.id, {
         title: "Didier Stamatti",

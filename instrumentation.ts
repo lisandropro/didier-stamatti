@@ -17,6 +17,17 @@ export async function register() {
   void flush();
   setInterval(() => void flush(), MINUTE);
 
+  // --- Avisos de pedido vacío ----------------------------------------------
+  // Va fuera de la condición del respaldo: que un evento se venga sin pedido no
+  // tiene nada que ver con tener S3 configurado.
+  const { notificarPedidosVacios } = await import("@/lib/pedido-vacio");
+  const avisarVacios = async () => {
+    const { avisos, eventos } = await notificarPedidosVacios();
+    if (avisos > 0) console.log(`[pedido-vacio] ${eventos} evento(s) sin pedido · ${avisos} aviso(s) enviados`);
+  };
+  void avisarVacios();
+  setInterval(() => void avisarVacios(), DAY);
+
   // --- Vaciado de la papelera ----------------------------------------------
   // Va antes del respaldo y fuera de su condición: limpiar la papelera no
   // depende de tener el respaldo configurado. La regla es por fecha, así que
