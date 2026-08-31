@@ -15,7 +15,7 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
   const [rubro, setRubro] = useState("");
   const [type, setType] = useState("REUTILIZABLE");
   const [unit, setUnit] = useState("Unidad");
-  const [stock, setStock] = useState("0");
+  const [stock, setStock] = useState("");
   const [rubros, setRubros] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +44,10 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
   }
 
   const llevaStock = type === "REUTILIZABLE";
-  const parsed = stock.trim() === "" ? 0 : Math.round(Number(stock));
-  const stockValido = Number.isFinite(parsed) && parsed >= 0;
+  // Vacío = no se contó todavía. Es un estado válido y distinto de cero.
+  const sinContar = stock.trim() === "";
+  const parsed = sinContar ? null : Math.round(Number(stock));
+  const stockValido = sinContar || (Number.isFinite(parsed) && parsed! >= 0);
   const valido = name.trim().length > 0 && (!llevaStock || stockValido);
 
   async function save() {
@@ -143,6 +145,7 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
                 type="number"
                 inputMode="numeric"
                 min={0}
+                placeholder="dejalo vacío si todavía no se contó"
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
               />
@@ -150,7 +153,13 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
           )}
         </div>
 
-        {llevaStock && parsed > 0 && (
+        {llevaStock && sinContar && (
+          <p className="modal-sub">
+            Va a quedar como <b>sin contar</b>. No es lo mismo que cero: hasta que alguien lo
+            cuente no va a avisar que falta, y va a aparecer en la lista de lo que hay que contar.
+          </p>
+        )}
+        {llevaStock && parsed !== null && parsed > 0 && (
           <p className="modal-sub">
             Se va a registrar un movimiento de <b>+{parsed}</b> en el historial, para que la cantidad inicial quede explicada.
           </p>

@@ -48,7 +48,11 @@ export async function createProduct(input: {
   rubro?: string;
   type: string;
   unit?: string;
-  stock?: number;
+  /** Omitido o nulo = **todavía no se contó**, que no es lo mismo que cero.
+   *  Es el estado en el que nace un producto que se sabe que existe pero que
+   *  nadie fue a contar: así no genera faltantes falsos hasta que alguien lo
+   *  cuente. Un cero explícito sí es un dato: se contó y no hay. */
+  stock?: number | null;
 }): Promise<ProductResult> {
   const { user, error: permiso } = await requireAdmin();
   if (!user) return { ok: false, error: permiso! };
@@ -71,7 +75,8 @@ export async function createProduct(input: {
 
   // Los consumibles no llevan stock: se compran para cada evento.
   const esReutilizable = input.type === "REUTILIZABLE";
-  const stock = esReutilizable ? Math.max(0, Math.round(input.stock ?? 0)) : 0;
+  const sinContar = input.stock === null || input.stock === undefined;
+  const stock = !esReutilizable ? 0 : sinContar ? null : Math.max(0, Math.round(input.stock!));
 
   const p = await prisma.product.create({
     data: {
@@ -87,8 +92,9 @@ export async function createProduct(input: {
   });
 
   // La cantidad inicial queda explicada en el historial, igual que cualquier
-  // otro movimiento: si no, aparece un número sin origen.
-  if (stock > 0) {
+  // otro movimiento: si no, aparece un número sin origen. Un producto sin
+  // contar no genera movimiento: no hubo recuento que registrar.
+  if (stock !== null && stock > 0) {
     await prisma.stockMovement.create({
       data: {
         productId: p.id,
