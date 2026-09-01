@@ -54,8 +54,11 @@ cimiento.
 | Etapa | Qué entra | Qué resuelve |
 |---|---|---|
 | **1** | Importar el CSV de ARCA · vista de Aldana con vencimiento, total por proveedor y marcar pagado | Muere la planilla, incluido el estado que el CSV solo no puede sostener |
-| **2** | Captura por foto con lectura de QR · destino · conforme | Lo que ARCA no puede saber: la imagen, la recepción, remitos, tickets, informales |
+| **2** | Captura por foto con lectura de QR y código de barras · emparejamiento · destino · conforme | Lo que ARCA no puede saber: la imagen, la recepción, remitos, tickets, informales |
 | **3** | Detalle de ítems | Control de precios de insumos y la mitad que falta del costeo por evento |
+
+El OCR o la visión por IA **no son una etapa**: entran dentro de la etapa 2 y
+solo si la medición dice que hacen falta. Ver "La cascada de identificación".
 
 ## Dónde vive: una aplicación, dos bases de datos
 
@@ -119,7 +122,11 @@ model Supplier {
 model Document {
   id     String @id @default(cuid())
   kind   String // FACTURA | REMITO | TICKET | NOTA_CREDITO | NOTA_DEBITO | OTRO
-  source String // ARCA | QR | MANUAL — de dónde salió la cabecera, no la foto
+  // Cómo se resolvió la cabecera la primera vez, no de dónde salió la foto:
+  // ARCA | QR | BARCODE | EMPAREJADO (alguien tocó la fila de ARCA) | MANUAL.
+  // Sirve además como medición: en producción dice qué peldaño de la cascada
+  // está funcionando de verdad, que es hoy el número más incierto del proyecto.
+  source String
 
   // --- Identidad fiscal: se copia de ARCA o del QR. NUNCA se tipea. ---
   // Los cuatro primeros juntos son la identidad única de una factura
@@ -167,6 +174,11 @@ model Document {
   clientKey      String?  @unique
   createdAt      DateTime @default(now())
   deletedAt      DateTime?
+
+  // Cuando una foto suelta se empareja con una fila de ARCA, las fotos se mudan
+  // a la fila de ARCA y esta queda borrada apuntando a la que quedó viva. No se
+  // destruye: es la única forma de auditar un emparejamiento equivocado.
+  mergedIntoId String?
 
   attachments Attachment[]
   changes     DocumentChange[]
@@ -318,7 +330,7 @@ construye un sistema que miente.
 [Botón "Recibí mercadería"]
         │
         ▼
-   Cámara apuntando → el QR se lee EN VIVO, vibra al enganchar
+   Cámara apuntando → QR y código de barras se leen EN VIVO, vibra al enganchar
         │
         ▼
    Foto → se sube y se guarda   ◀── esto NUNCA falla
@@ -332,20 +344,23 @@ construye un sistema que miente.
    Listo · Aldana ya lo ve
 ```
 
-**La foto se guarda pase lo que pase.** El QR puede fallar, la red puede
+**La foto se guarda pase lo que pase.** Los códigos pueden fallar, la red puede
 cortarse, el proveedor puede no existir todavía. Nada de eso puede impedir que
 la foto quede: un comprobante fotografiado y sin identificar ya es mejor que el
 papel sobre un escritorio.
 
 Cuatro detalles que deciden si esto funciona:
 
-- **El QR se lee en vivo mientras se apunta**, con vibración al enganchar, y
-  recién ahí se dispara la foto. Leerlo de una imagen ya tomada —papel arrugado,
-  con grasa, con el brillo del depósito— tiene una tasa de acierto bastante peor.
-- **Se lee en el teléfono**, con la API de códigos de barras del navegador. Es
-  instantáneo, gratis y funciona sin señal.
-- **La foto se comprime a 2000 px de lado mayor** después de leer el QR, nunca
-  antes. Son unos 5 GB al año en el bucket de Railway.
+- **Los códigos se leen en vivo mientras se apunta**, con la linterna encendida
+  y vibración al enganchar, y recién ahí se dispara la foto. Leerlos de una
+  imagen ya tomada —papel arrugado, con grasa, con el brillo del depósito— tiene
+  una tasa de acierto bastante peor. **Si a los tres segundos no engancha, se
+  saca la foto igual y se sigue.** No hay que pelearse con un papel arrugado.
+- **Se leen en el teléfono**, con la API de códigos de barras del navegador. Es
+  instantáneo, gratis y funciona sin señal. Donde esa API no exista, una
+  librería en WASM.
+- **La foto se comprime a 2000 px de lado mayor** después de leer los códigos,
+  nunca antes. Son unos 5 GB al año en el bucket de Railway.
 - **La `clientKey` se genera al abrir la cámara** y viaja con la subida, así el
   doble toque no crea dos comprobantes. Mismo patrón que `Suggestion`.
 
@@ -353,6 +368,74 @@ Si dos personas fotografían la misma factura, el índice único lo detecta y **
 segunda foto se agrega como página del comprobante que ya existe**, avisando.
 No es un error: en un depósito va a pasar seguido, y tratarlo como error es la
 forma más rápida de que dejen de usar la app.
+
+## La cascada de identificación
+
+No todas las facturas traen un código legible. Algunas no traen ninguno —remitos,
+tickets, proveedores informales— y otras lo traen borroneado, arrugado o
+impreso en térmico desvanecido.
+
+Eso importa mucho menos de lo que parece, por una razón que ordena todo el
+módulo:
+
+> **Los códigos no son de dónde salen los datos. ARCA es de dónde salen los
+> datos. Los códigos son solo la forma más rápida de *emparejar* la foto con la
+> fila de ARCA que ya los tiene perfectos.**
+
+Si la factura es electrónica, **está en ARCA aunque su QR sea ilegible**. Un
+código que no se lee no es un problema de datos: es un problema de
+emparejamiento. Y emparejar es mucho más fácil que extraer — no hay que leer
+nada, hay que elegir entre las 50 o 100 filas de esa semana.
+
+De ahí, cinco peldaños, del más barato al más caro:
+
+**1 · QR de AFIP** (RG 4892/2020). Trae CUIT, punto de venta, tipo, número,
+fecha, importe y CAE. Resuelve solo.
+
+**2 · Código de barras** (RG 1702/2004, Interleaved 2 of 5). Obligatorio en
+facturas A, B, C, E y M, y está impreso en muchas que además traen QR. Trae CUIT,
+tipo, punto de venta y **CAE**. No trae número ni importe, pero **el CAE es único
+por comprobante**, así que cruza exacto contra ARCA. Son dos oportunidades de
+lectura, no una, y agregarlo es gratis: el mismo lector soporta los dos formatos.
+
+**3 · Elegir de una lista corta.** Si ningún código se lee, se muestran **las
+filas de ARCA de esa semana que todavía no tienen foto**, de la más reciente a
+la más vieja. Un toque en *"DON ANGEL · $764.107,11 · 27/08"* y listo. Cero
+tipeo, y el dato es exacto porque viene de ARCA y no de la foto.
+
+**4 · OCR o visión por IA, solo sobre lo que falló.** Y con un trabajo mucho más
+fácil que "leer la factura": únicamente **ordenar la lista del peldaño 3** para
+que el candidato correcto quede primero. Aunque lea mal la mitad, sirve. Corre
+sobre una fracción chica, así que el costo por documento deja de ser un
+problema. **Entra solo si la medición dice que hace falta**, no por defecto.
+
+**5 · Carga manual corta.** Solo para lo que no está en ARCA: remitos, tickets,
+informales. **El formulario cambia según el tipo**: un remito no pregunta CAE,
+pregunta proveedor, fecha y conforme.
+
+### La captura no necesita identidad
+
+La consecuencia estructural es la que más vale: quien recibe la mercadería saca
+la foto y se va. El comprobante queda sin identificar y no pasa nada. **El
+emparejamiento es una actividad posterior, por lotes, de un toque por
+documento**, y solo puede ocurrir después de importar el CSV, porque ARCA
+publica con un día de atraso.
+
+Quien la hace es Aldana, sin trabajo extra: ella ya abre cada foto para decidir
+si paga. *Mirar la foto y tocar la fila que corresponde* es el mismo acto que ya
+iba a hacer. El muelle y la oficina quedan desacoplados.
+
+### Cómo se emparejan dos filas
+
+Un comprobante fotografiado sin identificar y una fila importada de ARCA son
+**dos filas distintas** hasta que alguien las une. Emparejarlas:
+
+1. Mueve los adjuntos a la fila de ARCA, que es la que tiene los datos buenos.
+2. Copia `destino`, `conforme` y quién capturó.
+3. Marca la fila de la foto con `deletedAt` y `mergedIntoId` apuntando a la que
+   quedó viva. **No se destruye**: es la única forma de auditar un
+   emparejamiento equivocado.
+4. Deja el rastro en `DocumentChange`.
 
 ## Roles
 
@@ -371,8 +454,11 @@ pantalla lo oculte — el dato no sale del servidor. Hay un test que lo sostiene
 
 ## Errores y casos límite
 
-- **El QR no se lee.** Queda "sin identificar" con la foto guardada. Lo resuelve
-  después el cruce con ARCA o la carga a mano. Nunca bloquea la captura.
+- **No se lee ningún código.** Queda "sin identificar" con la foto guardada, y
+  lo resuelve después la cascada de identificación. Nunca bloquea la captura.
+- **Se empareja con la fila equivocada.** Pasa: dos facturas del mismo proveedor
+  el mismo día con importes parecidos. Se desempareja, los adjuntos vuelven y el
+  `mergedIntoId` se limpia. Por eso el emparejamiento no destruye nada.
 - **La foto sale ilegible.** Un botón "pedir foto de nuevo" dispara un aviso push
   a quien capturó. Cierra el único circuito que si no termina en un llamado.
 - **Se corta la red a mitad de la subida.** Reintento; la `clientKey` impide el
@@ -394,9 +480,13 @@ pantalla lo oculte — el dato no sale del servidor. Hay un test que lo sostiene
 
 Con `node --test`, como el resto del proyecto:
 
-1. El lector de QR de AFIP: QR real, corrupto, y de otra cosa.
+1. Los dos lectores: QR de AFIP y código de barras ITF, cada uno con un caso
+   real, uno corrupto y uno de otra cosa. Y que el CAE del código de barras
+   cruce contra la fila correcta de ARCA.
 2. El parser del CSV de ARCA: formatos de número, filas de total, campos vacíos.
 3. La deduplicación: la misma factura por ARCA y por foto da **una** fila.
+   Y el emparejamiento manual: los adjuntos se mudan, la fila de la foto queda
+   con `mergedIntoId`, y desemparejar la devuelve a como estaba.
 4. El signo de las notas de crédito en el total por proveedor.
 5. Los centavos: `$2.231.811,45` va a la base y vuelve idéntico, incluido el ida
    y vuelta de `BigInt` a JSON.
@@ -421,9 +511,11 @@ son condición para empezar.
 1. **Exportar el CSV de Recibidos de la semana pasada** y contar cuántas de las
    facturas que Aldana efectivamente pagó están ahí. Ese porcentaje decide
    cuánto vale la etapa 1.
-2. **Fotografiar 20 facturas reales** —arrugadas, con grasa, en el depósito— y
-   contar cuántos QR se leen. Si la tasa es baja, la etapa 2 cambia de forma
-   antes de construirse.
+2. **Agarrar 20 comprobantes reales** —arrugados, con grasa, como llegan— y
+   contarlos en tres montones: **cuántos tienen QR legible**, cuántos tienen
+   **código de barras legible** (aunque el QR no se lea), y cuántos **no tienen
+   ninguno**. Ese tercer montón es el único que va a necesitar tipeo, y su
+   tamaño decide si hace falta el peldaño 4 de la cascada.
 
 ## Lo que quedó sin resolver
 
