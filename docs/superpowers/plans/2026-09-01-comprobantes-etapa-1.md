@@ -44,6 +44,7 @@
 - `lib/comprobantes/almacenamiento.ts` — subir y firmar las fotos en S3
 
 **Bordes**
+- `lib/comprobantes/politica.ts` — las decisiones que toman las actions: a quién se le da un importe, qué se acepta del navegador
 - `app/actions/comprobantes.ts` — las server actions, que son la barrera de permisos
 - `app/(app)/recepcion/page.tsx` + `captura-cliente.tsx` — la cámara
 - `app/(app)/pagos/page.tsx` + `lista-pagos.tsx` — la pantalla de Aldana
@@ -1532,6 +1533,7 @@ git commit -m "Guardar la foto pase lo que pase"
   - `ponerVencimiento(id: string, vencimiento: string, actor: { id: string; name: string }): Promise<void>`
   - `bandejas(): Promise<{ sinProveedor: number; sinRevisar: number; sinVencimiento: number }>`
   - `proponerVencimiento(fechaEmision: string | null, diasPago: number | null): string | null`
+  - `posiblesDuplicados(): Promise<PosibleDuplicado[]>`
 
 - [ ] **Step 1: Escribir la prueba que falla**
 
@@ -1937,8 +1939,15 @@ git commit -m "Sumar por proveedor y marcar varias facturas de una vez"
 La tarea donde se cumple la promesa central del diseño: **el rol de depósito nunca recibe un importe**. No porque la pantalla lo esconda: porque el dato no sale del servidor.
 
 **Files:**
+- Create: `lib/comprobantes/politica.ts`
 - Create: `app/actions/comprobantes.ts`
 - Test: `tests/comprobantes-actions.test.ts`
+
+> **Un archivo `"use server"` solo puede exportar funciones asíncronas.** Las
+> ayudas puras —`puedeResponderImportes`, `aFilaDeuda`, `cabeceraDeLaCaptura`,
+> `destinoValido`, `kindValido`— son síncronas, así que van en
+> `lib/comprobantes/politica.ts`. Es mejor de todos modos: son las reglas que
+> más importan del módulo y probarlas no debería necesitar levantar Next.
 
 **Interfaces:**
 - Consumes: `getSessionUser`, `canCapturarComprobantes`, `canVerImportes`, `canPagar`, `guardarCaptura`, `porProveedor`, `queVence`, `marcarPagados`, `ponerVencimiento`, `subirFoto`, `aTextoPlano`.

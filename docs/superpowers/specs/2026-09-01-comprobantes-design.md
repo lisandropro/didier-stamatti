@@ -702,6 +702,24 @@ aspecto oficial, el reconstruido:
 Ante AFIP, el contador o cualquier tercero, el comprobante sigue siendo el
 original. El reconstruido es el documento de trabajo.
 
+## Pagar dos veces lo mismo
+
+El índice único impide cargar dos veces la misma **factura electrónica**. No
+impide **pagar dos veces la misma deuda**: un ticket o un remito cargados a mano
+dos veces no tienen identidad fiscal que los delate, y ahí se va plata de verdad.
+
+El sistema avisa cuando dos comprobantes se parecen demasiado: **mismo proveedor,
+mismo importe al centavo, menos de diez días de diferencia, ninguno pagado**.
+
+La regla es angosta a propósito, y deja afuera todo lo que tiene número de
+comprobante propio —son distintos por construcción—. **Una alarma que suena de
+más se deja de mirar**, y entonces no controla nada.
+
+Un control que se evaluó y se descartó: avisar por saltos en la numeración de un
+proveedor. La Bitácora marcó como raro un salto de 2.200 en CCU en siete días,
+pero pensado de nuevo es completamente normal —CCU le factura a media provincia—
+y ese aviso sería puro ruido.
+
 ## Roles
 
 Se agregan dos a los tres que ya existen.
