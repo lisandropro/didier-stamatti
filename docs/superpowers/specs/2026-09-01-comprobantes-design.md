@@ -86,7 +86,7 @@ sean exactos, la foto para que no se pierda nada**.
 
 | Etapa | Qué entra | Qué resuelve |
 |---|---|---|
-| **1** | Captura por foto · extracción (códigos, y lectura automática donde no hay) · destino · conforme · vista de Aldana con vencimiento, total por proveedor y marcar pagado | Cubre el **100%** de los comprobantes desde el día uno, sean electrónicos o no. Muere la planilla |
+| **1** | Captura por foto · QR · **lectura automática de la foto** · destino · conforme · vista de Aldana con vencimiento, total por proveedor y marcar pagado | Cubre el **100%** de los comprobantes desde el día uno, sean electrónicos o no. Muere la planilla |
 | **2** | Importación del CSV de ARCA y emparejamiento | **Mejora** los electrónicos a dato exacto y delata los que nadie trajo |
 | **3** | Detalle de ítems | Control de precios de insumos y la mitad que falta del costeo por evento |
 
@@ -519,23 +519,52 @@ filas de ARCA de esa semana que todavía no tienen foto**, de la más reciente a
 la más vieja. Un toque en *"DON ANGEL · $764.107,11 · 27/08"* y listo. Cero
 tipeo, y el dato es exacto porque viene de ARCA y no de la foto.
 
-**4 · Lectura automática de la foto** (OCR o visión por IA). Hace dos trabajos
-distintos según de qué lado de la bifurcación esté el comprobante:
+**4 · Lectura automática de la foto.** Con 13 de 18 comprobantes sin código
+legible, esta dejó de ser opcional: es **la vía principal**, y va en la etapa 1.
 
-- **Si es electrónico**, solo tiene que **ordenar la lista del peldaño 3** para
-  que el candidato correcto quede primero. Aunque lea mal la mitad, sirve.
-- **Si no lo es**, es la forma principal de sacar los datos, porque no existe
-  lista de candidatos. Acá sí tiene que leer de verdad.
+**No es un agente.** Es **una llamada con salida estructurada por documento**:
+entra la imagen, sale un JSON validado contra un esquema. Un agente —varios
+pasos, herramientas, iteración— cuesta un orden de magnitud más y no lee mejor
+una factura. Lo que sí se especializa es el **esquema según el tipo**: a un
+remito no se le pregunta el CAE, porque preguntárselo invita a inventarlo.
 
-Ese segundo caso es el que justifica el gasto. La cuenta: si la mitad de 20-100
-comprobantes semanales necesita extracción, son unos 2.000 documentos al año.
-Aun a dos centavos de dólar por documento son **USD 40 al año**. El costo por
-documento solo sería un problema para un producto vendible a muchas pymes, que
-no es lo que se está construyendo.
+Para los pocos que sí son electrónicos pero no se pudo leer el código, hace un
+trabajo más fácil: **ordenar la lista del peldaño 3** para que el candidato
+correcto quede primero. Aunque lea mal la mitad, sirve.
 
-**Lo que salga de acá se propone, nunca se guarda solo.** Es la única fuente
-probabilística del sistema y tiene que quedar marcada como tal: alguien confirma
-antes de que el número entre.
+El costo, con ~2.000 documentos al año y ~3.000 tokens de entrada por foto:
+
+| Modelo | Por documento | Al año |
+|---|---:|---:|
+| Claude Opus 5 | $0,0275 | **$55** |
+| Claude Sonnet 5 | $0,011 | $22 |
+| Claude Haiku 4.5 | $0,0055 | $11 |
+
+Se usa **Opus 5**: a esta escala el ahorro es irrelevante y la precisión no. La
+API de lotes cuesta la mitad si algún día conviene procesar de noche.
+
+### Lo que hace seguro que una lectura probabilística toque plata
+
+**Lo que sale de acá se propone, nunca se guarda solo.** Es la única fuente del
+sistema que puede inventar un número que parezca razonable, y la única cuyo
+error es silencioso: un QR que falla no devuelve nada, pero un importe mal leído
+se ve perfectamente normal.
+
+Esa regla sola obligaría a revisar campo por campo, que es el tedio que este
+módulo vino a matar. Por eso van con ella **dos verificaciones que salen gratis
+y no necesitan a nadie**:
+
+- **Que cierre la aritmética.** Se piden subtotal, IVA, percepciones y total, y
+  se verifica `subtotal + IVA + percepciones = total`. Un dígito mal leído casi
+  nunca deja la cuenta cuadrada.
+- **Que el CUIT valide.** El CUIT lleva dígito verificador módulo 11. Probado
+  contra los cuatro CUIT reales de los emisores de estas facturas: los valida a
+  los cuatro, rechaza uno alterado, y rechaza el CUIT malformado del QR roto.
+
+Con las dos en verde, quien paga confirma de un toque. Con alguna en rojo, ese
+campo queda marcado y ahí sí lo mira. Y cuando no se pueden calcular, no se
+muestra nada: **no poder verificar no es lo mismo que verificar que está mal**,
+y mostrarlos igual sería mentirle a quien decide pagar.
 
 **5 · Carga manual corta**, cuando la lectura no alcanza. **El formulario cambia
 según el tipo de comprobante**, y esa es la diferencia entre tres campos y una
@@ -635,6 +664,9 @@ Con `node --test`, como el resto del proyecto:
    queda propuesto y sin confirmar, y ningún importe entra al total por
    proveedor hasta que una persona lo confirme. Es la única fuente
    probabilística del sistema y es la que puede meter un número inventado.
+8. **Las dos verificaciones de la lectura**: que la cuenta cierre con importes
+   reales, que un dígito cambiado la rompa, que el CUIT valide por dígito
+   verificador, y que sin los sumandos el resultado sea `null` y no `false`.
 
 ## Lo que no hace
 

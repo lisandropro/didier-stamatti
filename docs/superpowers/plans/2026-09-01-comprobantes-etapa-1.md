@@ -2551,10 +2551,374 @@ git commit -m "Cargar a mano lo que no trae codigo ni esta en ARCA"
 
 ---
 
+### Task 10: La lectura automática de la foto
+
+> **Por qué está en la etapa 1 y no después.** La medición del 01/09 dice que
+> **13 de 18 comprobantes no traen QR legible**. Sin esta tarea, la mayoría de
+> lo que entra se completa a mano, y el tedio que este módulo vino a matar
+> sobrevive con otra ropa.
+>
+> **No es un agente.** Es **una llamada con salida estructurada por documento**:
+> entra la imagen, sale un JSON validado contra un esquema. Un agente —varios
+> pasos, herramientas, iteración— cuesta un orden de magnitud más y no lee mejor
+> una factura. Lo que sí se especializa es el **esquema según el tipo**: a un
+> remito no se le pregunta el CAE.
+
+**Files:**
+- Create: `lib/comprobantes/lectura.ts`
+- Create: `lib/comprobantes/cuit.ts`
+- Modify: `app/actions/comprobantes.ts` (agregar `leerFotoDeComprobante`)
+- Modify: `app/(app)/recepcion/completar/[id]/page.tsx` (prellenar con lo leído)
+- Modify: `package.json` (dependencia `@anthropic-ai/sdk`)
+- Test: `tests/comprobantes-lectura.test.ts`
+
+**Interfaces:**
+- Consumes: `aCentavos` de `lib/money.ts`, `type Kind` de `lib/comprobantes/tipos.ts`.
+- Produces:
+  - `cuitValido(cuit: string): boolean` en `lib/comprobantes/cuit.ts`
+  - `type Lectura = { campos: CamposLeidos; controles: Controles }`
+  - `type CamposLeidos = { nombreProveedor?: string; cuitEmisor?: string; fechaEmision?: string; vencimiento?: string; subtotal?: bigint; iva?: bigint; percepciones?: bigint; total?: bigint }`
+  - `type Controles = { cierraLaCuenta: boolean | null; cuitValido: boolean | null }`
+  - `revisar(campos: CamposLeidos): Controles`
+  - `leerFoto(bytes: Buffer, mimeType: string, kind: Kind): Promise<Lectura>`
+
+- [ ] **Step 1: Escribir la prueba que falla**
+
+Las verificaciones son lógica pura y se prueban sin llamar a la API. **La
+llamada al modelo no se prueba con una prueba automática** — se prueba a mano
+contra fotos reales en el paso 6, porque una prueba que llama a la API cuesta
+plata en cada corrida y falla cuando no hay red.
+
+Crear `tests/comprobantes-lectura.test.ts`:
+
+```typescript
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { revisar } from "../lib/comprobantes/lectura";
+import { cuitValido } from "../lib/comprobantes/cuit";
+
+/**
+ * Las dos verificaciones que hacen que una lectura probabilística pueda tocar
+ * plata sin que alguien revise campo por campo.
+ *
+ * La idea es simple: un dígito mal leído casi nunca deja la cuenta cuadrada ni
+ * el CUIT validando. Cuando las dos dan verde, confirmar es un toque; cuando
+ * alguna da rojo, ese campo se mira.
+ */
+
+test("el CUIT valida por dígito verificador", () => {
+  assert.equal(cuitValido("30717737489"), true); // el de la empresa
+  assert.equal(cuitValido("30712345678"), false); // un dígito cambiado
+  assert.equal(cuitValido("123"), false);
+  assert.equal(cuitValido(""), false);
+  assert.equal(cuitValido("abcdefghijk"), false);
+});
+
+test("la cuenta cierra cuando subtotal + IVA + percepciones dan el total", () => {
+  const c = revisar({
+    subtotal: 63873368n, iva: 13413407n, percepciones: 0n, total: 77286775n,
+  });
+  assert.equal(c.cierraLaCuenta, true);
+});
+
+test("un digito mal leido en el total rompe la cuenta y se avisa", () => {
+  const c = revisar({
+    subtotal: 63873368n, iva: 13413407n, percepciones: 0n, total: 77286875n,
+  });
+  assert.equal(c.cierraLaCuenta, false);
+});
+
+test("sin los sumandos no se afirma nada", () => {
+  // null no es false: no poder verificar y verificar que está mal son cosas
+  // distintas, y mostrarlas igual seria mentirle a quien paga.
+  assert.equal(revisar({ total: 77286775n }).cierraLaCuenta, null);
+  assert.equal(revisar({}).cuitValido, null);
+});
+
+test("las percepciones pueden faltar y la cuenta cierra igual", () => {
+  const c = revisar({ subtotal: 100000n, iva: 21000n, total: 121000n });
+  assert.equal(c.cierraLaCuenta, true);
+});
+```
+
+- [ ] **Step 2: Correr la prueba para verificar que falla**
+
+Run: `npx tsx --test tests/comprobantes-lectura.test.ts`
+Expected: FAIL — no encuentra `../lib/comprobantes/lectura`.
+
+- [ ] **Step 3: Escribir el validador de CUIT**
+
+Crear `lib/comprobantes/cuit.ts`:
+
+```typescript
+// El CUIT lleva dígito verificador por módulo 11. Validarlo es gratis y es una
+// de las dos formas que tenemos de saber si el lector automático leyó bien, sin
+// que una persona tenga que mirar.
+
+const PESOS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+
+export function cuitValido(cuit: string): boolean {
+  if (typeof cuit !== "string") return false;
+  const d = cuit.replace(/\D/g, "");
+  if (d.length !== 11) return false;
+
+  const suma = PESOS.reduce((acc, peso, i) => acc + peso * Number(d[i]), 0);
+  const resto = suma % 11;
+  // Las dos excepciones de la regla: resto 0 da verificador 0, y resto 1 da 9.
+  const esperado = resto === 0 ? 0 : resto === 1 ? 9 : 11 - resto;
+  return esperado === Number(d[10]);
+}
+```
+
+- [ ] **Step 4: Escribir la lectura**
+
+Instalar la dependencia:
+
+```bash
+npm install @anthropic-ai/sdk
+```
+
+Crear `lib/comprobantes/lectura.ts`:
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+import { aCentavos } from "@/lib/money";
+import { cuitValido } from "./cuit";
+import type { Kind } from "./tipos";
+
+// Lee una foto de comprobante y PROPONE los campos.
+//
+// Es el peldaño 4 de la cascada y la vía principal de todo lo que no trae QR,
+// que segun la medicion del 01/09 son 13 de cada 18.
+//
+// **No es un agente**: es una llamada con salida estructurada. Entra la imagen,
+// sale un JSON validado contra un esquema. Un agente costaria un orden de
+// magnitud mas y no leeria mejor una factura.
+//
+// **Nada de lo que sale de acá se guarda solo.** Es la única fuente
+// probabilística del sistema y la única que puede inventar un número que parezca
+// razonable. Por eso ademas viene con dos controles que se verifican sin
+// intervencion humana: que la cuenta cierre y que el CUIT valide.
+
+export type CamposLeidos = {
+  nombreProveedor?: string;
+  cuitEmisor?: string;
+  fechaEmision?: string; // "AAAA-MM-DD"
+  /** El "Vto:" del papel. Si dice una condición ("7 DIAS") va en `condicionPago`. */
+  vencimiento?: string;
+  condicionPago?: string;
+  subtotal?: bigint;
+  iva?: bigint;
+  percepciones?: bigint;
+  total?: bigint;
+};
+
+export type Controles = {
+  /** `subtotal + iva + percepciones === total`. `null` = faltan sumandos. */
+  cierraLaCuenta: boolean | null;
+  /** Dígito verificador del CUIT. `null` = no se leyó ningún CUIT. */
+  cuitValido: boolean | null;
+};
+
+export type Lectura = { campos: CamposLeidos; controles: Controles };
+
+/**
+ * Las dos verificaciones que convierten una lectura probabilística en algo que
+ * se confirma de un toque.
+ *
+ * Un dígito mal leído casi nunca deja la cuenta cuadrada ni el CUIT validando.
+ * Con las dos en verde, quien paga confirma sin revisar campo por campo; con
+ * alguna en rojo, ese campo se marca y ahí sí lo mira.
+ */
+export function revisar(campos: CamposLeidos): Controles {
+  const { subtotal, iva, percepciones, total } = campos;
+  const cierraLaCuenta =
+    subtotal != null && iva != null && total != null
+      ? subtotal + iva + (percepciones ?? 0n) === total
+      : null;
+
+  return {
+    cierraLaCuenta,
+    cuitValido: campos.cuitEmisor ? cuitValido(campos.cuitEmisor) : null,
+  };
+}
+
+/** El esquema cambia según el tipo: a un remito no se le pregunta el importe,
+ *  porque no lo tiene y preguntarlo invita a que el modelo invente uno. */
+function esquemaDe(kind: Kind) {
+  const base = {
+    nombreProveedor: { type: "string", description: "Razón social del emisor, como figura impresa" },
+    cuitEmisor: { type: "string", description: "CUIT del emisor, solo dígitos" },
+    fechaEmision: { type: "string", description: "Fecha de emisión en formato AAAA-MM-DD" },
+  };
+  const plata = {
+    subtotal: { type: "string", description: "Subtotal sin IVA, tal cual está impreso" },
+    iva: { type: "string", description: "Importe de IVA, tal cual está impreso" },
+    percepciones: { type: "string", description: "Percepciones e impuestos internos sumados; 0 si no hay" },
+    total: { type: "string", description: "TOTAL final del comprobante, tal cual está impreso" },
+    vencimiento: { type: "string", description: "Fecha de vencimiento DEL PAGO en AAAA-MM-DD. NO el vencimiento del CAE." },
+    condicionPago: { type: "string", description: 'Condición de pago si en vez de fecha dice un plazo, por ejemplo "7 DIAS" o "CONTADO"' },
+  };
+  const props = kind === "REMITO" ? base : { ...base, ...plata };
+  return {
+    type: "object",
+    properties: props,
+    required: [] as string[],
+    additionalProperties: false,
+  };
+}
+
+const INSTRUCCIONES = `Sos un lector de comprobantes comerciales argentinos.
+
+Extraé los campos del comprobante de la imagen. Reglas:
+
+- Copiá los importes EXACTAMENTE como están impresos, con su separador decimal.
+  No los recalcules, no los redondees, no los conviertas.
+- El vencimiento del PAGO no es el vencimiento del CAE. El del CAE está al pie,
+  junto al número de CAE, y NO se pide acá. Si el comprobante solo dice una
+  condición ("7 DIAS", "CONTADO"), poné eso en condicionPago y dejá vencimiento
+  vacío.
+- Si un campo no se lee o no está, omitilo. **No inventes ningún valor.** Un
+  campo vacío se resuelve preguntando; un campo inventado no se detecta nunca.`;
+
+export async function leerFoto(bytes: Buffer, mimeType: string, kind: Kind): Promise<Lectura> {
+  const client = new Anthropic();
+
+  const respuesta = await client.messages.create({
+    model: "claude-opus-5",
+    max_tokens: 2048,
+    thinking: { type: "adaptive" },
+    system: INSTRUCCIONES,
+    output_config: { format: { type: "json_schema", schema: esquemaDe(kind) } },
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: mimeType as "image/jpeg", data: bytes.toString("base64") },
+          },
+          { type: "text", text: "Extraé los campos de este comprobante." },
+        ],
+      },
+    ],
+  });
+
+  const texto = respuesta.content.find((b) => b.type === "text");
+  if (!texto || texto.type !== "text") return { campos: {}, controles: revisar({}) };
+
+  let bruto: Record<string, string>;
+  try {
+    bruto = JSON.parse(texto.text);
+  } catch {
+    return { campos: {}, controles: revisar({}) };
+  }
+
+  // Los importes vienen como TEXTO a propósito y se convierten acá con el mismo
+  // parser que todo lo demás: si el modelo devolviera números, el JSON los
+  // volvería flotantes y se perderían centavos antes de que los veamos.
+  const campos: CamposLeidos = {
+    nombreProveedor: bruto.nombreProveedor || undefined,
+    cuitEmisor: bruto.cuitEmisor?.replace(/\D/g, "") || undefined,
+    fechaEmision: diaValido(bruto.fechaEmision),
+    vencimiento: diaValido(bruto.vencimiento),
+    condicionPago: bruto.condicionPago || undefined,
+    subtotal: aCentavos(bruto.subtotal ?? "") ?? undefined,
+    iva: aCentavos(bruto.iva ?? "") ?? undefined,
+    percepciones: aCentavos(bruto.percepciones ?? "") ?? undefined,
+    total: aCentavos(bruto.total ?? "") ?? undefined,
+  };
+
+  return { campos, controles: revisar(campos) };
+}
+
+function diaValido(v: string | undefined): string | undefined {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const [a, m, d] = v.split("-").map(Number);
+  const f = new Date(Date.UTC(a, m - 1, d));
+  const ok = f.getUTCFullYear() === a && f.getUTCMonth() === m - 1 && f.getUTCDate() === d;
+  return ok ? v : undefined;
+}
+```
+
+- [ ] **Step 5: Correr la prueba para verificar que pasa**
+
+Run: `npx tsx --test tests/comprobantes-lectura.test.ts`
+Expected: PASS, 5 pruebas.
+
+- [ ] **Step 6: Probar la lectura contra fotos reales**
+
+Esto no va como prueba automática: cada corrida gasta plata y necesita red.
+Es una comprobación a mano, una sola vez, con **cinco comprobantes reales de
+tipos distintos** — una factura A, un remito, un ticket, y dos de los que no
+tienen QR.
+
+Por cada uno, comparar contra el papel: el **total**, el **CUIT del emisor** y
+el **vencimiento**. Anotar cuántos salieron bien y cuántas veces los dos
+controles dieron verde estando el dato mal — **ese último número es el que
+importa**, porque es la única forma en que un dato equivocado llega a la
+pantalla de quien paga sin que nadie lo mire.
+
+Si aparece aunque sea uno, subir el umbral: que la confirmación de un toque
+exija además que el proveedor ya exista con ese CUIT.
+
+- [ ] **Step 7: Conectar con la pantalla de completar**
+
+En `app/actions/comprobantes.ts`:
+
+```typescript
+import { leerFoto } from "@/lib/comprobantes/lectura";
+import { aTextoPlano } from "@/lib/money";
+
+/** Lee una foto y PROPONE los campos. No escribe nada en la base: lo que
+ *  devuelve va al formulario para que una persona lo confirme. */
+export async function leerFotoDeComprobante(documentId: string) {
+  const sesion = await getSessionUser();
+  if (!sesion || !canPagar(sesion.role)) {
+    return { ok: false, error: "No tenés permiso para leer comprobantes." };
+  }
+  // ... recuperar los bytes del adjunto desde S3 y el `kind` del documento ...
+  const { campos, controles } = await leerFoto(bytes, mimeType, kind);
+  return {
+    ok: true,
+    campos: {
+      ...campos,
+      // Los importes cruzan como texto: BigInt no serializa a JSON.
+      subtotal: campos.subtotal && aTextoPlano(campos.subtotal),
+      iva: campos.iva && aTextoPlano(campos.iva),
+      percepciones: campos.percepciones && aTextoPlano(campos.percepciones),
+      total: campos.total && aTextoPlano(campos.total),
+    },
+    controles,
+  };
+}
+```
+
+En la pantalla de completar, los campos leídos entran **prellenados y marcados
+como propuestos** (fondo distinto, nunca como si ya estuvieran guardados), con:
+
+- Un cartel verde **"la cuenta cierra"** cuando `cierraLaCuenta` es `true`, y un
+  botón de confirmar todo de un toque.
+- Un cartel de atención sobre el campo que corresponda cuando alguno de los dos
+  controles da `false`.
+- Nada cuando dan `null`: no poder verificar no es lo mismo que verificar que
+  está mal, y mostrarlo igual sería mentirle a quien paga.
+
+Guardar sigue llamando a `completarAMano`, que ya existe y ya deja el rastro en
+`DocumentChange`. La lectura no tiene una vía propia de escritura, a propósito.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/comprobantes/lectura.ts lib/comprobantes/cuit.ts app/actions/comprobantes.ts "app/(app)/recepcion/completar" tests/comprobantes-lectura.test.ts package.json package-lock.json
+git commit -m "Leer la foto cuando no hay codigo que leer"
+```
+
+---
+
 ## Lo que queda fuera de la etapa 1, a propósito
 
 - **La importación del CSV de ARCA y el emparejamiento** — etapa 2. El campo `enArca` y `mergedIntoId` ya están en el esquema para que entre sin migración de datos.
-- **La lectura automática por OCR o visión** (peldaño 4 de la cascada) — entra recién cuando la medición de los tres montones diga cuánto se gana. Hasta entonces, el peldaño 5 (carga manual corta) cubre el caso.
 - **El detalle de ítems** — etapa 3.
 - **Alta y fusión de proveedores desde una pantalla** — hoy se crean solos al completar a mano. La fusión de duplicados escritos distinto es trabajo de administración y va con la etapa 2.
 - **El botón "pedir foto de nuevo"** con aviso push a quien capturó. Está en el diseño y no tiene tarea acá, a propósito: mientras sean tres personas que se conocen y trabajan en el mismo lugar, una foto ilegible se resuelve con un mensaje. El circuito hay que cerrarlo cuando entre gente que no se cruza en el día, y la infraestructura (`web-push`, `Notification`) ya está puesta.
