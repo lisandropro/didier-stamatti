@@ -241,7 +241,74 @@ export async function controlDeAvisos(): Promise<Hallazgo[]> {
 }
 
 /** Todo junto, para la revisión diaria y para la pantalla. */
+// ---------------------------------------------------------------------------
+// A4 - Comprobantes
+// ---------------------------------------------------------------------------
+
+/**
+ * Comprobantes que podrian ser el mismo pagado dos veces.
+ *
+ * `posiblesDuplicados` existia y nadie la llamaba, que en la practica es lo
+ * mismo que no existir. El caso que la motiva es concreto: llega la factura con
+ * la mercaderia, se fotografia; despues el proveedor la manda por mail y se
+ * carga de nuevo. Quedan dos filas identicas y se transfiere dos veces.
+ *
+ * Es la peor clase de error del modulo porque **no rompe nada**: las dos filas
+ * son validas, las dos cuentas cierran, y solo se descubre cuando el proveedor
+ * avisa — o no avisa.
+ *
+ * Gravedad alta: es plata que se va.
+ */
+export async function comprobantesDuplicados(): Promise<Hallazgo[]> {
+  const { posiblesDuplicados } = await import("@/lib/comprobantes/pagos");
+  const { formatear } = await import("@/lib/money");
+  const pares = await posiblesDuplicados();
+  return pares.map((p) => ({
+    code: "comprobante-duplicado",
+    message: `${p.nombre}: ${p.documentIds.length} comprobantes por ${formatear(p.importe)}. Puede ser el mismo cargado dos veces.`,
+    url: "/pagos",
+    gravedad: "alta" as const,
+  }));
+}
+
+/**
+ * Comprobantes sin vencimiento cargado.
+ *
+ * No es urgente por si mismo, pero un comprobante sin vencimiento no aparece en
+ * "que vence esta semana": esta en el sistema y aun asi se puede pasar de fecha.
+ * Se avisa una sola vez, agregado, para no convertir esto en ruido diario.
+ */
+export async function comprobantesSinVencimiento(): Promise<Hallazgo[]> {
+  const { sinVencimiento } = await import("@/lib/comprobantes/pagos");
+  const docs = await sinVencimiento();
+  if (docs.length === 0) return [];
+  return [
+    {
+      code: "comprobante-sin-vencimiento",
+      message: `${docs.length} comprobante${docs.length === 1 ? "" : "s"} sin fecha de vencimiento: no van a aparecer en lo que vence.`,
+      url: "/pagos",
+      gravedad: "media" as const,
+    },
+  ];
+}
+
 export async function revisarTodo(): Promise<Hallazgo[]> {
-  const [pedidos, avisos] = await Promise.all([incoherenciasDePedido(), controlDeAvisos()]);
-  return [...pedidos, ...avisos];
+  const [pedidos, avisos, comprobantes] = await Promise.all([
+    incoherenciasDePedido(),
+    controlDeAvisos(),
+    // Los comprobantes viven en OTRA base. Si esa base no responde, el chequeo
+    // del stock tiene que seguir dando resultados: un modulo caido no puede
+    // dejar ciego al otro. Se avisa que no se pudo mirar, que es distinto de
+    // "esta todo bien".
+    Promise.all([comprobantesDuplicados(), comprobantesSinVencimiento()])
+      .then((r) => r.flat())
+      .catch((): Hallazgo[] => [
+        {
+          code: "comprobantes-sin-revisar",
+          message: "No se pudieron revisar los comprobantes. Los controles de duplicados y vencimientos no corrieron.",
+          gravedad: "media",
+        },
+      ]),
+  ]);
+  return [...pedidos, ...avisos, ...comprobantes];
 }

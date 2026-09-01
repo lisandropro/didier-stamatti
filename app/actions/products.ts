@@ -26,6 +26,13 @@ async function requireAdmin() {
  *  quien invente el suyo: si el rubro se escribe distinto, el producto queda
  *  suelto en el listado y en el pedido impreso. */
 export async function listRubros(): Promise<Record<string, string[]>> {
+  // Una server action es un endpoint publico: cualquiera con una sesion —o sin
+  // ella— puede invocarla directamente, sin pasar por la pantalla que la usa.
+  // Esta era la unica del archivo sin comprobar nada, y devolvia el mapa
+  // completo de categorias y rubros del catalogo.
+  const { error } = await requireAdmin();
+  if (error) return {};
+
   const rows = await prisma.product.findMany({
     where: { rubro: { not: null } },
     select: { category: true, rubro: true },

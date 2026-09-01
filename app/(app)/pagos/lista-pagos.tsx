@@ -44,6 +44,7 @@ export default function ListaPagos({
   // así que la fecha del pago es editable. Arranca en hoy, que es el caso común.
   const [diaPago, setDiaPago] = useState(hoy);
   const [copiado, setCopiado] = useState(false);
+  const [aviso, setAviso] = useState<{ tono: "bien" | "ojo" | "mal"; texto: string } | null>(null);
 
   const porId = useMemo(() => new Map(vencen.map((f) => [f.id, f])), [vencen]);
 
@@ -90,10 +91,49 @@ export default function ListaPagos({
 
   async function marcarPagadas() {
     setGuardando(true);
-    await pagar([...elegidas], diaPago);
-    setElegidas(new Set());
-    setGuardando(false);
-    router.refresh();
+    setAviso(null);
+    try {
+      const r = await pagar([...elegidas], diaPago);
+
+      // El resultado se mira. Antes se descartaba y la seleccion se limpiaba
+      // pase lo que pasase: si la accion fallaba —sin permiso, fecha invalida,
+      // base caida— la pantalla quedaba igual que si hubiera andado, y quien
+      // paga se iba convencida de haber marcado ocho facturas que seguian
+      // pendientes. En una pantalla de plata, un error silencioso es peor que
+      // un error a los gritos.
+      if (!r.ok) {
+        setAviso({ tono: "mal", texto: r.error ?? "No se pudo registrar el pago." });
+        return; // la seleccion NO se limpia: sigue ahi para reintentar
+      }
+
+      // Puede haber salido bien "a medias": comprobantes que ya estaban
+      // pagados, o que otra persona anulo mientras esta pantalla estaba
+      // abierta. Decirlo es la unica forma de que los numeros del homebanking y
+      // los de la pantalla se puedan comparar.
+      const sobras = r.yaEstaban + r.noSePagan + r.noEncontrados;
+      setAviso(
+        sobras === 0
+          ? { tono: "bien", texto: `${r.marcados} marcado${r.marcados === 1 ? "" : "s"} como pagado${r.marcados === 1 ? "" : "s"}.` }
+          : {
+              tono: "ojo",
+              texto: [
+                `${r.marcados} marcado${r.marcados === 1 ? "" : "s"}.`,
+                r.yaEstaban ? `${r.yaEstaban} ya figuraba${r.yaEstaban === 1 ? "" : "n"} como pagado${r.yaEstaban === 1 ? "" : "s"}.` : "",
+                r.noSePagan ? `${r.noSePagan} no se paga${r.noSePagan === 1 ? "" : "n"} (remito o nota).` : "",
+                r.noEncontrados ? `${r.noEncontrados} ya no esta${r.noEncontrados === 1 ? "" : "n"}.` : "",
+              ].filter(Boolean).join(" "),
+            },
+      );
+      setElegidas(new Set());
+      router.refresh();
+    } catch {
+      setAviso({
+        tono: "mal",
+        texto: "Se cortó la conexión. Ninguno quedó marcado: revisá y volvé a intentar.",
+      });
+    } finally {
+      setGuardando(false);
+    }
   }
 
   const grupos = useMemo(() => agrupar(vencen, hoy), [vencen, hoy]);
@@ -104,6 +144,7 @@ export default function ListaPagos({
       <header className="topbar">
         <h1>Pagos</h1>
       </header>
+      <div className="content">
 
       {duplicados.length > 0 && (
         <section className="pg-alerta" role="alert">
@@ -247,6 +288,13 @@ export default function ListaPagos({
         </>
       )}
 
+      {aviso && (
+        <div className={`pg-aviso pg-aviso-${aviso.tono}`} role="status" aria-live="polite">
+          {aviso.texto}
+          <button type="button" onClick={() => setAviso(null)} aria-label="Cerrar aviso">×</button>
+        </div>
+      )}
+
       {/* La barra aparece solo cuando hay algo elegido: lo que se está armando
           es una transferencia, y el número que muestra es exactamente el que se
           va a transferir. */}
@@ -297,6 +345,7 @@ export default function ListaPagos({
           </div>
         </div>
       )}
+      </div>
     </>
   );
 }

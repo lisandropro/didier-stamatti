@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { capturarComprobante } from "@/app/actions/comprobantes";
 import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 
@@ -33,12 +33,13 @@ export default function CapturaCliente({
   const [capturas, setCapturas] = useState(capturasIniciales);
 
   const [foto, setFoto] = useState<Blob | null>(null);
-  const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
   const [destino, setDestino] = useState<Destino | null>(null);
   const [conforme, setConforme] = useState<boolean | null>(null);
   const [codigoLeido, setCodigoLeido] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const avisoError = useRef<HTMLParagraphElement>(null);
+  const abriendo = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const qrRef = useRef<Set<string>>(new Set());
   const clientKeyRef = useRef<string>("");
@@ -50,16 +51,33 @@ export default function CapturaCliente({
 
   useEffect(() => cerrarCamara, [cerrarCamara]);
 
-  // La vista previa se libera al cambiar de foto: sin esto cada captura deja un
-  // blob colgado en memoria, y en una jornada larga son decenas.
+  // El botón Guardar está al pie de la revisión y el error se pinta arriba:
+  // sin esto la persona toca Guardar, no ve nada, y vuelve a tocar.
   useEffect(() => {
-    if (!foto) return;
-    const url = URL.createObjectURL(foto);
-    setVistaPrevia(url);
-    return () => URL.revokeObjectURL(url);
-  }, [foto]);
+    if (!error) return;
+    avisoError.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    avisoError.current?.focus();
+  }, [error]);
+
+  // La vista previa se DERIVA de la foto, no se guarda aparte. Crearla dentro
+  // de un efecto obligaba a un render de mas —la pantalla se dibujaba una vez
+  // sin imagen y otra con ella— y en un telefono viejo ese parpadeo se ve.
+  const vistaPrevia = useMemo(() => (foto ? URL.createObjectURL(foto) : null), [foto]);
+
+  // Y se libera al cambiar de foto: sin esto cada captura deja un blob colgado
+  // en memoria, y en una jornada larga son decenas.
+  useEffect(() => {
+    if (!vistaPrevia) return;
+    return () => URL.revokeObjectURL(vistaPrevia);
+  }, [vistaPrevia]);
 
   async function abrirCamara() {
+    // Entre el toque y el diálogo de permiso pasan segundos sin ninguna señal,
+    // así que la persona vuelve a tocar. Sin esta guarda el segundo stream pisa
+    // al primero y el primero queda encendido para siempre.
+    if (abriendo.current) return;
+    abriendo.current = true;
+    cerrarCamara();
     setError(null);
     setAviso(null);
     // La llave se genera acá, al abrir la cámara y no al enviar: es lo que hace
@@ -77,8 +95,19 @@ export default function CapturaCliente({
       streamRef.current = stream;
       setPaso("camara");
       // El video se monta con el paso; se conecta en el efecto de abajo.
-    } catch {
-      setError("No se pudo abrir la cámara. Revisá los permisos del navegador.");
+    } catch (e) {
+      const nombre = e instanceof Error ? e.name : "";
+      setError(
+        nombre === "NotAllowedError"
+          ? "La cámara está bloqueada. Tocá el candado al lado de la dirección, entrá a Permisos y permití la cámara."
+          : nombre === "NotReadableError"
+            ? "Otra app está usando la cámara. Cerrá WhatsApp o la cámara del teléfono y volvé a intentar."
+            : nombre === "NotFoundError"
+              ? "Este dispositivo no tiene cámara."
+              : "No se pudo abrir la cámara. Probá de nuevo.",
+      );
+    } finally {
+      abriendo.current = false;
     }
   }
 
@@ -165,9 +194,19 @@ export default function CapturaCliente({
     if (destino) fd.set("destino", destino);
     if (conforme !== null) fd.set("conforme", conforme ? "si" : "no");
 
-    const r = await capturarComprobante(fd);
+    let r;
+    try {
+      r = await capturarComprobante(fd);
+    } catch {
+      // Sin esto, con la red caída la promesa se rechaza, no corre ni setError
+      // ni setPaso, y la pantalla queda en el esqueleto para siempre — con la
+      // única salida de recargar, que además borra la foto.
+      setError("No se pudo enviar. La foto sigue acá: revisá la señal y tocá Guardar de nuevo.");
+      setPaso("revision");
+      return;
+    }
     if (!r.ok) {
-      setError(r.error ?? "No se pudo guardar.");
+      setError(r.error ?? "No se pudo guardar. La foto sigue acá, probá de nuevo.");
       setPaso("revision");
       return;
     }
@@ -216,12 +255,20 @@ export default function CapturaCliente({
   }
 
   return (
+    // `.content` es el envoltorio que usa toda la app: aporta el padding y los
+    // 92px de fondo que despejan la barra de navegación. Sin él, el botón
+    // principal quedaba DETRÁS de la barra y tocarlo abría "Avisos".
     <>
       <header className="topbar">
         <h1>Recepción</h1>
       </header>
+      <div className="content">
 
-      {error && <p className="cap-error" role="alert">{error}</p>}
+      {error && (
+        <p className="cap-error" role="alert" ref={avisoError}>
+          {error}
+        </p>
+      )}
 
       {paso === "revision" && vistaPrevia && (
         <section className="cap-revision">
@@ -348,6 +395,7 @@ export default function CapturaCliente({
           </button>
         </div>
       )}
+      </div>
     </>
   );
 }

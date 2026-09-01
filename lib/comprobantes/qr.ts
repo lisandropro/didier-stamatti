@@ -41,7 +41,11 @@ const TIPOS: Record<number, string> = {
  * comprobante—. No alcanza con mirar el dominio.
  */
 export function elegirQrDeFactura(textos: string[]): string | null {
-  return textos.find((t) => payloadDe(t) !== null) ?? null;
+  // Se elige el que efectivamente SE LEE, no el que tiene forma de URL de AFIP.
+  // Eligiendo por la forma, un QR arrugado leído a medias —base64 válido,
+  // contenido basura— le ganaba a la factura buena que estaba en la misma foto,
+  // y el comprobante perdía su identidad fiscal.
+  return textos.find((t) => leerQr(t) !== null) ?? null;
 }
 
 export function leerQr(texto: string): Cabecera | null {
@@ -145,5 +149,9 @@ function aFechaIso(v: string | null): string | null {
 
   const f = new Date(Date.UTC(+a, +m - 1, +d));
   if (f.getUTCFullYear() !== +a || f.getUTCMonth() !== +m - 1 || f.getUTCDate() !== +d) return null;
+  // Un año imposible ("0202" por un dígito mal leído) es un día válido para el
+  // calendario y una fecha absurda para una factura. Después alimenta ventanas
+  // de días y propuestas de vencimiento, así que se corta acá.
+  if (+a < 2000 || +a > 2100) return null;
   return `${a}-${m}-${d}`;
 }

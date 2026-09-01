@@ -27,6 +27,11 @@ export type EntradaCaptura = {
 
 export type ResultadoCaptura = {
   documentId: string;
+  /** Campos donde la nueva lectura contradijo a la guardada. No se pisan —la
+   *  primera pudo haber sido revisada a mano— pero la discrepancia queda en el
+   *  historial y se informa: dos lecturas que no coinciden es justo la señal
+   *  que dice si el peldaño automático sirve. */
+  discrepancias?: string[];
   /** La captura se sumó a un comprobante que ya existía por su identidad
    *  fiscal: otra persona lo había fotografiado, o ya vino de ARCA. */
   fusionado: boolean;
@@ -61,9 +66,23 @@ export async function guardarCaptura(input: EntradaCaptura): Promise<ResultadoCa
   }
 
   // 1. ¿Es la misma captura otra vez? (doble toque, reintento de red)
+  //    Se miran los dos lados: el documento que ESA captura creó, y las llaves
+  //    de las capturas que se fusionaron contra un documento que ya existía.
   const repetida = await db.document.findUnique({ where: { clientKey: input.clientKey } });
   if (repetida) {
     return { documentId: repetida.id, fusionado: false, yaExistia: true, anulado: !!repetida.deletedAt };
+  }
+  const yaFusionada = await db.capturaVista.findUnique({
+    where: { clientKey: input.clientKey },
+    include: { document: { select: { deletedAt: true } } },
+  });
+  if (yaFusionada) {
+    return {
+      documentId: yaFusionada.documentId,
+      fusionado: false,
+      yaExistia: true,
+      anulado: !!yaFusionada.document.deletedAt,
+    };
   }
 
   // 2. ¿Ya existe este comprobante por su identidad fiscal?
@@ -76,6 +95,10 @@ export async function guardarCaptura(input: EntradaCaptura): Promise<ResultadoCa
   //    los vivos haría que el alta reventara contra el índice.
   const existente = tieneIdentidad(c) ? await db.document.findFirst({ where: identidadDe(c) }) : null;
   if (existente) return fusionar(existente.id, input);
+
+  // El proveedor sale del CUIT del comprobante, en el alta. Es lo que hace que
+  // la deuda se pueda agrupar y que la alarma de duplicados pueda disparar.
+  const supplierId = await resolverProveedor(c.cuitEmisor);
 
   try {
     const creado = await db.document.create({
@@ -90,6 +113,7 @@ export async function guardarCaptura(input: EntradaCaptura): Promise<ResultadoCa
         importeTotal: c.importeTotal ?? null,
         cae: c.cae ?? null,
         caeVence: c.caeVence ?? null,
+        supplierId,
         destino: input.destino ?? null,
         destinoNota: input.destinoNota ?? null,
         // `undefined` deja el campo en NULL, que significa "nadie revisó".
@@ -141,55 +165,78 @@ async function fusionar(documentId: string, input: EntradaCaptura): Promise<Resu
   const ultima = await db.attachment.findFirst({ where: { documentId }, orderBy: { page: "desc" } });
   const corrimiento = ultima?.page ?? 0;
 
-  await db.attachment.createMany({
-    data: aFilasDeAdjunto(input.adjuntos, input.actor.id, corrimiento).map((a) => ({
-      ...a,
-      documentId,
-    })),
-  });
-
-  // Solo se escribe lo que estaba vacío.
+  // Solo se escribe lo que estaba vacío. Lo que contradice a lo guardado NO se
+  // pisa, pero tampoco se tira: se registra.
   const completados: { campo: string; valor: string }[] = [];
+  const conflictos: { campo: string; antes: string; nuevo: string }[] = [];
   const datos: Record<string, unknown> = {};
   for (const campo of COMPLETABLES) {
     const nuevo = input.cabecera[campo];
-    if (nuevo != null && antes[campo] == null) {
+    if (nuevo == null) continue;
+    if (antes[campo] == null) {
       datos[campo] = nuevo;
       completados.push({ campo, valor: String(nuevo) });
+    } else if (String(antes[campo]) !== String(nuevo)) {
+      conflictos.push({ campo, antes: String(antes[campo]), nuevo: String(nuevo) });
     }
   }
-  if (input.destino != null && antes.destino == null) datos.destino = input.destino;
-  if (input.destinoNota != null && antes.destinoNota == null) datos.destinoNota = input.destinoNota;
-  if (input.conforme != null && antes.conforme == null) datos.conforme = input.conforme;
-
-  if (Object.keys(datos).length > 0) {
-    await db.document.update({ where: { id: documentId }, data: datos });
+  // Estos tres también se registran: `conforme` es la constancia de que alguien
+  // revisó que la mercadería entró completa, y aparecía en el comprobante sin
+  // que quedara quién lo puso.
+  if (input.destino != null && antes.destino == null) {
+    datos.destino = input.destino;
+    completados.push({ campo: "destino", valor: input.destino });
+  }
+  if (input.destinoNota != null && antes.destinoNota == null) {
+    datos.destinoNota = input.destinoNota;
+    completados.push({ campo: "destinoNota", valor: input.destinoNota });
+  }
+  if (input.conforme != null && antes.conforme == null) {
+    datos.conforme = input.conforme;
+    completados.push({ campo: "conforme", valor: String(input.conforme) });
   }
 
-  await db.documentChange.createMany({
-    data: [
-      {
+  const actor = { actorId: input.actor.id, actorName: input.actor.name };
+  await db.$transaction([
+    db.attachment.createMany({
+      data: aFilasDeAdjunto(input.adjuntos, input.actor.id, corrimiento).map((a) => ({
+        ...a,
         documentId,
-        actorId: input.actor.id,
-        actorName: input.actor.name,
-        field: "adjunto",
-        before: null,
-        after: `${input.adjuntos.length} foto(s)`,
-      },
-      // Un dato que aparece sin rastro es un dato del que después nadie sabe de
-      // dónde salió.
-      ...completados.map((c) => ({
-        documentId,
-        actorId: input.actor.id,
-        actorName: input.actor.name,
-        field: c.campo,
-        before: null,
-        after: c.valor,
       })),
-    ],
-  });
+    }),
+    // La llave de ESTA captura queda anotada: sin esto, un reintento con la
+    // misma llave volvía a adjuntar las mismas fotos, porque `clientKey` en el
+    // documento es el de la captura que lo creó y no el de las que se fusionan.
+    db.capturaVista.create({ data: { clientKey: input.clientKey, documentId } }),
+    ...(Object.keys(datos).length > 0
+      ? [db.document.update({ where: { id: documentId }, data: datos })]
+      : []),
+    db.documentChange.createMany({
+      data: [
+        { documentId, ...actor, field: "adjunto", before: null, after: `${input.adjuntos.length} foto(s)` },
+        // Un dato que aparece sin rastro es un dato del que después nadie sabe
+        // de dónde salió.
+        ...completados.map((c) => ({ documentId, ...actor, field: c.campo, before: null, after: c.valor })),
+        // Y una discrepancia sin rastro es peor: es la evidencia de que dos
+        // lecturas del mismo papel no coincidieron.
+        ...conflictos.map((c) => ({
+          documentId,
+          ...actor,
+          field: `${c.campo}.conflicto`,
+          before: c.antes,
+          after: c.nuevo,
+        })),
+      ],
+    }),
+  ]);
 
-  return { documentId, fusionado: true, yaExistia: false, anulado: !!antes.deletedAt };
+  return {
+    documentId,
+    fusionado: true,
+    yaExistia: false,
+    anulado: !!antes.deletedAt,
+    discrepancias: conflictos.length > 0 ? conflictos.map((c) => c.campo) : undefined,
+  };
 }
 
 /**
@@ -266,4 +313,64 @@ export async function capturasDelDia(actorId: string, desde: Date): Promise<Capt
     identificado: d.cuitEmisor != null && d.numero != null,
     hora: d.createdAt.toISOString(),
   }));
+}
+
+/**
+ * Encuentra o crea el proveedor a partir del CUIT del comprobante.
+ *
+ * **Esta función faltaba, y sin ella el módulo no funcionaba de punta a punta.**
+ * Nada escribía `supplierId`: la pantalla de deuda mostraba una sola fila
+ * llamada "Sin proveedor" con todo adentro, y la alarma de pago duplicado
+ * —que filtra por proveedor— no podía dispararse nunca. Las pruebas no lo
+ * detectaban porque sembraban el proveedor a mano.
+ *
+ * El CUIT es la identidad: el nombre del papel varía ("DON ANGEL", "Don Angel
+ * SRL") y no sirve para identificar. Sin CUIT no se inventa nada — el
+ * comprobante queda sin proveedor y cae en la bandeja, que es lo correcto.
+ */
+export async function resolverProveedor(
+  cuit: string | undefined,
+  nombreSugerido?: string,
+): Promise<string | null> {
+  if (!cuit || !/^\d{11}$/.test(cuit)) return null;
+
+  // `upsert` y no buscar-después-crear: dos capturas simultáneas del mismo
+  // proveedor chocaban contra el índice único del CUIT y la segunda reventaba.
+  // El nombre se corrige después; el CUIT no cambia. Nacer con un nombre
+  // provisorio es mejor que no existir, porque sin proveedor no hay deuda.
+  const proveedor = await db.supplier.upsert({
+    where: { cuit },
+    update: {},
+    create: { name: nombreSugerido?.trim() || `CUIT ${cuit}`, cuit },
+  });
+  return proveedor.id;
+}
+
+/**
+ * Asigna o corrige el proveedor de un comprobante, con rastro.
+ */
+export async function asignarProveedor(
+  documentId: string,
+  supplierId: string,
+  actor: { id: string; name: string },
+): Promise<void> {
+  const antes = await db.document.findUniqueOrThrow({
+    where: { id: documentId },
+    select: { supplierId: true },
+  });
+  if (antes.supplierId === supplierId) return;
+
+  await db.$transaction([
+    db.document.update({ where: { id: documentId }, data: { supplierId } }),
+    db.documentChange.create({
+      data: {
+        documentId,
+        actorId: actor.id,
+        actorName: actor.name,
+        field: "supplierId",
+        before: antes.supplierId,
+        after: supplierId,
+      },
+    }),
+  ]);
 }

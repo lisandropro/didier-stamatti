@@ -99,6 +99,16 @@ export function canSeeChecks(role: string): boolean {
   return role === "ADMIN";
 }
 
+/** Ver las pantallas del stock: períodos, inventario e historial.
+ *
+ *  Existe aparte de `canEditOrders` porque el encargado de logística MIRA todo
+ *  eso aunque no arme pedidos. Al armar la navegación por permisos se usó
+ *  `canEditOrders` y LOGISTICA se quedó sin una sola pantalla — una regresión
+ *  sobre un rol que ya existía. */
+export function canVerStock(role: string): boolean {
+  return role === "ADMIN" || role === "ARMADOR" || role === "LOGISTICA";
+}
+
 // ---------------------------------------------------------------------------
 // Comprobantes de proveedores
 // ---------------------------------------------------------------------------

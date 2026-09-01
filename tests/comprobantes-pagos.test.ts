@@ -115,13 +115,13 @@ test("lo pagado deja de contar en la deuda", async () => {
 
 test("se marcan varias de una vez, que es como se paga de verdad", async () => {
   const todas = await prisma.document.findMany({ select: { id: true } });
-  const n = await pagos.marcarPagados(
+  const r = await pagos.marcarPagados(
     todas.map((d) => d.id),
     new Date("2026-09-05T12:00:00Z"),
     ALDANA,
   );
 
-  assert.equal(n, 2);
+  assert.equal(r.marcados, 2);
   assert.deepEqual(await pagos.porProveedor(), []);
 });
 
@@ -197,7 +197,11 @@ test("las bandejas cuentan lo que falta, con nulos y sin columna de estado", asy
   const b = await pagos.bandejas();
   assert.equal(b.sinProveedor, 1);
   assert.equal(b.sinRevisar, 3); // ninguno de los tres tiene `conforme`
-  assert.equal(b.sinVencimiento, 1);
+  // El remito NO cuenta acá: no tiene vencimiento y nunca lo va a tener, así
+  // que contarlo dejaba una bandeja que no podía llegar a cero — y una bandeja
+  // que no se vacía se deja de mirar en dos semanas.
+  assert.equal(b.sinVencimiento, 0);
+  assert.equal(b.sinImporte, 0);
 });
 
 // --- Pagar dos veces lo mismo -------------------------------------------------
@@ -259,5 +263,111 @@ test("si uno ya se pagó, deja de avisar", async () => {
   await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-02" } });
 
   await pagos.marcarPagados([a.id], new Date("2026-09-05T12:00:00Z"), ALDANA);
+  assert.deepEqual(await pagos.posiblesDuplicados(), []);
+});
+
+test("detecta el par cercano aunque haya uno viejo del mismo importe", async () => {
+  // Tres tickets iguales en los días 0, 20 y 25. El par 20/25 está a 5 días y
+  // ES un posible pago doble; el del día 0 no tiene nada que ver.
+  //
+  // La versión anterior filtraba todo el grupo contra el PRIMERO, así que el
+  // viejo se quedaba solo y los dos cercanos no se avisaban nunca. La alarma
+  // antifraude callada es peor que no tenerla.
+  const base = {
+    kind: "TICKET" as const, source: "MANUAL", supplierId: donAngel,
+    importeTotal: 8888800n,
+  };
+  await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-01" } });
+  const b = await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-21" } });
+  const c = await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-26" } });
+
+  const avisos = await pagos.posiblesDuplicados();
+  assert.equal(avisos.length, 1);
+  assert.deepEqual(avisos[0].documentIds.sort(), [b.id, c.id].sort());
+});
+
+test("tres seguidos dentro de la ventana son un solo aviso, no tres", async () => {
+  const base = {
+    kind: "TICKET" as const, source: "MANUAL", supplierId: donAngel,
+    importeTotal: 7777700n,
+  };
+  for (const f of ["2026-09-01", "2026-09-04", "2026-09-08"]) {
+    await prisma.document.create({ data: { ...base, fechaEmision: f } });
+  }
+  const avisos = await pagos.posiblesDuplicados();
+  assert.equal(avisos.length, 1);
+  assert.equal(avisos[0].documentIds.length, 3);
+});
+
+test("volver a marcar un pago NO le mueve la fecha", async () => {
+  // `pagadoAt` es el único dato que dice cuándo salió la plata, y es con el que
+  // después se cruza contra el extracto del banco. Un clic de más lo movía tres
+  // meses y el historial lo registraba como un cambio legítimo.
+  const d = await prisma.document.findFirstOrThrow({ where: { numero: 57875 } });
+  await pagos.marcarPagados([d.id], new Date("2026-09-05T12:00:00Z"), ALDANA);
+  const r = await pagos.marcarPagados([d.id], new Date("2026-12-25T12:00:00Z"), ALDANA);
+
+  assert.equal(r.marcados, 0);
+  assert.equal(r.yaEstaban, 1);
+  const leido = await prisma.document.findUniqueOrThrow({ where: { id: d.id } });
+  assert.equal(leido.pagadoAt?.toISOString(), "2026-09-05T12:00:00.000Z");
+});
+
+test("un remito no se puede marcar pagado", async () => {
+  const r0 = await prisma.document.create({
+    data: { kind: "REMITO", source: "MANUAL", supplierId: donAngel, importeTotal: 100n },
+  });
+  const r = await pagos.marcarPagados([r0.id], new Date(), ALDANA);
+  assert.equal(r.marcados, 0);
+  assert.equal(r.noSePagan, 1);
+});
+
+test("un pago marcado por error se puede deshacer, con motivo", async () => {
+  const d = await prisma.document.findFirstOrThrow({ where: { numero: 57876 } });
+  await pagos.marcarPagados([d.id], new Date("2026-09-05T12:00:00Z"), ALDANA);
+
+  await assert.rejects(() => pagos.revertirPago([d.id], "   ", ALDANA), /por qué/);
+  const n = await pagos.revertirPago([d.id], "me equivoqué de proveedor", ALDANA);
+
+  assert.equal(n, 1);
+  const leido = await prisma.document.findUniqueOrThrow({ where: { id: d.id } });
+  assert.equal(leido.pagadoAt, null);
+  const c = await prisma.documentChange.findFirstOrThrow({
+    where: { documentId: d.id, after: { contains: "me equivoqué" } },
+  });
+  assert.equal(c.actorName, "Aldana");
+});
+
+test("un comprobante sin importe no suma cero en silencio", async () => {
+  // Con 13 de cada 18 entrando sin código legible, un total que suma cero por
+  // los que faltan no es un total: es un número más chico que la deuda real,
+  // presentado con la misma autoridad.
+  await prisma.document.create({
+    data: { kind: "FACTURA", source: "MANUAL", supplierId: donAngel, importeTotal: null },
+  });
+  const [d] = await pagos.porProveedor();
+  assert.equal(d.total, 84184326n);
+  assert.equal(d.cantidad, 3);
+  assert.equal(d.sinImporte, 1, "la pantalla tiene que poder decir que el total está incompleto");
+});
+
+test("lo que no tiene vencimiento aparece en algún lado", async () => {
+  // Una comparación de rango nunca es verdadera contra NULL: estos comprobantes
+  // no salían ni en lo que vence ni en lo vencido. Eran deuda invisible.
+  const d = await prisma.document.create({
+    data: { kind: "FACTURA", source: "MANUAL", supplierId: donAngel, importeTotal: 999n },
+  });
+  const lista = await pagos.sinVencimiento();
+  assert.ok(lista.some((x) => x.id === d.id));
+});
+
+test("dos remitos del mismo importe no son un pago doble", async () => {
+  // Un remito no se paga: son dos entregas, no una alarma. Una alarma que suena
+  // de más se deja de mirar.
+  const base = {
+    kind: "REMITO" as const, source: "MANUAL", supplierId: donAngel, importeTotal: 5555500n,
+  };
+  await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-01" } });
+  await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-03" } });
   assert.deepEqual(await pagos.posiblesDuplicados(), []);
 });

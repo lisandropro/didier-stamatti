@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSessionUser } from "@/lib/auth";
+import { sesionVigente } from "@/lib/auth";
 import { canCapturarComprobantes, canPagar } from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
 import {
@@ -13,6 +13,7 @@ import {
   posiblesDuplicados,
 } from "@/lib/comprobantes/pagos";
 import { subirFoto } from "@/lib/comprobantes/almacenamiento";
+import { tipoReal } from "@/lib/comprobantes/archivos";
 import { esParaNosotros } from "@/lib/comprobantes/qr";
 import { aTextoPlano } from "@/lib/money";
 import {
@@ -20,7 +21,10 @@ import {
   aFilaDeuda,
   cabeceraDeLaCaptura,
   destinoValido,
-  kindValido,
+  kindDelComprobante,
+  paginaValida,
+  fechaDePago,
+  MAX_FOTOS,
 } from "@/lib/comprobantes/politica";
 
 // El borde del módulo. Acá se comprueban los permisos —del lado del servidor,
@@ -41,7 +45,7 @@ const TIPOS_OK = new Set(["image/jpeg", "image/png", "image/webp", "application/
  * puede recibir importes, ni siquiera el de la factura que acaba de fotografiar.
  */
 export async function capturarComprobante(fd: FormData) {
-  const sesion = await getSessionUser();
+  const sesion = await sesionVigente();
   if (!sesion) return { ok: false, error: "Tenés que iniciar sesión." };
   if (!canCapturarComprobantes(sesion.role)) {
     return { ok: false, error: "No tenés permiso para cargar comprobantes." };
@@ -52,8 +56,13 @@ export async function capturarComprobante(fd: FormData) {
 
   const archivos = fd.getAll("fotos").filter((f): f is File => f instanceof File);
   if (archivos.length === 0) return { ok: false, error: "No llegó ninguna foto." };
+  if (archivos.length > MAX_FOTOS) {
+    return { ok: false, error: `Son demasiadas fotos en una captura (máximo ${MAX_FOTOS}).` };
+  }
 
   for (const f of archivos) {
+    // Este primer filtro es por cortesia: rechaza rapido y con un mensaje claro
+    // antes de leer 8 MB a memoria. El que MANDA es `tipoReal`, mas abajo.
     if (!TIPOS_OK.has(f.type)) return { ok: false, error: `Tipo de archivo no admitido: ${f.type}` };
     if (f.size > MAX_BYTES) return { ok: false, error: "La foto es demasiado grande." };
   }
@@ -67,15 +76,23 @@ export async function capturarComprobante(fd: FormData) {
   const adjuntos = [];
   for (const [i, f] of archivos.entries()) {
     const bytes = Buffer.from(await f.arrayBuffer());
-    const { s3Key, sizeBytes } = await subirFoto(bytes, f.type, hoy);
+    // El tipo lo decide el archivo, no el formulario. `f.type` sale de la
+    // extension y lo puede poner cualquiera; lo que se guarda en el bucket
+    // —y lo que despues se sirve como Content-Type— tiene que salir de los
+    // bytes.
+    const tipo = tipoReal(bytes);
+    if (!tipo) {
+      return { ok: false, error: `El archivo "${f.name}" no es una foto ni un PDF.` };
+    }
+    const { s3Key, sizeBytes } = await subirFoto(bytes, tipo, hoy);
     adjuntos.push({
       s3Key,
-      mimeType: f.type,
+      mimeType: tipo,
       sizeBytes,
       variante: (String(fd.getAll("variante")[i] ?? "ORIGINAL") === "ESCANEADA"
         ? "ESCANEADA"
         : "ORIGINAL") as "ORIGINAL" | "ESCANEADA",
-      pagina: Number(fd.getAll("pagina")[i] ?? 1) || 1,
+      pagina: paginaValida(fd.getAll("pagina")[i]),
     });
   }
 
@@ -86,7 +103,7 @@ export async function capturarComprobante(fd: FormData) {
   try {
     r = await guardarCaptura({
       clientKey,
-      kind: kindValido(String(fd.get("kind") ?? "")),
+      kind: kindDelComprobante(cabecera.tipoCbte, String(fd.get("kind") ?? "")),
       cabecera,
       destino,
       destinoNota: destino === "OTRO" ? String(fd.get("destinoNota") ?? "") || undefined : undefined,
@@ -119,7 +136,7 @@ export async function capturarComprobante(fd: FormData) {
 }
 
 export async function deudaPorProveedor() {
-  const sesion = await getSessionUser();
+  const sesion = await sesionVigente();
   if (!puedeResponderImportes(sesion)) {
     // Se corta ANTES de consultar la base: el importe no se lee siquiera.
     return { ok: false, error: "No tenés permiso para ver importes." };
@@ -128,7 +145,7 @@ export async function deudaPorProveedor() {
 }
 
 export async function vencimientosEntre(desde: string, hasta: string) {
-  const sesion = await getSessionUser();
+  const sesion = await sesionVigente();
   if (!puedeResponderImportes(sesion)) {
     return { ok: false, error: "No tenés permiso para ver importes." };
   }
@@ -152,26 +169,33 @@ export async function vencimientosEntre(desde: string, hasta: string) {
  * registra al otro día, y poner la fecha de hoy en un pago de ayer ensucia el
  * único dato que después dice cuándo salió la plata.
  */
-export async function pagar(ids: string[], dia?: string) {
-  const sesion = await getSessionUser();
+/**
+ * El resultado de marcar pagos.
+ *
+ * `ok` es `true`/`false` literal y no `boolean`: con `boolean` las dos ramas de
+ * la union son indistinguibles para el compilador, y la pantalla no puede leer
+ * `r.marcados` aunque haya comprobado `r.ok` antes. Escribir el tipo asi es lo
+ * que obliga a mirar el error antes de tocar los numeros.
+ */
+export type ResultadoDePago =
+  | { ok: false; error: string }
+  | { ok: true; marcados: number; yaEstaban: number; noSePagan: number; noEncontrados: number };
+
+export async function pagar(ids: string[], dia?: string): Promise<ResultadoDePago> {
+  const sesion = await sesionVigente();
   if (!sesion || !canPagar(sesion.role)) {
     return { ok: false, error: "No tenés permiso para marcar pagos." };
   }
-  let cuando = new Date();
-  if (dia) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return { ok: false, error: "La fecha va en AAAA-MM-DD." };
-    // Mediodía y no medianoche: con la hora en 00:00 un corrimiento de zona
-    // horaria puede tirar el pago al día anterior.
-    cuando = new Date(`${dia}T12:00:00`);
-    if (Number.isNaN(cuando.getTime())) return { ok: false, error: "Esa fecha no existe." };
-  }
-  const cuantos = await marcarPagados(ids, cuando, { id: sesion.id, name: sesion.name });
+  const cuando = fechaDePago(dia, new Date());
+  if (!cuando) return { ok: false, error: "Esa fecha no existe. Revisá el día." };
+
+  const r = await marcarPagados(ids, cuando, { id: sesion.id, name: sesion.name });
   revalidatePath("/pagos");
-  return { ok: true, cuantos };
+  return { ok: true, ...r };
 }
 
 export async function cargarVencimiento(id: string, vencimiento: string) {
-  const sesion = await getSessionUser();
+  const sesion = await sesionVigente();
   if (!sesion || !canPagar(sesion.role)) {
     return { ok: false, error: "No tenés permiso para cargar vencimientos." };
   }
@@ -187,7 +211,7 @@ export async function cargarVencimiento(id: string, vencimiento: string) {
 /** Lo que falta resolver. Lleva importes en la respuesta, así que pide el mismo
  *  permiso que la deuda. */
 export async function pendientes() {
-  const sesion = await getSessionUser();
+  const sesion = await sesionVigente();
   if (!puedeResponderImportes(sesion)) {
     return { ok: false, error: "No tenés permiso para ver los pendientes." };
   }

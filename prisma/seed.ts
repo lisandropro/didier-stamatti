@@ -42,20 +42,37 @@ async function main() {
   const email = "lisa.lf2006@gmail.com";
   const existing = await prisma.user.findUnique({ where: { email } });
   if (!existing) {
+    // La contrasena sale del entorno, no del repositorio.
+    //
+    // "didier123" estaba escrita aca, y el repositorio se clona, se respalda y
+    // se lee. Peor: el seed corre en cada despliegue, asi que la contrasena del
+    // unico ADMIN quedaba fijada por el codigo fuente y no se podia cambiar sin
+    // publicar una version.
+    //
+    // Falla ruidoso a proposito: si no esta la variable, no se crea el usuario.
+    // Un ADMIN con contrasena conocida es peor que no tener ADMIN — el segundo
+    // problema se nota en cinco minutos, el primero no se nota nunca.
+    const clave = process.env.SEED_ADMIN_PASSWORD;
+    if (!clave || clave.length < 10) {
+      throw new Error(
+        "Falta SEED_ADMIN_PASSWORD (minimo 10 caracteres) para crear el usuario administrador inicial.",
+      );
+    }
     await prisma.user.create({
       data: {
         name: "Lisa",
         email,
         role: "ADMIN",
-        passwordHash: bcrypt.hashSync("didier123", 10),
+        passwordHash: bcrypt.hashSync(clave, 10),
       },
     });
+    console.log(`Admin creado: ${email} (contrasena: la de SEED_ADMIN_PASSWORD)`);
   }
 
   const total = await prisma.product.count();
   const reut = await prisma.product.count({ where: { type: "REUTILIZABLE" } });
   const cons = await prisma.product.count({ where: { type: "CONSUMIBLE" } });
-  console.log(`Seed OK -> ${total} productos (${reut} reutilizables, ${cons} consumibles). Admin: ${email} / didier123`);
+  console.log(`Seed OK -> ${total} productos (${reut} reutilizables, ${cons} consumibles).`);
 }
 
 main()

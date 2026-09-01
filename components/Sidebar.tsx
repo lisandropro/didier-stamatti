@@ -5,7 +5,7 @@ import {
   ROLE_LABEL,
   canSendSuggestions,
   canManageSuggestions,
-  canEditOrders,
+  canVerStock,
   canCapturarComprobantes,
   canVerImportes,
 } from "@/lib/permissions";
@@ -86,7 +86,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const initial = (user.name?.[0] ?? "?").toUpperCase();
   const puedeSugerir = canSendSuggestions(user.role);
   const nav = [
-    ...(canEditOrders(user.role) ? NAV_STOCK : []),
+    ...(canVerStock(user.role) ? NAV_STOCK : []),
     ...(canCapturarComprobantes(user.role)
       ? [{ href: "/recepcion", label: "Recepción", icon: ICONO_RECEPCION }]
       : []),

@@ -55,6 +55,16 @@ model Document {
   numero       Int?
   fechaEmision String? // "AAAA-MM-DD"
   importeTotal BigInt? // CENTAVOS, siempre positivo
+  // El desglose que el lector ya calcula para verificar que la cuenta cierre.
+  // Sin esto no se puede armar el Libro IVA Compras y el crédito fiscal —que es
+  // plata— hay que volver a sacarlo del papel.
+  neto         BigInt? // CENTAVOS
+  iva          BigInt? // CENTAVOS
+  percepciones BigInt? // CENTAVOS
+  // Se guarda para poder RECHAZAR lo que no sea PES. No hay multimoneda: acá se
+  // compra comida en Santa Fe, en pesos. Una factura en dólares entraría con su
+  // importe tratado como si fueran pesos.
+  moneda       String? @default("PES")
   cae          String?
   // Se guarda pero NO se le muestra a quien paga: es la fecha que ya se
   // confundió una vez con el vencimiento del pago.
@@ -75,6 +85,10 @@ model Document {
   // Sale del "Vto:" del papel. NUNCA se autocompleta desde el CAE.
   vencimiento String?
   pagadoAt    DateTime?
+  // Qué comprobantes se marcaron juntos en una misma operación. No es una
+  // entidad "pago" —eso viene después— pero convierte la migración futura de
+  // "adivinar qué facturas iban en cada transferencia" en "leerlo".
+  pagoLoteId  String?
 
   // NULL = todavía no se cruzó contra ARCA.
   enArca Boolean?
@@ -94,6 +108,7 @@ model Document {
   attachments Attachment[]
   lines       DocumentLine[]
   changes     DocumentChange[]
+  capturas    CapturaVista[]
 
   // Los cuatro campos juntos son la identidad de una factura electrónica
   // argentina. Es lo que impide cargar dos veces la misma, venga por foto o
@@ -101,8 +116,24 @@ model Document {
   // correcto: no tienen identidad única.
   @@unique([cuitEmisor, tipoCbte, puntoVenta, numero])
   @@index([supplierId, pagadoAt])
+  @@index([pagoLoteId])
   @@index([vencimiento, pagadoAt])
   @@index([deletedAt])
+}
+
+// Las llaves de captura que ya se procesaron.
+//
+// `Document.clientKey` solo guarda la llave de la captura que CREÓ el
+// documento. Cuando una captura se fusiona contra un comprobante que ya existía,
+// su llave no quedaba en ningún lado — y un reintento con esa misma llave
+// volvía a adjuntar las mismas fotos. Acá viven todas.
+model CapturaVista {
+  clientKey  String   @id
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
 }
 
 // Una foto, o varias: la factura de tres hojas. El archivo vive en S3.
@@ -168,4 +199,112 @@ model DocumentChange {
   createdAt  DateTime @default(now())
 
   @@index([documentId, createdAt])
+}
+
+// ===========================================================================
+// Capa bancaria
+// ===========================================================================
+//
+// Se investigó qué ofrece Banco Macro y el resultado es que **no hay API
+// pública para pymes**. El patrón argentino es que el home banking entrega
+// PDF; existe una industria entera de conversores de extractos de Macro, que es
+// la mejor evidencia de eso. Interbanking/DATANET sí entrega archivos
+// estructurados, pero exige adhesión y no está confirmado que la empresa la
+// tenga.
+//
+// Por eso acá NO hay ningún parser: hay un modelo y una frontera. El formato
+// concreto se escribe cuando exista un archivo real, igual que se hizo con los
+// QR — el lector de QR se escribió contra payloads reales y por eso soporta los
+// que vienen rotos. Escribirlo antes sería adivinar.
+
+/** Una cuenta bancaria. El banco es un dato, no una estructura: cambiar de
+ *  banco no debería tocar el módulo financiero. */
+model BankAccount {
+  id        String   @id @default(cuid())
+  banco     String // MACRO | GALICIA | ...
+  alias     String
+  cbu       String?
+  moneda    String   @default("ARS")
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  movimientos BankMovement[]
+
+  @@unique([banco, alias])
+}
+
+/**
+ * Un movimiento del extracto.
+ *
+ * `huella` es lo que impide que reimportar el mismo período duplique todo. Los
+ * extractos se bajan por rango y los rangos se pisan; sin idempotencia el saldo
+ * se va al doble. Es el mismo argumento que la `clientKey` de la captura.
+ *
+ * Cuando el archivo trae un identificador propio del banco se usa ese; cuando
+ * no, la huella se calcula de forma determinística sobre los campos de la fila
+ * más su posición dentro del día — dos movimientos idénticos el mismo día son
+ * legítimos y tienen que poder convivir.
+ */
+model BankMovement {
+  id        String      @id @default(cuid())
+  accountId String
+  account   BankAccount @relation(fields: [accountId], references: [id])
+
+  fechaContable String // "AAAA-MM-DD": se concilia por día, no por instante
+  fechaValor    String?
+  // Tal cual la imprime el banco. NUNCA se normaliza encima: la descripción
+  // cruda es lo que después permite escribir reglas de clasificación.
+  descripcion   String
+  referencia    String?
+  // CON SIGNO: acá el signo sí es del banco. Es la diferencia con los
+  // comprobantes, donde el signo lo decide el tipo.
+  importe       BigInt
+  // El saldo posterior, cuando el archivo lo trae. Es un control que no cuesta
+  // nada: si `saldo[n-1] + importe[n] == saldo[n]` para toda la secuencia, el
+  // import está completo y ordenado. Si en algún punto no cierra, FALTA una
+  // fila y el sistema lo sabe sin que nadie mire.
+  saldoPosterior BigInt?
+
+  /** Id propio del banco, si el archivo lo trae. */
+  idExterno String?
+  /** Huella determinística de la fila. Es la que impide el duplicado. */
+  huella    String  @unique
+  /** Qué adaptador lo importó: "macro-csv", "interbanking-datanet"... */
+  origen    String
+  loteId    String
+
+  // PENDIENTE | SUGERIDO | CONCILIADO | CONFLICTO | IGNORADO
+  estado    String  @default("PENDIENTE")
+  // Obligatoria al ignorar: IMPUESTO_25413 | SIRCREB | COMISION | IVA_COMISION
+  // | TRASPASO_PROPIO | INTERES | OTRO. Un "ignorado" sin categoría es donde va
+  // a morir todo lo que nadie entiende.
+  categoria String?
+
+  importadoAt DateTime @default(now())
+
+  @@index([accountId, fechaContable])
+  @@index([estado])
+  @@index([loteId])
+}
+
+/** Una importación. Permite deshacer un archivo entero mientras ninguna de sus
+ *  filas esté conciliada — mucho más seguro que borrar movimiento por
+ *  movimiento. */
+model BankImport {
+  id        String   @id @default(cuid())
+  accountId String
+  origen    String
+  archivo   String
+  /** Hash del archivo: subir el mismo dos veces se detecta antes de parsear. */
+  hashArchivo String
+  filasLeidas    Int
+  filasNuevas    Int
+  filasRepetidas Int
+  desde     String?
+  hasta     String?
+  actorId   String?
+  actorName String
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
 }

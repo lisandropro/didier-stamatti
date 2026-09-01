@@ -26,7 +26,11 @@ export function aCentavos(
 
   // Fuera el símbolo de moneda, los espacios (incluido el fino que mete Excel)
   // y el signo, que acá no existe: el signo lo decide el tipo de comprobante.
-  const limpio = texto.replace(/[$\s  ]/g, "").replace(/^[+-]/, "");
+  // Un signo menos NO se descarta: se rechaza. Comérselo convertía "-1500"
+  // en $1.500 positivos sin que nadie lo notara, y el signo de un comprobante
+  // lo decide su tipo, no el texto de un importe.
+  const limpio = texto.replace(/[$\s  ]/g, "");
+  if (/^[+-]/.test(limpio)) return null;
   if (!limpio) return null;
   if (!/^[\d.,]+$/.test(limpio)) return null;
 

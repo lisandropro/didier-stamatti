@@ -1,6 +1,7 @@
 import { canVerImportes } from "@/lib/permissions";
 import { aTextoPlano } from "@/lib/money";
 import { leerQr, elegirQrDeFactura } from "./qr";
+import { esDia, instanteDe } from "@/lib/dates";
 import type { Cabecera, Destino, Kind } from "./tipos";
 import type { DeudaProveedor } from "./pagos";
 
@@ -71,4 +72,65 @@ export function destinoValido(v: string): Destino | undefined {
  *  guarda pase lo que pase, y el tipo se corrige después. */
 export function kindValido(v: string): Kind {
   return (KINDS as string[]).includes(v) ? (v as Kind) : "OTRO";
+}
+
+/** Los códigos fiscales que el QR devuelve, mapeados al tipo del sistema. */
+const POR_TIPO_FISCAL: Record<string, Kind> = {
+  A: "FACTURA",
+  B: "FACTURA",
+  C: "FACTURA",
+  M: "FACTURA",
+  NOTA_CREDITO_A: "NOTA_CREDITO",
+  NOTA_CREDITO_B: "NOTA_CREDITO",
+  NOTA_CREDITO_C: "NOTA_CREDITO",
+  NOTA_DEBITO_A: "NOTA_DEBITO",
+  NOTA_DEBITO_B: "NOTA_DEBITO",
+  NOTA_DEBITO_C: "NOTA_DEBITO",
+};
+
+/**
+ * El tipo del comprobante: **el papel le gana al botón**.
+ *
+ * El signo de la plata lo decide `kind` —una nota de crédito resta, una factura
+ * suma— y hasta ahora lo elegía la pantalla del depósito, que además tiene el
+ * tipo fijo en "FACTURA". Una nota de crédito entraba como factura y **sumaba
+ * en vez de restar**: un error del doble del importe, silencioso, decidido por
+ * alguien que por diseño no puede ver importes.
+ *
+ * El QR ya traía el tipo fiscal correcto y nadie lo miraba. Cuando está, gana.
+ * El botón sirve solo para lo que no tiene identidad fiscal: remitos, tickets y
+ * comprobantes de proveedores informales.
+ */
+export function kindDelComprobante(tipoCbte: string | undefined, elegido: string): Kind {
+  if (tipoCbte && POR_TIPO_FISCAL[tipoCbte]) return POR_TIPO_FISCAL[tipoCbte];
+  return kindValido(elegido);
+}
+
+/** Cuántas fotos se aceptan en una sola captura.
+ *
+ *  Sin tope, un cliente podía mandar 2.000 archivos chicos válidos y el
+ *  servidor hacía 2.000 subidas en serie en un solo pedido. */
+export const MAX_FOTOS = 12;
+
+/** La página que manda el navegador. Aceptaba `-5` y `1e999`. */
+export function paginaValida(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 50) return 1;
+  return n;
+}
+
+/**
+ * La fecha en que salió la plata.
+ *
+ * `new Date("2026-02-30T12:00:00")` **no es una fecha inválida en JavaScript**:
+ * rueda al 2 de marzo. Un dedo que erraba el día registraba el pago en otra
+ * fecha, sin ningún error. Se valida el día de verdad, con la misma función
+ * que ya usa el resto de la app.
+ */
+export function fechaDePago(dia: string | undefined, ahora: Date): Date | null {
+  if (!dia) return ahora;
+  if (!esDia(dia)) return null;
+  // Mediodía en Argentina: con la hora en 00:00 un corrimiento de zona horaria
+  // puede tirar el pago al día anterior.
+  return instanteDe(dia, "12:00");
 }

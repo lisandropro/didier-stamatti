@@ -10,3 +10,13 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+// WAL: los lectores dejan de bloquear al escritor.
+//
+// En el modo por defecto, el `VACUUM INTO` del respaldo toma un lock de lectura
+// sobre toda la base y **bloquea las escrituras** mientras dura. Con la base
+// chica son segundos; con un par de GB es una ventana en la que una captura del
+// depósito puede fallar. `busy_timeout` hace que el que llega segundo espere en
+// vez de morir.
+void prisma.$executeRawUnsafe("PRAGMA journal_mode=WAL").catch(() => {});
+void prisma.$executeRawUnsafe("PRAGMA busy_timeout=5000").catch(() => {});

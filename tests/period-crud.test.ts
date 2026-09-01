@@ -70,7 +70,13 @@ test("a LOGISTICA no se le abrió ningún permiso nuevo: sigue teniendo exactame
   // alguien agrega un permiso nuevo y se lo concede al encargado de logística
   // "para que pueda ayudar", esta prueba lo dice. Él mira todo, manda
   // sugerencias y cambia el responsable de la fiesta. Nada más.
-  const CONCEDIDOS = ["canSetResponsable", "canView", "canSendSuggestions"];
+  // `canVerStock` se agregó al armar la navegación por permisos. NO es un
+  // permiso nuevo sobre datos: es exactamente lo que `canView` ya significaba
+  // para las pantallas de stock, separado para poder decir que recepción y
+  // pagos no las usan. Está acá porque el encargado de logística sí las mira —
+  // de hecho, usar `canEditOrders` para la nav lo dejó sin ninguna pantalla, y
+  // esta prueba es la que obliga a decidirlo en voz alta en vez de deslizarlo.
+  const CONCEDIDOS = ["canSetResponsable", "canView", "canVerStock", "canSendSuggestions"];
   const capacidades = Object.keys(permisos)
     .filter((k) => k.startsWith("can") && typeof (permisos as Record<string, unknown>)[k] === "function")
     .sort();

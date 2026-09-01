@@ -1275,3 +1275,40 @@ tbody tr:hover{background:var(--surface-2)}
   border:1px solid var(--hair); border-radius:var(--r-sm);
   padding:0 var(--sp-2); min-height:38px;
 }
+
+/* La hoja de "Más" de la barra inferior. Solo aparece cuando el rol tiene más
+   entradas de las que entran: hoy, únicamente ADMIN. */
+@media(max-width:860px){
+  .mobmas-fondo{position:fixed; inset:0; z-index:19; background:rgba(0,0,0,.35)}
+  .mobmas{
+    position:fixed; left:0; right:0; bottom:calc(64px + env(safe-area-inset-bottom));
+    background:var(--surface); border-top:1px solid var(--hair);
+    box-shadow:0 -12px 32px rgba(0,0,0,.18);
+    display:flex; justify-content:space-around; padding:10px 6px;
+  }
+  .mobmas a, .mobmas button{
+    border:none; background:none; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:3px; font-size:var(--t-xs); color:var(--muted); font-weight:600;
+    min-height:var(--tap); padding:var(--sp-1) var(--sp-3); border-radius:var(--r-sm); text-decoration:none;
+  }
+  .mobmas a svg, .mobmas button svg{width:22px; height:22px}
+  .mobmas a.active{color:var(--ink)}
+  .mobmas a.active svg{color:var(--gold)}
+}
+
+/* El resultado de marcar pagos. Va pegado a la barra de selección —donde está
+   mirando quien acaba de tocar el botón— y no arriba de todo, que en una lista
+   larga queda fuera de pantalla. */
+.pg-aviso{
+  display:flex; align-items:flex-start; gap:var(--sp-2); justify-content:space-between;
+  padding:12px 14px; border-radius:var(--r-md); font-size:var(--t-sm); font-weight:600;
+  border:1px solid; margin-bottom:var(--sp-3); text-wrap:pretty;
+}
+.pg-aviso button{
+  border:none; background:none; color:inherit; font-size:20px; line-height:1;
+  cursor:pointer; padding:0 4px; opacity:.7;
+}
+.pg-aviso button:hover{opacity:1}
+.pg-aviso-bien{background:var(--ok-bg,#0f2a1a); border-color:var(--ok-line,#1f6b3f); color:var(--ok-ink,#7ee0a5)}
+.pg-aviso-ojo{background:var(--warn-bg,#2c2410); border-color:var(--warn-line,#7a6220); color:var(--warn-ink,#f0cf7a)}
+.pg-aviso-mal{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8)}

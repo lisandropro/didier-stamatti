@@ -1,5 +1,5 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSessionUser } from "@/lib/auth";
+import { sesionVigente } from "@/lib/auth";
 import { canVerImportes } from "@/lib/permissions";
 import { prismaComprobantes as db } from "@/lib/db-comprobantes";
 
@@ -10,7 +10,7 @@ import { prismaComprobantes as db } from "@/lib/db-comprobantes";
 // permiso se comprueba en cada pedido, y quien deja de tenerlo deja de ver.
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const sesion = await getSessionUser();
+  const sesion = await sesionVigente();
   if (!sesion || !canVerImportes(sesion.role)) {
     return new Response("No autorizado", { status: 403 });
   }
