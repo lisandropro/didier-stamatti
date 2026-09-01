@@ -8,12 +8,19 @@ Las facturas de los proveedores llegan en papel junto con la mercadería. Las
 reciben tres personas en el depósito. Aldana, que trabaja en otra oficina, es
 quien las paga.
 
-Para que ella pueda verlas, alguien **tipea cada factura a mano** en una
-planilla de Google Drive. Ese trabajo no existe porque haga falta el dato: el
-dato ya está en ARCA, exacto. Existe porque **Aldana no puede entrar a ARCA**, y
-no hay otra forma de mostrarle una parte sin mostrarle el todo.
+Para que ella pueda verlas, alguien **tipea cada comprobante a mano** en una
+planilla de Google Drive. Para las facturas electrónicas ese trabajo es
+directamente redundante —el dato ya está en ARCA, exacto— y existe solo porque
+**Aldana no puede entrar a ARCA** y no hay otra forma de mostrarle una parte sin
+mostrarle el todo.
 
-La planilla es un rodeo de permisos, y el tipeo es el peaje.
+Pero **buena parte de lo que entra no es factura electrónica**: son remitos,
+tickets y proveedores que facturan en papel. Eso no está en ARCA ni va a estarlo,
+y hoy tampoco tiene dónde vivir salvo la misma planilla.
+
+Son dos problemas distintos con la misma cara: uno es un rodeo de permisos, el
+otro es que no hay sistema. La planilla los tapa a los dos y el tipeo es el
+peaje de ambos.
 
 Ese tipeo ya produjo errores documentados en la propia planilla: fechas como
 `21/08/0202`, números de factura con un dígito de menos, comprobantes sin monto,
@@ -26,39 +33,67 @@ Es la primera objeción que aparece, y hay que contestarla antes de justificar
 una sola tabla: ARCA exporta *Mis Comprobantes → Recibidos* a CSV. ¿Por qué no
 mandarle ese archivo a Aldana todas las semanas y terminar?
 
-Porque **la planilla de Aldana no es un registro de comprobantes: es una cola de
-pagos**. ARCA sabe qué facturas te emitieron. No sabe dos cosas que son
-justamente las que ella administra:
+Por dos razones, y cualquiera de las dos alcanza.
+
+**Primera: ARCA no tiene la mayoría de los comprobantes.** Los remitos, los
+tickets y los proveedores que no facturan electrónicamente no aparecen ahí. Un
+CSV compartido deja fuera justo la parte que más papeles genera.
+
+**Segunda: la planilla de Aldana no es un registro de comprobantes, es una cola
+de pagos.** ARCA sabe qué facturas te emitieron. No sabe las dos cosas que ella
+administra:
 
 - **cuándo vence cada una**, y
 - **cuál ya se pagó**.
 
-Un CSV publicado le daría la identidad de los comprobantes y la dejaría con dos
-fuentes en vez de una: el archivo de ARCA para los datos y su planilla para el
-estado. Eso es peor que hoy.
+Un CSV publicado le daría identidad y la dejaría con dos fuentes en vez de una:
+el archivo de ARCA para los datos y su planilla para el estado. Eso es peor que
+hoy.
 
-Lo que hay que construir es el lugar donde vive ese estado. El resto —identidad,
-importe, CUIT— se importa y no se tipea nunca más.
+Lo que hay que construir es **el lugar donde viven las dos cosas**: el estado de
+pago, y los comprobantes que ARCA nunca va a conocer.
 
-## El orden, que es lo que más se discutió
+## El orden, y por qué cambió dos veces
 
-La primera versión de este diseño ponía la captura por foto en la etapa 1 y la
-importación de ARCA en la etapa 2. Estaba al revés, y una revisión del Council
-lo marcó por unanimidad.
+Vale dejar el recorrido escrito, porque explica por qué el diseño quedó como
+quedó.
 
-La importación del CSV es **la pieza más barata del proyecto y la que elimina
-más tipeo**: es un parser, una tabla y una vista. No necesita cámara, ni PWA, ni
-entrenar a nadie en el depósito. La foto del papel es el complemento, no el
-cimiento.
+La primera versión ponía la captura por foto primero. Una revisión del Council
+lo marcó al revés por unanimidad, con un argumento fuerte: importar el CSV de
+ARCA es un parser, una tabla y una vista — no necesita cámara, ni PWA, ni
+entrenar a nadie— y elimina el tipeo de todas las facturas electrónicas.
+
+**Ese argumento se apoyaba en una premisa que resultó falsa.** Al preguntarlo,
+la respuesta fue que **buena parte de lo que entra son remitos, tickets y
+proveedores que no facturan electrónicamente**. Nada de eso está en ARCA. Con la
+premisa caída, el argumento cae, y el orden vuelve al original.
+
+### Cantidad y plata no dan lo mismo
+
+Es la distinción que ordena el resto, y probablemente den resultados opuestos:
+
+- **Por cantidad de comprobantes**, ARCA cubre poco.
+- **Por plata**, ARCA cubre probablemente mucho: los proveedores grandes —CCU,
+  Don Angel— facturan electrónicamente. Los tickets y los informales son muchos
+  y chicos.
+
+Importa porque **el tipeo se mide por documento y el riesgo de pago se mide por
+peso**. Puede que ARCA resuelva el 30% de los papeles y el 80% del dinero. Las
+dos mitades sirven, para cosas distintas: **ARCA para que los números grandes
+sean exactos, la foto para que no se pierda nada**.
+
+### Las etapas
 
 | Etapa | Qué entra | Qué resuelve |
 |---|---|---|
-| **1** | Importar el CSV de ARCA · vista de Aldana con vencimiento, total por proveedor y marcar pagado | Muere la planilla, incluido el estado que el CSV solo no puede sostener |
-| **2** | Captura por foto con lectura de QR y código de barras · emparejamiento · destino · conforme | Lo que ARCA no puede saber: la imagen, la recepción, remitos, tickets, informales |
+| **1** | Captura por foto · extracción (códigos, y lectura automática donde no hay) · destino · conforme · vista de Aldana con vencimiento, total por proveedor y marcar pagado | Cubre el **100%** de los comprobantes desde el día uno, sean electrónicos o no. Muere la planilla |
+| **2** | Importación del CSV de ARCA y emparejamiento | **Mejora** los electrónicos a dato exacto y delata los que nadie trajo |
 | **3** | Detalle de ítems | Control de precios de insumos y la mitad que falta del costeo por evento |
 
-El OCR o la visión por IA **no son una etapa**: entran dentro de la etapa 2 y
-solo si la medición dice que hacen falta. Ver "La cascada de identificación".
+La etapa 1 está armada para **no depender de cómo dé la mezcla**: si mañana
+resulta que ARCA cubría más de lo pensado, la etapa 2 solo mejora datos que ya
+estaban entrando. La etapa 2 no es el cimiento: es una fuente exacta que corrige
+y controla.
 
 ## Dónde vive: una aplicación, dos bases de datos
 
@@ -122,10 +157,13 @@ model Supplier {
 model Document {
   id     String @id @default(cuid())
   kind   String // FACTURA | REMITO | TICKET | NOTA_CREDITO | NOTA_DEBITO | OTRO
-  // Cómo se resolvió la cabecera la primera vez, no de dónde salió la foto:
-  // ARCA | QR | BARCODE | EMPAREJADO (alguien tocó la fila de ARCA) | MANUAL.
-  // Sirve además como medición: en producción dice qué peldaño de la cascada
-  // está funcionando de verdad, que es hoy el número más incierto del proyecto.
+  // Cómo se resolvió la cabecera la primera vez, no de dónde salió la foto.
+  // Un valor por peldaño de la cascada:
+  //   ARCA | QR | BARCODE | EMPAREJADO (alguien tocó la fila de ARCA)
+  //   | LECTURA (la sacó el lector automático y una persona la confirmó)
+  //   | MANUAL
+  // Sirve además como medición: en producción dice qué peldaño está
+  // funcionando de verdad, que es hoy el número más incierto del proyecto.
   source String
 
   // --- Identidad fiscal: se copia de ARCA o del QR. NUNCA se tipea. ---
@@ -308,23 +346,7 @@ falta, entran después sin tocar nada de esto.
 
 ## Cómo entra un comprobante
 
-### Importación de ARCA (etapa 1)
-
-Administración baja el CSV de *Mis Comprobantes → Recibidos* y lo sube. Cada
-fila se cruza contra los cuatro campos fiscales y produce tres listas:
-
-| Situación | Qué pasa | Qué significa |
-|---|---|---|
-| La fila cruza con un comprobante que ya existe | Se completa, `enArca = true` | Todo en orden |
-| La fila no cruza con nada | Se crea el comprobante sin foto | Existe y nadie trajo el papel |
-| Hay papel y ARCA no lo conoce | `enArca = false` | Remito o ticket… o hay que mirarlo |
-
-El parser **falla ruidosamente**: una fila que no se entiende se rechaza con su
-número de línea y no se importa a medias. Los importes de estos archivos
-conviven en varios formatos con coma decimal es-AR, y adivinar es como se
-construye un sistema que miente.
-
-### Captura por foto (etapa 2)
+### Captura por foto (etapa 1)
 
 ```
 [Botón "Recibí mercadería"]
@@ -369,6 +391,22 @@ segunda foto se agrega como página del comprobante que ya existe**, avisando.
 No es un error: en un depósito va a pasar seguido, y tratarlo como error es la
 forma más rápida de que dejen de usar la app.
 
+### Importación de ARCA (etapa 2)
+
+Administración baja el CSV de *Mis Comprobantes → Recibidos* y lo sube. Cada
+fila se cruza contra los cuatro campos fiscales y produce tres listas:
+
+| Situación | Qué pasa | Qué significa |
+|---|---|---|
+| La fila cruza con un comprobante que ya existe | Se completa, `enArca = true` | Todo en orden |
+| La fila no cruza con nada | Se crea el comprobante sin foto | Existe y nadie trajo el papel |
+| Hay papel y ARCA no lo conoce | `enArca = false` | Remito o ticket… o hay que mirarlo |
+
+El parser **falla ruidosamente**: una fila que no se entiende se rechaza con su
+número de línea y no se importa a medias. Los importes de estos archivos
+conviven en varios formatos con coma decimal es-AR, y adivinar es como se
+construye un sistema que miente.
+
 ## La cascada de identificación
 
 No todas las facturas traen un código legible. Algunas no traen ninguno —remitos,
@@ -387,7 +425,11 @@ código que no se lee no es un problema de datos: es un problema de
 emparejamiento. Y emparejar es mucho más fácil que extraer — no hay que leer
 nada, hay que elegir entre las 50 o 100 filas de esa semana.
 
-De ahí, cinco peldaños, del más barato al más caro:
+**Pero eso vale solo para las electrónicas.** Para los remitos, los tickets y
+los proveedores en papel no hay fila contra la cual emparejar: ahí sí hay que
+leer. Son dos caminos distintos y la cascada se bifurca en el peldaño 3.
+
+Cinco peldaños, del más barato al más caro:
 
 **1 · QR de AFIP** (RG 4892/2020). Trae CUIT, punto de venta, tipo, número,
 fecha, importe y CAE. Resuelve solo.
@@ -403,15 +445,36 @@ filas de ARCA de esa semana que todavía no tienen foto**, de la más reciente a
 la más vieja. Un toque en *"DON ANGEL · $764.107,11 · 27/08"* y listo. Cero
 tipeo, y el dato es exacto porque viene de ARCA y no de la foto.
 
-**4 · OCR o visión por IA, solo sobre lo que falló.** Y con un trabajo mucho más
-fácil que "leer la factura": únicamente **ordenar la lista del peldaño 3** para
-que el candidato correcto quede primero. Aunque lea mal la mitad, sirve. Corre
-sobre una fracción chica, así que el costo por documento deja de ser un
-problema. **Entra solo si la medición dice que hace falta**, no por defecto.
+**4 · Lectura automática de la foto** (OCR o visión por IA). Hace dos trabajos
+distintos según de qué lado de la bifurcación esté el comprobante:
 
-**5 · Carga manual corta.** Solo para lo que no está en ARCA: remitos, tickets,
-informales. **El formulario cambia según el tipo**: un remito no pregunta CAE,
-pregunta proveedor, fecha y conforme.
+- **Si es electrónico**, solo tiene que **ordenar la lista del peldaño 3** para
+  que el candidato correcto quede primero. Aunque lea mal la mitad, sirve.
+- **Si no lo es**, es la forma principal de sacar los datos, porque no existe
+  lista de candidatos. Acá sí tiene que leer de verdad.
+
+Ese segundo caso es el que justifica el gasto. La cuenta: si la mitad de 20-100
+comprobantes semanales necesita extracción, son unos 2.000 documentos al año.
+Aun a dos centavos de dólar por documento son **USD 40 al año**. El costo por
+documento solo sería un problema para un producto vendible a muchas pymes, que
+no es lo que se está construyendo.
+
+**Lo que salga de acá se propone, nunca se guarda solo.** Es la única fuente
+probabilística del sistema y tiene que quedar marcada como tal: alguien confirma
+antes de que el número entre.
+
+**5 · Carga manual corta**, cuando la lectura no alcanza. **El formulario cambia
+según el tipo de comprobante**, y esa es la diferencia entre tres campos y una
+pantalla que nadie completa:
+
+| | Qué pide | Cuánto se tipea |
+|---|---|---|
+| **Remito** | Proveedor, fecha, **conforme** | Casi nada. No es fiscal y no se paga: su trabajo es dejar constancia de qué entró |
+| **Ticket** | Proveedor, importe, fecha | Tres campos |
+| **Factura en papel** | Proveedor, importe, fecha, **vencimiento** | Cuatro campos, y sí hay que pagarla |
+
+Un remito no pregunta CAE. Preguntarlo es cómo se consigue que la gente cargue
+cualquier cosa con tal de pasar de pantalla.
 
 ### La captura no necesita identidad
 
@@ -493,6 +556,10 @@ Con `node --test`, como el resto del proyecto:
 6. **Los permisos, del lado del servidor**: una acción del módulo de pagos
    invocada con una sesión `RECEPCION` no devuelve importes. Sin este test, la
    promesa de la sección de roles es solo una intención.
+7. **Que la lectura automática no escriba sola**: lo que devuelve el lector
+   queda propuesto y sin confirmar, y ningún importe entra al total por
+   proveedor hasta que una persona lo confirme. Es la única fuente
+   probabilística del sistema y es la que puede meter un número inventado.
 
 ## Lo que no hace
 
@@ -505,12 +572,17 @@ Cada una es una decisión, no un olvido.
 
 ## Lo que hay que medir antes de escribir código
 
-Dos mediciones, una tarde, cero código. Salieron de la revisión del Council y
-son condición para empezar.
+Dos mediciones, una tarde, cero código. Salieron de la revisión del Council.
 
-1. **Exportar el CSV de Recibidos de la semana pasada** y contar cuántas de las
-   facturas que Aldana efectivamente pagó están ahí. Ese porcentaje decide
-   cuánto vale la etapa 1.
+**La etapa 1 no depende de ellas** —está diseñada para cubrir el 100% de los
+comprobantes sea cual sea la mezcla— pero deciden dos cosas: cuánto vale la
+etapa 2, y si hace falta la lectura automática del peldaño 4.
+
+1. **Exportar el CSV de Recibidos de la semana pasada** y cruzarlo con lo que
+   Aldana efectivamente pagó esa semana, contando **dos veces**: cuántos
+   comprobantes están, y **cuánta plata** representan. Los dos números van a dar
+   distinto, y el segundo es el que dice cuánto vale la etapa 2 — si ARCA cubre
+   el 30% de los papeles pero el 80% del dinero, sigue valiendo mucho.
 2. **Agarrar 20 comprobantes reales** —arrugados, con grasa, como llegan— y
    contarlos en tres montones: **cuántos tienen QR legible**, cuántos tienen
    **código de barras legible** (aunque el QR no se lea), y cuántos **no tienen
@@ -535,3 +607,7 @@ son condición para empezar.
   que revise, y hoy ese alguien no está definido.
 - **Compras facturadas a otro CUIT no aparecen en el cruce.** El control de
   "facturas que nadie trajo" es ciego a esa fuga por construcción.
+- **La lista de comprobantes sin respaldo en ARCA va a ser grande.** Es una
+  consecuencia del negocio, no del diseño, y el sistema la va a hacer visible
+  por primera vez. Es información que el contador va a querer ver; qué se hace
+  con ella no es una decisión de este documento.
