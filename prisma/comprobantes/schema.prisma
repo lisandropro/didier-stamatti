@@ -1,0 +1,135 @@
+// Comprobantes de proveedores: facturas, remitos, tickets y notas.
+//
+// Vive en su propia base, aparte del stock, por tres razones: el respaldo del
+// stock retiene 14 días y un comprobante fiscal hay que guardarlo años;
+// restaurar un período de pedidos jamás debe poder tocar una factura; y los
+// ciclos de vida no se parecen — el inventario se resetea, un comprobante no
+// se toca nunca más.
+//
+// No hay claves foráneas hacia la base del stock. Los ids de usuario viajan
+// con el nombre al lado, como ya hace `Suggestion`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../app/generated/comprobantes"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// Un proveedor. El CUIT es la identidad real; el nombre en el papel varía
+// ("DON ANGEL", "Don Angel SRL", "DONANGEL") y no sirve para identificar.
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String
+  // Único cuando existe. NULL = proveedor informal sin CUIT (verdulería,
+  // ferretería de barrio). SQLite admite varios NULL en un índice único.
+  cuit      String?    @unique
+  alias     String?
+  // Días para pagar, cuando el proveedor factura con una condición en vez de
+  // una fecha ("7 DIAS" en la de Dinamark). Sirve para PROPONER el vencimiento;
+  // si el papel trae una fecha, gana la fecha. NULL = contado o no se sabe.
+  diasPago  Int?
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  deletedAt DateTime?
+  documents Document[]
+}
+
+model Document {
+  id   String @id @default(cuid())
+  kind String // FACTURA | REMITO | TICKET | NOTA_CREDITO | NOTA_DEBITO | OTRO
+
+  // Cómo se resolvió la cabecera la primera vez, no de dónde salió la foto.
+  // Un valor por peldaño de la cascada:
+  //   ARCA | QR | EMPAREJADO | LECTURA | MANUAL
+  // Sirve además como medición: en producción dice qué peldaño está
+  // funcionando de verdad, que es hoy el número más incierto del proyecto.
+  source String
+
+  // --- Identidad fiscal. Se copia de un código o de ARCA; NUNCA se tipea. ---
+  cuitEmisor   String?
+  tipoCbte     String?
+  puntoVenta   Int?
+  numero       Int?
+  fechaEmision String? // "AAAA-MM-DD"
+  importeTotal BigInt? // CENTAVOS, siempre positivo
+  cae          String?
+  // Se guarda pero NO se le muestra a quien paga: es la fecha que ya se
+  // confundió una vez con el vencimiento del pago.
+  caeVence     String?
+
+  // --- Vínculos, corregibles sin tocar el dato crudo ---
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  // A dónde entró la mercadería. La factura NO pertenece a una fiesta.
+  destino     String? // COCINA | DEPOSITO | OTRO
+  destinoNota String?
+
+  // NULL = nadie revisó. Distinto de "revisado y estaba bien".
+  conforme      Boolean?
+  faltantesNota String?
+
+  // Sale del "Vto:" del papel. NUNCA se autocompleta desde el CAE.
+  vencimiento String?
+  pagadoAt    DateTime?
+
+  // NULL = todavía no se cruzó contra ARCA.
+  enArca Boolean?
+
+  // Los tres van en NULL cuando el comprobante entró por el CSV de ARCA: no lo
+  // capturó nadie. Que `capturedByName` esté vacío es información, no un hueco.
+  capturedById   String?
+  capturedByName String?
+  clientKey      String?   @unique
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  // Cuando una foto suelta se empareja con una fila de ARCA, las fotos se
+  // mudan y esta fila queda borrada apuntando a la que quedó viva.
+  mergedIntoId String?
+
+  attachments Attachment[]
+  changes     DocumentChange[]
+
+  // Los cuatro campos juntos son la identidad de una factura electrónica
+  // argentina. Es lo que impide cargar dos veces la misma, venga por foto o
+  // por ARCA. Los remitos y tickets van en NULL y no deduplican, que es lo
+  // correcto: no tienen identidad única.
+  @@unique([cuitEmisor, tipoCbte, puntoVenta, numero])
+  @@index([supplierId, pagadoAt])
+  @@index([vencimiento, pagadoAt])
+  @@index([deletedAt])
+}
+
+// Una foto, o varias: la factura de tres hojas. El archivo vive en S3.
+model Attachment {
+  id           String   @id @default(cuid())
+  documentId   String
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  s3Key        String   @unique
+  mimeType     String
+  sizeBytes    Int
+  page         Int      @default(1)
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([documentId, page])
+}
+
+// Historial campo por campo. Mismo patrón que ProductChange en la otra base.
+model DocumentChange {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actorName  String
+  field      String
+  before     String?
+  after      String?
+  createdAt  DateTime @default(now())
+
+  @@index([documentId, createdAt])
+}

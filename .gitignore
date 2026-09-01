@@ -47,6 +47,7 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+/app/generated/comprobantes
 
 # configuración local del servidor de desarrollo
 /.claude
