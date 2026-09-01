@@ -50,7 +50,11 @@ export function leerQr(texto: string): Cabecera | null {
 
   let crudo: string;
   try {
-    crudo = Buffer.from(payload, "base64").toString("utf8").trim();
+    // `atob` y no `Buffer`: así este módulo también corre en el navegador, y la
+    // pantalla de captura puede descartar los QR que no son de factura sin ir
+    // al servidor. El payload es ASCII —números y códigos—, así que no hace
+    // falta decodificar UTF-8.
+    crudo = atob(payload).trim();
   } catch {
     return null;
   }

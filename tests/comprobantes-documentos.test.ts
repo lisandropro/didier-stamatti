@@ -207,3 +207,104 @@ test("la original y la escaneada entran como la misma página", async () => {
   assert.deepEqual([...new Set(adj.map((a) => a.page))], [1], "las dos son la página 1");
   assert.deepEqual(adj.map((a) => a.variante).sort(), ["ESCANEADA", "ORIGINAL"]);
 });
+
+test("una factura anulada no bloquea volver a cargarla", async () => {
+  // `findFirst` filtra por deletedAt: null, así que no encuentra la anulada —
+  // pero el índice único sí existe y rechaza el alta. Sin manejar eso, la
+  // captura explota con un error de Prisma y la foto se pierde, que es
+  // exactamente lo que este módulo no puede permitir.
+  // La identidad fiscal, separada de `fuente`: ese campo es de la cabecera que
+  // devuelve un lector, no del modelo de la base.
+  const identidad = {
+    cuitEmisor: "30500001735",
+    tipoCbte: "A",
+    puntoVenta: 1040,
+    numero: 9999,
+  };
+  const anulada = await prisma.document.create({
+    data: { ...identidad, kind: "FACTURA", source: "QR", clientKey: "k-anul", deletedAt: new Date() },
+  });
+
+  const r = await docs.guardarCaptura({
+    clientKey: "k-otra-vez", kind: "FACTURA",
+    cabecera: { fuente: "QR", ...identidad },
+    actor: PABLO, adjuntos: foto("fotos/2026/09/anul.jpg"),
+  });
+
+  assert.equal(r.documentId, anulada.id);
+  assert.equal(r.fusionado, true);
+  // Y avisa que está anulada, en vez de resucitarla en silencio.
+  assert.equal(r.anulado, true);
+  assert.equal(await prisma.attachment.count({ where: { documentId: anulada.id } }), 1);
+});
+
+test("dos capturas a la vez de la misma factura no explotan", async () => {
+  const identidad = {
+    fuente: "QR" as const,
+    cuitEmisor: "30500001735",
+    tipoCbte: "A",
+    puntoVenta: 1040,
+    numero: 7777,
+  };
+  const [a, b] = await Promise.all([
+    docs.guardarCaptura({
+      clientKey: "k-carrera-1", kind: "FACTURA", cabecera: identidad, actor: PABLO,
+      adjuntos: foto("fotos/2026/09/r1.jpg"),
+    }),
+    docs.guardarCaptura({
+      clientKey: "k-carrera-2", kind: "FACTURA", cabecera: identidad,
+      actor: { id: "u-nico", name: "Nico" }, adjuntos: foto("fotos/2026/09/r2.jpg"),
+    }),
+  ]);
+
+  assert.equal(a.documentId, b.documentId, "las dos capturas van al mismo comprobante");
+  assert.equal(await prisma.document.count({ where: { numero: 7777 } }), 1);
+  assert.equal(await prisma.attachment.count({ where: { documentId: a.documentId } }), 2);
+});
+
+test("la fusión completa lo que faltaba, sin pisar lo que ya estaba", async () => {
+  const identidad = {
+    cuitEmisor: "30500001735", tipoCbte: "A", puntoVenta: 1040, numero: 4242,
+  };
+  // Primera captura: el QR no dio el importe ni el CAE.
+  const uno = await docs.guardarCaptura({
+    clientKey: "k-c1", kind: "FACTURA",
+    cabecera: { fuente: "QR", ...identidad, fechaEmision: "2026-08-27" },
+    actor: PABLO, adjuntos: foto("fotos/2026/09/g1.jpg"),
+  });
+  // Segunda: esta vez sí, y además una fecha distinta que NO debe pisar.
+  await docs.guardarCaptura({
+    clientKey: "k-c2", kind: "FACTURA",
+    cabecera: {
+      fuente: "QR", ...identidad,
+      fechaEmision: "2026-01-01", // distinta: la primera gana
+      importeTotal: 223181145n,
+      cae: "86350106990468",
+    },
+    actor: PABLO, adjuntos: foto("fotos/2026/09/g2.jpg"),
+  });
+
+  const d = await prisma.document.findUniqueOrThrow({ where: { id: uno.documentId } });
+  assert.equal(d.importeTotal, 223181145n, "lo que faltaba se completa");
+  assert.equal(d.cae, "86350106990468");
+  assert.equal(d.fechaEmision, "2026-08-27", "lo que ya estaba NO se pisa");
+
+  // Y lo completado queda en el historial: un dato que aparece sin rastro es un
+  // dato del que después nadie sabe de dónde salió.
+  const cambios = await prisma.documentChange.findMany({ where: { documentId: uno.documentId } });
+  assert.ok(cambios.some((c) => c.field === "importeTotal" && c.after === "223181145"));
+});
+
+test("un importe negativo se rechaza en la puerta", async () => {
+  // El importe se guarda SIEMPRE positivo y el signo lo decide `kind`. Un
+  // negativo acá descuadraría el saldo del proveedor sin que nadie lo note.
+  await assert.rejects(
+    () =>
+      docs.guardarCaptura({
+        clientKey: "k-neg", kind: "NOTA_CREDITO",
+        cabecera: { fuente: "MANUAL", importeTotal: -1000n },
+        actor: PABLO, adjuntos: foto("fotos/2026/09/neg.jpg"),
+      }),
+    /positivo/i,
+  );
+});
