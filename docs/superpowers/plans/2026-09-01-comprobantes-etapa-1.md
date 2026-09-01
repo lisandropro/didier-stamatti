@@ -2365,7 +2365,27 @@ git commit -m "Poner la camara en el deposito y la deuda en la oficina"
 
 ---
 
-### Task 9: La carga manual corta
+### Task 9: La carga manual corta ✅ HECHA (2026-09-01)
+
+> **Lo que cambió respecto de lo escrito acá.** Este plan se escribió antes de
+> la auditoría, y tal cual estaba reintroducía tres defectos que la auditoría
+> acababa de corregir en el resto del módulo: `source: "MANUAL"` incondicional
+> (borraba la procedencia de una cabecera leída del QR), las dos escrituras sin
+> transacción, y `getSessionUser` en vez de `sesionVigente` en una acción que
+> tipea un importe. Se corrigieron los tres.
+>
+> Además: el proveedor se busca sin acentos ni mayúsculas (comparar exacto
+> partía la deuda en dos), se avisa del duplicado **al cargar** en vez de en la
+> pantalla de pagos, no se cambia el importe de algo ya pagado, y la fecha se
+> valida con `esDia` porque "2026-02-30" tiene la forma correcta y rueda al 2 de
+> marzo.
+>
+> **La pantalla vive en `/pagos/completar/[id]`, no en `/recepcion/...`**: exige
+> `canVerImportes`, así que en la ruta original RECEPCIÓN se comía un 404 dentro
+> de su propia sección.
+>
+> El código quedó en `lib/comprobantes/completar.ts` y no dentro de
+> `documentos.ts`, que ya tenía 380 líneas.
 
 Sin esto, todo lo que no tiene código legible —que según el usuario es buena parte de lo que entra— se queda sin datos. Es la que cierra la etapa 1.
 
