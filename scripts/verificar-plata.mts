@@ -12,9 +12,11 @@ execSync(`npx prisma migrate deploy --config ./prisma-comprobantes.config.ts`, {
 });
 
 const { prismaComprobantes: db } = await import("../lib/db-comprobantes");
-const { porProveedor, marcarPagados, revertirPago, bandejas } = await import("../lib/comprobantes/pagos");
+const { porProveedor, marcarPagados, revertirPago, bandejas, incompletos } =
+  await import("../lib/comprobantes/pagos");
 const { formatear } = await import("../lib/money");
 const { kindDelComprobante } = await import("../lib/comprobantes/politica");
+const { completarCabecera } = await import("../lib/comprobantes/completar");
 
 let fallos = 0;
 function chequear(nombre: string, ok: boolean, detalle = "") {
@@ -110,6 +112,48 @@ await doc("FACTURA", 999_999_999_99n);
 const despuesDelGrande = (await porProveedor())[0].total;
 chequear("una factura de $999.999.999,99 entra entera (el techo de int32 son $21M)",
   despuesDelGrande - antesDelGrande === 999_999_999_99n, formatear(despuesDelGrande));
+
+
+// --- 10. La carga a mano ----------------------------------------------------
+const enBlanco = await db.document.create({ data: { kind: "FACTURA", source: "SIN_CODIGO" } });
+chequear("un comprobante en blanco aparece en la lista de lo que falta",
+  (await incompletos()).some((f) => f.id === enBlanco.id));
+
+const rc = await completarCabecera(
+  enBlanco.id,
+  { nombreProveedor: "  DISTRIBUIDORA  SUR ", importeTexto: "$ 45.200,50", vencimiento: "2026-10-15" },
+  actor,
+);
+const completado = await db.document.findUnique({
+  where: { id: enBlanco.id },
+  include: { supplier: true },
+});
+chequear("el importe tipeado a mano entra exacto",
+  completado?.importeTotal === 45_200_50n, formatear(completado!.importeTotal!));
+chequear("y no crea un proveedor nuevo por los espacios y las mayusculas",
+  completado?.supplier?.name === "Distribuidora Sur", String(completado?.supplier?.name));
+chequear("no hay duplicado: es el unico por ese importe", rc.posibleDuplicado === false);
+
+const otro = await db.document.create({ data: { kind: "FACTURA", source: "SIN_CODIGO" } });
+const rc2 = await completarCabecera(
+  otro.id,
+  { nombreProveedor: "Distribuidora Sur", importeTexto: "45200,50" },
+  actor,
+);
+chequear("avisa del duplicado en el momento de cargar, no dos semanas despues",
+  rc2.posibleDuplicado === true);
+
+chequear("ya completo, sale de la lista de lo que falta",
+  (await incompletos()).every((f) => f.id !== enBlanco.id));
+
+await marcarPagados([enBlanco.id], primero, actor);
+let rechazado = false;
+try {
+  await completarCabecera(enBlanco.id, { importeTexto: "1" }, actor);
+} catch {
+  rechazado = true;
+}
+chequear("no se puede cambiar el importe de algo ya pagado", rechazado);
 
 console.log(fallos === 0 ? "\nTODO VERIFICADO" : `\n${fallos} FALLAS`);
 await db.$disconnect();

@@ -417,3 +417,47 @@ function esDiaReal(dia: string): boolean {
   const f = new Date(Date.UTC(a, m - 1, d));
   return f.getUTCFullYear() === a && f.getUTCMonth() === m - 1 && f.getUTCDate() === d;
 }
+
+export type Incompleto = DocumentoAPagar & {
+  /** Qué le falta, en palabras, para que la fila diga por qué está en la lista. */
+  falta: string[];
+};
+
+/**
+ * Los comprobantes a los que les falta algo para poder pagarse.
+ *
+ * Las bandejas mostraban un número y nada más: "3 sin proveedor", sin forma de
+ * abrir esos tres. Un contador que no se puede tocar es peor que no tener el
+ * contador, porque dice que hay trabajo pendiente y no deja hacerlo.
+ *
+ * Devuelve las filas, con el motivo escrito, para que cada una lleve a la
+ * pantalla donde se completa.
+ */
+export async function incompletos(): Promise<Incompleto[]> {
+  const docs = await db.document.findMany({
+    where: {
+      deletedAt: null,
+      pagadoAt: null,
+      kind: { notIn: [...NO_SE_PAGAN] },
+      OR: [{ supplierId: null }, { importeTotal: null }, { vencimiento: null }],
+    },
+    include: { supplier: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+
+  return docs.map((d) => {
+    const falta: string[] = [];
+    if (!d.supplierId) falta.push("proveedor");
+    if (d.importeTotal == null) falta.push("importe");
+    if (!d.vencimiento) falta.push("vencimiento");
+    return {
+      id: d.id,
+      nombre: d.supplier?.name ?? "Sin proveedor",
+      importeTotal: d.importeTotal,
+      vencimiento: d.vencimiento,
+      kind: d.kind,
+      falta,
+    };
+  });
+}

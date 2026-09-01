@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { pagar } from "@/app/actions/comprobantes";
 import { formatear } from "@/lib/money";
 import { diasEntre } from "@/lib/dates";
@@ -23,18 +24,23 @@ type Fila = {
 
 type Duplicado = { nombre: string; importe: string; documentIds: string[] };
 
+/** Un comprobante al que le falta algo para poder pagarse, con el motivo. */
+type Incompleto = { id: string; nombre: string; kind: string; falta: string[] };
+
 export default function ListaPagos({
   hoy,
   deuda,
   vencen,
   bandejas,
   duplicados,
+  incompletos,
 }: {
   hoy: string;
   deuda: { supplierId: string | null; nombre: string; total: string; cantidad: number }[];
   vencen: Fila[];
   bandejas: { sinProveedor: number; sinRevisar: number; sinVencimiento: number };
   duplicados: Duplicado[];
+  incompletos: Incompleto[];
 }) {
   const router = useRouter();
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
@@ -137,7 +143,7 @@ export default function ListaPagos({
   }
 
   const grupos = useMemo(() => agrupar(vencen, hoy), [vencen, hoy]);
-  const hayPendientes = bandejas.sinProveedor + bandejas.sinVencimiento > 0 || duplicados.length > 0;
+  const hayPendientes = incompletos.length > 0 || duplicados.length > 0 || bandejas.sinRevisar > 0;
 
   return (
     <>
@@ -268,23 +274,30 @@ export default function ListaPagos({
       {hayPendientes && (
         <>
           <h2 className="section-title">Falta resolver</h2>
-          <ul className="pg-pendientes">
-            {bandejas.sinVencimiento > 0 && (
-              <li>
-                <strong>{bandejas.sinVencimiento}</strong> sin fecha de pago
-              </li>
-            )}
-            {bandejas.sinProveedor > 0 && (
-              <li>
-                <strong>{bandejas.sinProveedor}</strong> sin proveedor
-              </li>
-            )}
-            {bandejas.sinRevisar > 0 && (
-              <li>
-                <strong>{bandejas.sinRevisar}</strong> sin revisar la recepción
-              </li>
-            )}
-          </ul>
+
+          {/* Cada fila abre la pantalla donde se completa. Antes esto era una
+              lista de números: "3 sin proveedor", sin forma de abrir esos tres.
+              Un contador que no se puede tocar avisa que hay trabajo y no deja
+              hacerlo, y eso es exactamente cómo una bandeja se deja de mirar. */}
+          {incompletos.length > 0 && (
+            <ul className="pg-faltantes">
+              {incompletos.map((f) => (
+                <li key={f.id}>
+                  <Link href={`/pagos/completar/${f.id}`}>
+                    <span className="pg-faltantes-quien">{f.nombre}</span>
+                    <span className="pg-faltantes-que">Falta {f.falta.join(", ")}</span>
+                    <span className="pg-faltantes-ir" aria-hidden="true">›</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {bandejas.sinRevisar > 0 && (
+            <p className="hint">
+              <strong>{bandejas.sinRevisar}</strong> sin revisar la recepción.
+            </p>
+          )}
         </>
       )}
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sesionVigente } from "@/lib/auth";
 import { canCapturarComprobantes, canPagar } from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
+import { completarCabecera } from "@/lib/comprobantes/completar";
 import {
   porProveedor,
   queVence,
@@ -11,6 +12,7 @@ import {
   ponerVencimiento,
   bandejas,
   posiblesDuplicados,
+  incompletos,
 } from "@/lib/comprobantes/pagos";
 import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
@@ -215,7 +217,11 @@ export async function pendientes() {
   if (!puedeResponderImportes(sesion)) {
     return { ok: false, error: "No tenés permiso para ver los pendientes." };
   }
-  const [b, duplicados] = await Promise.all([bandejas(), posiblesDuplicados()]);
+  const [b, duplicados, faltantes] = await Promise.all([
+    bandejas(),
+    posiblesDuplicados(),
+    incompletos(),
+  ]);
   return {
     ok: true,
     bandejas: b,
@@ -225,5 +231,55 @@ export async function pendientes() {
       importe: aTextoPlano(d.importe),
       documentIds: d.documentIds,
     })),
+    // Las filas de verdad, no solo el contador: una bandeja que no se puede
+    // abrir dice que hay trabajo pendiente y no deja hacerlo.
+    incompletos: faltantes.map((f) => ({
+      id: f.id,
+      nombre: f.nombre,
+      kind: f.kind,
+      falta: f.falta,
+    })),
   };
+}
+
+export type ResultadoCompletado =
+  | { ok: false; error: string }
+  | { ok: true; posibleDuplicado: boolean };
+
+/**
+ * Completar a mano lo que no vino leído.
+ *
+ * Pide `canPagar` y no `canCapturarComprobantes` porque acá se tipea un
+ * IMPORTE, y quien recibe la mercadería no maneja importes. El proveedor y la
+ * fecha los podría cargar cualquiera; el importe no, y partir la pantalla en dos
+ * por eso sería peor para todos.
+ */
+export async function completarAMano(id: string, fd: FormData): Promise<ResultadoCompletado> {
+  const sesion = await sesionVigente();
+  if (!sesion || !canPagar(sesion.role)) {
+    return { ok: false, error: "No tenés permiso para completar comprobantes." };
+  }
+  const texto = (k: string) => String(fd.get(k) ?? "").trim() || undefined;
+
+  let r;
+  try {
+    r = await completarCabecera(
+      id,
+      {
+        nombreProveedor: texto("nombreProveedor"),
+        importeTexto: texto("importe"),
+        fechaEmision: texto("fechaEmision"),
+        vencimiento: texto("vencimiento"),
+      },
+      { id: sesion.id, name: sesion.name },
+    );
+  } catch (e) {
+    // Los mensajes de `completarCabecera` estan escritos para leerse en
+    // pantalla —dicen que pasa y que hacer—, asi que se pasan tal cual.
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/pagos");
+  revalidatePath("/recepcion");
+  return { ok: true, posibleDuplicado: r.posibleDuplicado };
 }

@@ -1312,3 +1312,70 @@ tbody tr:hover{background:var(--surface-2)}
 .pg-aviso-bien{background:var(--ok-bg,#0f2a1a); border-color:var(--ok-line,#1f6b3f); color:var(--ok-ink,#7ee0a5)}
 .pg-aviso-ojo{background:var(--warn-bg,#2c2410); border-color:var(--warn-line,#7a6220); color:var(--warn-ink,#f0cf7a)}
 .pg-aviso-mal{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8)}
+
+/* ===== Completar un comprobante a mano ===== */
+
+/* La foto al lado del formulario. En el teléfono se apilan y la foto queda
+   arriba, que es el orden en que se mira: primero el papel, después el campo. */
+.cmp-partido{display:grid; gap:var(--sp-5); grid-template-columns:1fr; align-items:start}
+@media(min-width:900px){
+  .cmp-partido{grid-template-columns:minmax(0,1fr) minmax(320px,420px)}
+  /* La foto se queda quieta mientras se baja por los campos. */
+  .cmp-papel{position:sticky; top:var(--sp-5)}
+}
+
+.cmp-papel{background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-lg); overflow:hidden}
+.cmp-foto{display:block; width:100%; height:auto; max-height:78vh; object-fit:contain}
+.cmp-sin-foto{padding:var(--sp-7) var(--sp-5); text-align:center; color:var(--muted); font-size:var(--t-sm)}
+
+.cmp-form{display:flex; flex-direction:column; gap:var(--sp-4)}
+.cmp-campo{display:flex; flex-direction:column; gap:6px}
+.cmp-campo > span{font-size:var(--t-sm); font-weight:650; color:var(--ink)}
+.cmp-campo input{
+  min-height:var(--tap); padding:10px 12px; font-size:16px; /* 16px: menos que eso y iOS hace zoom al enfocar */
+  border:1px solid var(--hair); border-radius:var(--r-md);
+  background:var(--surface); color:var(--ink); width:100%;
+}
+.cmp-campo input:focus-visible{outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold)}
+.cmp-campo input:disabled{background:var(--surface-2); color:var(--muted); cursor:not-allowed}
+.cmp-campo small{font-size:var(--t-xs); color:var(--muted)}
+
+.cmp-guardar{min-height:var(--tap); margin-top:var(--sp-2)}
+
+.cmp-error,.cmp-pagado,.cmp-duplicado{
+  padding:12px 14px; border-radius:var(--r-md); border:1px solid;
+  font-size:var(--t-sm); margin-bottom:var(--sp-4); text-wrap:pretty;
+}
+.cmp-error{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8); font-weight:600}
+.cmp-pagado{background:var(--surface-2); border-color:var(--hair); color:var(--ink)}
+.cmp-duplicado{background:var(--warn-bg,#2c2410); border-color:var(--warn-line,#7a6220); color:var(--warn-ink,#f0cf7a)}
+.cmp-duplicado-acciones{display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-3)}
+
+/* En claro los tres avisos necesitan sus propios valores: los de arriba están
+   pensados sobre fondo oscuro y sobre blanco no llegan a 4.5:1. */
+@media(prefers-color-scheme:light){
+  .cmp-error{background:#FDF2F2; border-color:#E4B4B4; color:#8A1F27}
+  .cmp-duplicado{background:#FCF6E6; border-color:#DCC079; color:#6B4E10}
+}
+
+/* Las filas de "falta resolver". Cada una abre la pantalla donde se completa,
+   así que se comportan como enlaces y no como un listado decorativo. */
+.pg-faltantes{list-style:none; margin:0 0 var(--sp-4); padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
+.pg-faltantes a{
+  display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:var(--sp-3);
+  min-height:var(--tap); padding:10px 14px; text-decoration:none;
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  color:var(--ink);
+}
+.pg-faltantes a:hover{border-color:var(--gold)}
+.pg-faltantes a:focus-visible{outline:2px solid var(--gold); outline-offset:1px}
+.pg-faltantes-quien{font-weight:650; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pg-faltantes-que{font-size:var(--t-sm); color:var(--muted)}
+.pg-faltantes-ir{color:var(--muted); font-size:20px; line-height:1}
+@media(max-width:560px){
+  /* En el teléfono el motivo baja: dos textos y una flecha en 360px dejan el
+     nombre del proveedor en tres letras y un puntito. */
+  .pg-faltantes a{grid-template-columns:1fr auto; row-gap:2px}
+  .pg-faltantes-que{grid-column:1; grid-row:2}
+  .pg-faltantes-ir{grid-column:2; grid-row:1 / span 2}
+}

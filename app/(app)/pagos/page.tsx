@@ -36,6 +36,7 @@ export default async function PagosPage() {
       vencen={vencen.filas ?? []}
       bandejas={pend.bandejas ?? { sinProveedor: 0, sinRevisar: 0, sinVencimiento: 0 }}
       duplicados={pend.duplicados ?? []}
+      incompletos={pend.incompletos ?? []}
     />
   );
 }
