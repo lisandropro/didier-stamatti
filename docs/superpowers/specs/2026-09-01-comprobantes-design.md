@@ -670,14 +670,37 @@ año en vez de 5.
 **Si el escaneo falla, se sube la foto igual.** Vale la misma regla que ordena
 todo el módulo: nada puede impedir que el comprobante quede.
 
-### Lo que NO se hace: generar un documento nuevo
 
-Se evaluó producir un PDF limpio **reconstruido a partir de los datos leídos**, y
-se descartó. Un documento generado se ve más confiable que una foto borrosa pero
-contiene lo que la IA leyó: un error de lectura quedaría lavado dentro de algo
-con aspecto de comprobante fiscal. Para AFIP, para el contador y para cualquier
-tercero, **el comprobante es el original** — y el original es lo que se escanea,
-no algo que se dibuja de nuevo.
+## El documento reconstruido
+
+Además del escaneo, cada comprobante tiene un **documento armado con los datos**:
+un PDF limpio y siempre igual, con el emisor, la identidad fiscal, la tabla de
+renglones y los totales. Todos los proveedores imprimen distinto; acá todos
+salen con el mismo formato y se leen de un vistazo.
+
+**Se genera en el momento, no se archiva congelado.** Si mañana alguien corrige
+un importe, el documento sale corregido. Un PDF guardado hace tres meses
+mostraría el dato viejo y nadie se enteraría — es el mismo argumento por el que
+este módulo no tiene columna de estado.
+
+### La línea que el documento no cruza
+
+Un documento generado se ve más confiable que una foto borrosa, y contiene lo
+que la IA leyó. Para que un error de lectura no quede lavado dentro de algo con
+aspecto oficial, el reconstruido:
+
+- **Lleva impreso que es una reconstrucción**, de qué foto salió, cuándo, y qué
+  verificaciones cerraron. El pie va **siempre**, incluso cuando todo verificó:
+  un aviso que aparece a veces enseña a no mirarlo.
+- **No lleva el logo de ARCA, ni la leyenda "Comprobante Autorizado", ni el
+  código de barras.** El CAE sí va, como dato para buscar; lo que no va es la
+  presentación que lo hace parecer autorizado.
+- **Convive con la foto, nunca la reemplaza.** En la pantalla los dos botones
+  tienen nombres distintos —"Ver el comprobante" y "Ver el detalle"— para que no
+  se confunda cuál es cuál.
+
+Ante AFIP, el contador o cualquier tercero, el comprobante sigue siendo el
+original. El reconstruido es el documento de trabajo.
 
 ## Roles
 
@@ -749,9 +772,9 @@ Con `node --test`, como el resto del proyecto:
 No emite facturas · no se conecta a ARCA por API (el CSV se sube a mano) · no
 paga ni toca bancos o Mercado Pago · no lleva contabilidad ni libro IVA · no
 concilia pagos parciales ni cheques · no es multiempresa · no imputa
-comprobantes a eventos · **no genera un documento nuevo a partir de los datos
-leídos** (ver "El escaneo": lo que se archiva es el original, no una
-reconstrucción) · no lee el código de barras de la RG 1702.
+comprobantes a eventos · no lee el código de barras de la RG 1702 · el documento
+reconstruido **no reemplaza al comprobante original** y no imita su
+presentación oficial (ver "El documento reconstruido").
 
 Cada una es una decisión, no un olvido.
 

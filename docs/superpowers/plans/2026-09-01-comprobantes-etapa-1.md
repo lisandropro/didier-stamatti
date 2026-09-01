@@ -3245,6 +3245,326 @@ git commit -m "Hacer que la foto del papel parezca un escaneo"
 
 ---
 
+### Task 12: El documento reconstruido
+
+> **Qué es.** Un PDF limpio y siempre igual, armado **con los datos leídos** —no
+> con la foto—: emisor, identidad fiscal, la tabla de renglones, los totales, el
+> vencimiento. Todos los comprobantes salen con el mismo formato, así que se
+> leen de un vistazo sin reorientarse con cada proveedor.
+>
+> **Se genera en el momento, no se guarda congelado.** Si mañana alguien corrige
+> un importe, el documento sale corregido. Un PDF archivado de hace tres meses
+> mostraría el dato viejo y nadie se enteraría — es la misma razón por la que en
+> este módulo no hay columna de estado.
+>
+> **Lo que el documento NO hace:** no lleva el logo de ARCA, ni la leyenda
+> "Comprobante Autorizado", ni el código de barras. Lleva impreso que es una
+> reconstrucción, de qué foto salió y qué verificaciones cerraron. Es un
+> documento de trabajo, legible y uniforme; el comprobante autorizado ante AFIP,
+> el contador o cualquier tercero **sigue siendo la foto del original**, que está
+> a un toque.
+
+**Files:**
+- Create: `lib/comprobantes/documento.tsx`
+- Create: `app/api/comprobantes/[id]/documento/route.ts`
+- Modify: `app/(app)/pagos/lista-pagos.tsx` (el botón)
+- Test: `tests/comprobantes-documento.test.ts`
+
+**Interfaces:**
+- Consumes: `formatear` de `lib/money.ts`, los modelos `Document` y `DocumentLine`.
+- Produces:
+  - `type DatosDocumento = { encabezado: {...}; renglones: {...}[]; totales: {...}; procedencia: {...} }`
+  - `armarDatos(doc, lines, controles): DatosDocumento`
+  - `<DocumentoReconstruido datos={...} />` — componente de `@react-pdf/renderer`
+
+- [ ] **Step 1: Escribir la prueba que falla**
+
+Se prueba `armarDatos`, que es donde están las decisiones: qué se muestra, qué
+no, y cómo se dice lo que no se pudo verificar. El PDF renderizado se mira a ojo
+en el paso 5 — una prueba de "se ve bien" no existe.
+
+Crear `tests/comprobantes-documento.test.ts`:
+
+```typescript
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { armarDatos } from "../lib/comprobantes/documento";
+
+/**
+ * El documento reconstruido: mismos datos, formato uniforme.
+ *
+ * Lo que se protege acá es que **no se disfrace del original**. Un PDF prolijo
+ * se ve más confiable que una foto borrosa, y contiene lo que la IA leyó. Si
+ * además pareciera un comprobante autorizado, un error de lectura quedaría
+ * lavado dentro de algo con aspecto oficial.
+ */
+
+const DOC = {
+  id: "d1",
+  kind: "FACTURA",
+  source: "LECTURA",
+  cuitEmisor: "30718089413",
+  tipoCbte: "A",
+  puntoVenta: 2,
+  numero: 28897,
+  fechaEmision: "2026-07-28",
+  importeTotal: 77286775n,
+  cae: "86305704041463",
+  caeVence: "2026-08-07",
+  vencimiento: "2026-08-04",
+  createdAt: new Date("2026-09-01T12:00:00Z"),
+  supplier: { name: "DINAMARK SRL" },
+};
+
+const RENGLONES = [
+  { orden: 1, codigo: "1096", descripcion: "QUESO HOLANDA HORMA TREGAR",
+    cantidad: 4400n, unidad: "KG", precioUnitario: 1360724n, subtotal: 5987186n },
+];
+
+const CONTROLES = { cierraLaCuenta: true, cierranLosRenglones: true, cuitValido: true };
+
+test("arma el encabezado con la identidad fiscal completa", () => {
+  const d = armarDatos(DOC, RENGLONES, CONTROLES);
+  assert.equal(d.encabezado.proveedor, "DINAMARK SRL");
+  assert.equal(d.encabezado.cuit, "30-71808941-3"); // con guiones, para leerlo
+  assert.equal(d.encabezado.comprobante, "FACTURA A 0002-00028897");
+  assert.equal(d.encabezado.fecha, "28/07/2026");
+});
+
+test("los importes salen formateados, nunca en centavos crudos", () => {
+  const d = armarDatos(DOC, RENGLONES, CONTROLES);
+  assert.equal(d.renglones[0].precioUnitario, "$ 13.607,24");
+  assert.equal(d.renglones[0].subtotal, "$ 59.871,86");
+  assert.equal(d.renglones[0].cantidad, "4,40 KG");
+  assert.equal(d.totales.total, "$ 772.867,75");
+});
+
+test("dice que es una reconstrucción y de dónde salió", () => {
+  const d = armarDatos(DOC, RENGLONES, CONTROLES);
+  assert.match(d.procedencia.leyenda, /reconstru/i);
+  assert.match(d.procedencia.leyenda, /no es el comprobante/i);
+  assert.equal(d.procedencia.origen, "leído de la foto");
+  assert.equal(d.procedencia.fecha, "01/09/2026");
+});
+
+test("no lleva nada que lo haga pasar por el comprobante autorizado", () => {
+  const d = armarDatos(DOC, RENGLONES, CONTROLES);
+  const texto = JSON.stringify(d).toLowerCase();
+  for (const prohibido of ["arca", "afip", "comprobante autorizado", "codigo de barras"]) {
+    assert.ok(!texto.includes(prohibido), `no debería aparecer "${prohibido}"`);
+  }
+  // El CAE sí va: es un dato de la factura y sirve para buscarla. Lo que no va
+  // es la presentación que lo hace parecer autorizado.
+  assert.equal(d.totales.cae, "86305704041463");
+});
+
+test("cuando una verificación no cerró, el documento lo dice", () => {
+  const d = armarDatos(DOC, RENGLONES, { ...CONTROLES, cierraLaCuenta: false });
+  assert.match(d.procedencia.advertencia ?? "", /no cierra/i);
+});
+
+test("cuando no se pudo verificar, no afirma que esté bien", () => {
+  // null no es false ni true: sin sumandos no se puede decir nada, y decir que
+  // "cierra" sería mentir en un documento que alguien va a usar para pagar.
+  const d = armarDatos(DOC, RENGLONES, { cierraLaCuenta: null, cierranLosRenglones: null, cuitValido: null });
+  assert.equal(d.procedencia.verificado, false);
+  assert.match(d.procedencia.advertencia ?? "", /sin verificar/i);
+});
+
+test("un comprobante sin renglones sale igual, con la tabla vacía", () => {
+  // Un ticket o un remito cargado a mano no tiene detalle, y el documento tiene
+  // que salir lo mismo.
+  const d = armarDatos(DOC, [], CONTROLES);
+  assert.deepEqual(d.renglones, []);
+  assert.equal(d.totales.total, "$ 772.867,75");
+});
+```
+
+- [ ] **Step 2: Correr la prueba para verificar que falla**
+
+Run: `npx tsx --test tests/comprobantes-documento.test.ts`
+Expected: FAIL — no encuentra `../lib/comprobantes/documento`.
+
+- [ ] **Step 3: Escribir `armarDatos`**
+
+Crear `lib/comprobantes/documento.tsx`. Primero la parte pura, que es la que
+tiene las decisiones:
+
+```typescript
+import { formatear } from "@/lib/money";
+
+export type DatosDocumento = {
+  encabezado: {
+    proveedor: string;
+    cuit: string;
+    comprobante: string;
+    fecha: string;
+    vencimiento: string;
+  };
+  renglones: {
+    codigo: string;
+    descripcion: string;
+    cantidad: string;
+    precioUnitario: string;
+    subtotal: string;
+  }[];
+  totales: { subtotal: string; iva: string; total: string; cae: string };
+  procedencia: {
+    leyenda: string;
+    origen: string;
+    fecha: string;
+    verificado: boolean;
+    advertencia?: string;
+  };
+};
+
+/**
+ * De los datos guardados al documento que se imprime.
+ *
+ * Todo lo que sale de acá es texto ya formateado: el componente de PDF no
+ * decide nada, solo dibuja. Así las reglas —qué se muestra, cómo se dice lo que
+ * no se verificó— viven en un solo lugar y se prueban sin renderizar nada.
+ */
+export function armarDatos(doc: any, lines: any[], controles: any): DatosDocumento {
+  const numero = `${String(doc.puntoVenta ?? 0).padStart(4, "0")}-${String(doc.numero ?? 0).padStart(8, "0")}`;
+
+  return {
+    encabezado: {
+      proveedor: doc.supplier?.name ?? "Sin proveedor",
+      cuit: conGuiones(doc.cuitEmisor),
+      comprobante: `${etiqueta(doc.kind)} ${doc.tipoCbte ?? ""} ${numero}`.replace(/\s+/g, " ").trim(),
+      fecha: aDiaLegible(doc.fechaEmision),
+      vencimiento: aDiaLegible(doc.vencimiento),
+    },
+    renglones: lines.map((l) => ({
+      codigo: l.codigo ?? "",
+      descripcion: l.descripcion,
+      cantidad: l.cantidad == null ? "" : `${milesimas(l.cantidad)}${l.unidad ? " " + l.unidad : ""}`,
+      precioUnitario: l.precioUnitario == null ? "" : formatear(l.precioUnitario),
+      subtotal: l.subtotal == null ? "" : formatear(l.subtotal),
+    })),
+    totales: {
+      subtotal: doc.subtotal == null ? "" : formatear(doc.subtotal),
+      iva: doc.iva == null ? "" : formatear(doc.iva),
+      total: doc.importeTotal == null ? "" : formatear(doc.importeTotal),
+      cae: doc.cae ?? "",
+    },
+    procedencia: procedencia(doc, controles),
+  };
+}
+
+/**
+ * El pie que impide que esto se confunda con el original.
+ *
+ * Va siempre, incluso cuando todo verificó. Un documento que a veces avisa y a
+ * veces no enseña a no mirar el aviso.
+ */
+function procedencia(doc: any, c: any): DatosDocumento["procedencia"] {
+  const verificado = c.cierraLaCuenta === true && c.cuitValido === true;
+  const falló = c.cierraLaCuenta === false || c.cierranLosRenglones === false || c.cuitValido === false;
+  const noSePudo = c.cierraLaCuenta == null && c.cuitValido == null;
+
+  return {
+    leyenda:
+      "Documento reconstruido por el sistema a partir de los datos del comprobante. " +
+      "No es el comprobante original ni lo reemplaza.",
+    origen: doc.source === "LECTURA" ? "leído de la foto" : doc.source === "QR" ? "leído del QR" : "cargado a mano",
+    fecha: aDiaLegible(diaDe(doc.createdAt)),
+    verificado,
+    advertencia: falló
+      ? "Atención: la aritmética del comprobante no cierra. Revisar contra la foto."
+      : noSePudo
+        ? "Datos sin verificar: no hubo con qué comprobar la aritmética."
+        : undefined,
+  };
+}
+
+const ETIQUETAS: Record<string, string> = {
+  FACTURA: "FACTURA", REMITO: "REMITO", TICKET: "TICKET",
+  NOTA_CREDITO: "NOTA DE CRÉDITO", NOTA_DEBITO: "NOTA DE DÉBITO", OTRO: "COMPROBANTE",
+};
+const etiqueta = (k: string) => ETIQUETAS[k] ?? "COMPROBANTE";
+
+/** `30718089413` -> `30-71808941-3`. Un CUIT corrido se lee mucho peor. */
+function conGuiones(cuit: string | null): string {
+  if (!cuit || cuit.length !== 11) return cuit ?? "";
+  return `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}`;
+}
+
+/** `"2026-07-28"` -> `"28/07/2026"`. Solo para mostrar: guardado sigue ISO. */
+function aDiaLegible(dia: string | null): string {
+  if (!dia || !/^\d{4}-\d{2}-\d{2}$/.test(dia)) return "";
+  const [a, m, d] = dia.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+/** `4400` (milésimas) -> `"4,40"`. */
+function milesimas(v: bigint): string {
+  const entero = v / 1000n;
+  const resto = (v % 1000n).toString().padStart(3, "0").replace(/0+$/, "") || "0";
+  return `${entero},${resto.padEnd(2, "0")}`;
+}
+
+function diaDe(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+```
+
+- [ ] **Step 4: Correr la prueba para verificar que pasa**
+
+Run: `npx tsx --test tests/comprobantes-documento.test.ts`
+Expected: PASS, 7 pruebas.
+
+- [ ] **Step 5: El PDF**
+
+En el mismo archivo, el componente con `@react-pdf/renderer`, que **ya está en
+`package.json`** — es el mismo que imprime los pedidos.
+
+Estructura, de arriba a abajo:
+
+1. **Encabezado:** proveedor grande, CUIT con guiones, tipo y número, fecha de
+   emisión, y **vencimiento destacado** — es el dato por el que se mira este
+   documento.
+2. **Tabla de renglones:** código, descripción, cantidad, precio unitario,
+   subtotal. Alineación a la derecha en todo lo numérico, tipografía monoespaciada
+   en los importes para que las comas queden en columna.
+3. **Totales** abajo a la derecha: subtotal, IVA, total. El total en negrita.
+4. **CAE** en un renglón chico, como dato de búsqueda. Sin barras, sin logos.
+5. **Pie de procedencia**, siempre presente: la leyenda de reconstrucción, de
+   dónde salió el dato, cuándo, y la advertencia si alguna verificación no cerró.
+   Cuando falló, el pie va con fondo de alerta y no en gris.
+
+Sin logo de ARCA, sin leyenda "Comprobante Autorizado", sin código de barras.
+
+Crear `app/api/comprobantes/[id]/documento/route.ts`: comprueba sesión y
+`canVerImportes`, arma los datos, renderiza y devuelve el PDF con
+`Content-Type: application/pdf`. **Se genera en el momento**: si alguien corrige
+un importe, el documento sale corregido, y no queda un PDF viejo por ahí
+mostrando el dato anterior.
+
+- [ ] **Step 6: El botón**
+
+En la lista de pagos, junto al ojo que abre la foto, un botón que abre el
+documento. Los dos visibles a la vez y con nombres distintos —**"Ver el
+comprobante"** para la foto, **"Ver el detalle"** para el reconstruido—, para que
+en ningún momento se confunda cuál es cuál.
+
+- [ ] **Step 7: Mirarlo con datos reales**
+
+Generar el documento de la factura de Dinamark, con sus siete renglones, y
+comprobar a ojo: que las comas de los importes queden en columna, que el
+vencimiento se vea de lejos, que el pie de procedencia se lea sin buscarlo, y
+que puesto al lado de la foto del original **nadie pueda confundir cuál es cuál**.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/comprobantes/documento.tsx app/api/comprobantes "app/(app)/pagos" tests/comprobantes-documento.test.ts
+git commit -m "Armar el documento reconstruido a partir de los datos"
+```
+
+---
+
 ## Lo que queda fuera de la etapa 1, a propósito
 
 - **La importación del CSV de ARCA y el emparejamiento** — etapa 2. El campo `enArca` y `mergedIntoId` ya están en el esquema para que entre sin migración de datos.
