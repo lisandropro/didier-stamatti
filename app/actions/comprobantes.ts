@@ -145,12 +145,27 @@ export async function vencimientosEntre(desde: string, hasta: string) {
   };
 }
 
-export async function pagar(ids: string[]) {
+/**
+ * Marca comprobantes como pagados.
+ *
+ * `dia` es opcional y va en "AAAA-MM-DD": a veces se transfiere primero y se
+ * registra al otro día, y poner la fecha de hoy en un pago de ayer ensucia el
+ * único dato que después dice cuándo salió la plata.
+ */
+export async function pagar(ids: string[], dia?: string) {
   const sesion = await getSessionUser();
   if (!sesion || !canPagar(sesion.role)) {
     return { ok: false, error: "No tenés permiso para marcar pagos." };
   }
-  const cuantos = await marcarPagados(ids, new Date(), { id: sesion.id, name: sesion.name });
+  let cuando = new Date();
+  if (dia) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return { ok: false, error: "La fecha va en AAAA-MM-DD." };
+    // Mediodía y no medianoche: con la hora en 00:00 un corrimiento de zona
+    // horaria puede tirar el pago al día anterior.
+    cuando = new Date(`${dia}T12:00:00`);
+    if (Number.isNaN(cuando.getTime())) return { ok: false, error: "Esa fecha no existe." };
+  }
+  const cuantos = await marcarPagados(ids, cuando, { id: sesion.id, name: sesion.name });
   revalidatePath("/pagos");
   return { ok: true, cuantos };
 }

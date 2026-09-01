@@ -230,3 +230,40 @@ function identidadDe(c: Cabecera) {
 function esViolacionDeUnico(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 }
+
+export type CapturaDelDia = {
+  id: string;
+  kind: string;
+  proveedor: string | null;
+  destino: string | null;
+  conforme: boolean | null;
+  identificado: boolean;
+  hora: string;
+};
+
+/**
+ * Lo que una persona cargó hoy.
+ *
+ * **Sin un solo importe**: esto lo mira quien recibe la mercadería, y su rol no
+ * puede ver plata. La lista sirve para lo único que necesita — chequear de un
+ * vistazo que no se le quedó ningún papel sin sacar.
+ */
+export async function capturasDelDia(actorId: string, desde: Date): Promise<CapturaDelDia[]> {
+  const docs = await db.document.findMany({
+    where: { capturedById: actorId, createdAt: { gte: desde }, deletedAt: null },
+    include: { supplier: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return docs.map((d) => ({
+    id: d.id,
+    kind: d.kind,
+    proveedor: d.supplier?.name ?? null,
+    destino: d.destino,
+    conforme: d.conforme,
+    // Lo que le importa a quien capturó: si el papel quedó identificado o si
+    // alguien va a tener que resolverlo después.
+    identificado: d.cuitEmisor != null && d.numero != null,
+    hora: d.createdAt.toISOString(),
+  }));
+}

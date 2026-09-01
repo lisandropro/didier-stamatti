@@ -1034,3 +1034,244 @@ tbody tr:hover{background:var(--surface-2)}
 .revision-item a{color:var(--ink); text-decoration:underline; text-underline-offset:2px}
 .revision-item a:hover{color:var(--gold)}
 .chip-baja{margin-left:var(--sp-2); font-size:var(--t-xs)}
+
+/* ===== Comprobantes ================================================== */
+/* Dos pantallas con contextos opuestos: la captura se usa de pie en el
+   depósito con una mano ocupada, y la de pagos sentada en una oficina. Por eso
+   una va a pantalla completa con los controles abajo y la otra es una tabla
+   densa. Todo con los tokens que ya existen — no hay un solo color nuevo. */
+
+/* --- Recepción: el arranque ------------------------------------------ */
+/* Anclado abajo y no arriba: se sostiene el teléfono con una mano y una caja
+   con la otra, y el pulgar no llega al tercio superior. Queda encima de la
+   barra de navegación, siempre a la vista aunque la lista del día crezca. */
+.cap-arranque{
+  position:sticky; bottom:var(--sp-4); z-index:15;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:var(--sp-3); width:100%; min-height:132px;
+  background:var(--brand); color:var(--on-brand);
+  border:none; border-radius:var(--r-xl); cursor:pointer;
+  font-family:var(--font-ui); font-size:var(--t-xl); font-weight:650;
+  letter-spacing:-.01em; box-shadow:var(--shadow-lift);
+  transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.cap-arranque svg{width:34px; height:34px}
+.cap-arranque:active{transform:scale(.985)}
+@media (prefers-reduced-motion:reduce){
+  .cap-arranque{transition:none}
+  .cap-arranque:active{transform:none}
+}
+
+/* --- Recepción: la cámara -------------------------------------------- */
+.cap-camara{position:fixed; inset:0; z-index:60; background:#000}
+.cap-video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+/* El marco es la única señal de estado que se ve con el teléfono en movimiento:
+   pasa de blanco tenue a dorado cuando engancha el código. */
+.cap-marco{
+  position:absolute; inset:12% 8% 26%; border:2px solid rgba(255,255,255,.5);
+  border-radius:var(--r-lg); transition:border-color var(--dur) var(--ease);
+}
+.cap-marco.leido{border-color:var(--gold); box-shadow:0 0 0 3px rgba(168,129,62,.28)}
+@media (prefers-reduced-motion:reduce){ .cap-marco{transition:none} }
+.cap-estado{
+  position:absolute; left:0; right:0; bottom:calc(26% - 34px); margin:0;
+  text-align:center; color:#fff; font-size:var(--t-sm); font-weight:600;
+  text-shadow:0 1px 3px rgba(0,0,0,.7);
+}
+/* Los controles abajo: se sostiene el teléfono con una mano y una caja con la
+   otra, y arriba no llega el pulgar. */
+.cap-controles{
+  position:absolute; left:0; right:0; bottom:0; height:26%;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 var(--sp-6);
+  background:linear-gradient(to top, rgba(0,0,0,.72), transparent);
+}
+.cap-disparo{
+  width:76px; height:76px; border-radius:50%; cursor:pointer;
+  background:#fff; border:4px solid rgba(255,255,255,.45);
+  transition:transform var(--dur-fast) var(--ease);
+}
+.cap-disparo:active{transform:scale(.92)}
+@media (prefers-reduced-motion:reduce){
+  .cap-disparo{transition:none}
+  .cap-disparo:active{transform:none}
+}
+.cap-cancelar{
+  background:none; border:none; color:#fff; cursor:pointer;
+  font-family:var(--font-ui); font-size:var(--t-md); font-weight:600;
+  min-height:var(--tap); padding:0 var(--sp-2);
+}
+.cap-hueco{width:64px}
+
+/* --- Recepción: la revisión ------------------------------------------ */
+.cap-revision{display:flex; flex-direction:column; gap:var(--sp-5)}
+.cap-previa{
+  width:100%; max-height:44vh; object-fit:contain; background:var(--surface-2);
+  border:1px solid var(--hair); border-radius:var(--r-lg);
+}
+.cap-lectura{
+  margin:0; font-size:var(--t-sm); font-weight:600; color:var(--muted);
+  display:flex; align-items:center; gap:var(--sp-2);
+}
+.cap-lectura.ok{color:var(--ok)}
+.cap-grupo{border:none; margin:0; padding:0}
+.cap-grupo legend{
+  font-size:var(--t-sm); font-weight:650; color:var(--muted);
+  padding:0; margin-bottom:var(--sp-2);
+}
+.cap-opciones{display:flex; gap:var(--sp-3)}
+.cap-opcion{
+  flex:1; min-height:60px; cursor:pointer;
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  font-family:var(--font-ui); font-size:var(--t-md); font-weight:650; color:var(--ink);
+  transition:background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.cap-opcion.elegida{background:var(--brand); border-color:var(--brand); color:var(--on-brand)}
+.cap-cierre{display:flex; flex-direction:column; gap:var(--sp-3)}
+.cap-guardar{min-height:56px; font-size:var(--t-lg)}
+
+.cap-listo{
+  display:flex; align-items:center; gap:var(--sp-2); margin:0 0 var(--sp-4);
+  padding:var(--sp-4); border-radius:var(--r-md);
+  background:var(--ok-soft); color:var(--ok); font-weight:650;
+}
+.cap-tilde{font-size:var(--t-lg)}
+.cap-aviso{
+  margin:0 0 var(--sp-4); padding:var(--sp-4); border-radius:var(--r-md);
+  background:var(--warn-soft); color:var(--warn); font-size:var(--t-sm); font-weight:600;
+}
+.cap-error{
+  margin:0 0 var(--sp-4); padding:var(--sp-4); border-radius:var(--r-md);
+  background:var(--crit-soft); color:var(--crit); font-size:var(--t-sm); font-weight:600;
+}
+/* Alto real para que el botón caiga abajo aunque la lista del día esté vacía.
+   Se descuentan la barra de título y la de navegación; con la lista larga toma
+   el relevo el `position:sticky` del propio botón. */
+.cap-recepcion{
+  display:flex; flex-direction:column; gap:var(--sp-4);
+  min-height:calc(100dvh - 200px);
+}
+.cap-recepcion .cap-arranque{margin-top:auto}
+.cap-lista{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
+.cap-item{
+  display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:var(--sp-3);
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-3) var(--sp-4);
+}
+.cap-item-hora{font-size:var(--t-sm); color:var(--muted); font-variant-numeric:tabular-nums}
+.cap-item-nombre{font-weight:600; font-size:var(--t-base)}
+.cap-item-meta{font-size:var(--t-sm); color:var(--muted); text-align:right}
+
+/* --- Pagos ------------------------------------------------------------ */
+.pg-grupo{margin-bottom:var(--sp-6)}
+.pg-vencido{color:var(--crit)}
+.pg-tabla{width:100%; border-collapse:collapse; font-size:var(--t-base)}
+.pg-tabla th{
+  text-align:left; font-size:var(--t-xs); font-weight:700; text-transform:uppercase;
+  letter-spacing:.04em; color:var(--muted); padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--hair); white-space:nowrap;
+}
+.pg-tabla td{padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--hair)}
+.pg-tabla tr:last-child td{border-bottom:none}
+/* Los importes en columna: las comas alineadas se comparan de un vistazo, y
+   comparar es exactamente lo que se hace en esta pantalla. */
+.pg-num{text-align:right; font-variant-numeric:tabular-nums}
+/* El encabezado necesita el selector más específico: `.pg-tabla th` le gana a
+   `.pg-num` por especificidad, y el título quedaba a la izquierda de su columna. */
+.pg-tabla th.pg-num{text-align:right}
+.pg-fuerte{font-weight:700}
+.pg-check{width:44px}
+.pg-check input{width:20px; height:20px; accent-color:var(--brand); cursor:pointer}
+.pg-ver{width:1%; white-space:nowrap}
+.pg-mini{min-height:34px; padding:0 var(--sp-3); font-size:var(--t-sm)}
+.pg-tipo{
+  margin-left:var(--sp-2); font-size:var(--t-xs); color:var(--muted);
+  text-transform:uppercase; letter-spacing:.03em;
+}
+.pg-elegida td{background:var(--brand-soft)}
+/* Mientras se arma una transferencia, lo de otro proveedor se deshabilita DE
+   VERDAD. Antes solo se atenuaba: parecía deshabilitado y no lo estaba, y
+   tocarlo borraba la selección sin aviso. Un control que miente sobre lo que
+   hace es peor que uno que no está. Para cambiar de proveedor: "Deshacer". */
+.pg-otra td{opacity:.55}
+.pg-otra input{cursor:not-allowed}
+
+.pg-alerta{
+  background:var(--warn-soft); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-4); margin-bottom:var(--sp-5); font-size:var(--t-sm); color:var(--warn);
+}
+.pg-alerta ul{margin:var(--sp-2) 0 0; padding-left:var(--sp-5)}
+.pg-pendientes{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:var(--sp-3)}
+.pg-pendientes li{
+  background:var(--surface-2); border-radius:var(--r-pill);
+  padding:var(--sp-2) var(--sp-4); font-size:var(--t-sm); color:var(--muted);
+}
+.pg-pendientes strong{color:var(--ink)}
+
+.pg-barra{
+  position:sticky; bottom:0; z-index:20; margin-top:var(--sp-6);
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap;
+  gap:var(--sp-4); padding:var(--sp-4) var(--sp-5);
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-lift);
+}
+.pg-barra-datos{display:flex; align-items:baseline; gap:var(--sp-4); flex-wrap:wrap}
+.pg-barra-prov{font-weight:700}
+.pg-barra-total{font-size:var(--t-2xl); font-weight:700; font-variant-numeric:tabular-nums}
+.pg-barra-cuenta{font-size:var(--t-sm); color:var(--muted)}
+.pg-barra-acciones{display:flex; gap:var(--sp-3)}
+
+.pg-visor{
+  background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--shadow-lift);
+  max-width:min(920px, 94vw); max-height:92vh; overflow:auto; padding:var(--sp-4);
+}
+.pg-visor header{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:var(--sp-4); margin-bottom:var(--sp-3);
+}
+.pg-visor img{width:100%; height:auto; border-radius:var(--r-md); background:var(--surface-2)}
+
+.sr-only{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+
+@media (max-width:640px){
+  .pg-ver{display:none}
+  .pg-barra{flex-direction:column; align-items:stretch}
+  .pg-barra-acciones .btn{flex:1}
+}
+
+/* La fila entera abre el comprobante: quien paga los mira todos, así que el
+   objetivo tiene que ser grande. El nombre es además un botón real, porque una
+   fila no se puede enfocar con el teclado. */
+.pg-fila{cursor:pointer}
+.pg-fila:hover td{background:var(--surface-2)}
+.pg-elegida:hover td{background:var(--brand-soft)}
+.pg-nombre{
+  background:none; border:none; padding:0; cursor:pointer; text-align:left;
+  font:inherit; color:inherit;
+}
+.pg-ver{color:var(--muted)}
+.pg-ver svg{width:18px; height:18px; display:block}
+
+/* El total se copia sin separador de miles: es como se tipea un importe en el
+   homebanking, y pegarlo con puntos lo rechaza. */
+.pg-barra-total{
+  background:none; border:none; padding:0; cursor:pointer; color:inherit;
+  font-family:inherit; font-size:var(--t-2xl); font-weight:700;
+  font-variant-numeric:tabular-nums; display:inline-flex; align-items:baseline; gap:var(--sp-2);
+}
+.pg-copiar{
+  font-size:var(--t-xs); font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.04em;
+}
+.pg-fecha{
+  display:inline-flex; align-items:center; gap:var(--sp-2);
+  font-size:var(--t-sm); color:var(--muted); white-space:nowrap;
+}
+.pg-fecha input{
+  font:inherit; color:var(--ink); background:var(--surface);
+  border:1px solid var(--hair); border-radius:var(--r-sm);
+  padding:0 var(--sp-2); min-height:38px;
+}

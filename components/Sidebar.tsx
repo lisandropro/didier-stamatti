@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ROLE_LABEL, canSendSuggestions, canManageSuggestions } from "@/lib/permissions";
+import {
+  ROLE_LABEL,
+  canSendSuggestions,
+  canManageSuggestions,
+  canEditOrders,
+  canCapturarComprobantes,
+  canVerImportes,
+} from "@/lib/permissions";
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 import { NavPending } from "@/components/NavPending";
 import { usePathname } from "next/navigation";
@@ -41,12 +48,26 @@ const ICONS = {
   ),
 };
 
-const NAV = [
+const ICONO_RECEPCION = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" /><circle cx="12" cy="13" r="3.4" />
+  </svg>
+);
+const ICONO_PAGOS = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M4 6h16v12H4z" /><path d="M4 10h16" /><path d="M8 14.5h4" />
+  </svg>
+);
+
+/** El pedido y el inventario: solo para quien los arma. Alguien que entra a
+ *  fotografiar comprobantes o a pagarlos no tiene por qué ver esas pantallas —
+ *  una nav con lo que uno no usa es una nav que se lee más lento. */
+const NAV_STOCK = [
   { href: "/", label: "Período", icon: ICONS.finde },
   { href: "/inventario", label: "Inventario", icon: ICONS.inventario },
   { href: "/historial", label: "Historial", icon: ICONS.historial },
-  { href: "/notificaciones", label: "Avisos", icon: ICONS.avisos },
 ];
+const NAV_AVISOS = [{ href: "/notificaciones", label: "Avisos", icon: ICONS.avisos }];
 /** La bandeja de sugerencias es de quien las gestiona. Los demás tienen el
  *  botón de mandarlas y nada más: para ellos es un buzón, no una sección. */
 const ADMIN_NAV = [
@@ -64,7 +85,15 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const pathname = usePathname();
   const initial = (user.name?.[0] ?? "?").toUpperCase();
   const puedeSugerir = canSendSuggestions(user.role);
-  const nav = canManageSuggestions(user.role) ? [...NAV, ...ADMIN_NAV] : NAV;
+  const nav = [
+    ...(canEditOrders(user.role) ? NAV_STOCK : []),
+    ...(canCapturarComprobantes(user.role)
+      ? [{ href: "/recepcion", label: "Recepción", icon: ICONO_RECEPCION }]
+      : []),
+    ...(canVerImportes(user.role) ? [{ href: "/pagos", label: "Pagos", icon: ICONO_PAGOS }] : []),
+    ...NAV_AVISOS,
+    ...(canManageSuggestions(user.role) ? ADMIN_NAV : []),
+  ];
 
   return (
     <aside className="side">
