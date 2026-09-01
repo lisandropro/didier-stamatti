@@ -92,6 +92,7 @@ model Document {
   mergedIntoId String?
 
   attachments Attachment[]
+  lines       DocumentLine[]
   changes     DocumentChange[]
 
   // Los cuatro campos juntos son la identidad de una factura electrónica
@@ -107,6 +108,14 @@ model Document {
 // Una foto, o varias: la factura de tres hojas. El archivo vive en S3.
 model Attachment {
   id           String   @id @default(cuid())
+  // ORIGINAL = la foto tal como salió de la cámara.
+  // ESCANEADA = la misma, recortada al borde del papel, enderezada y con el
+  // fondo blanqueado. Es la que se muestra y la que se archiva.
+  //
+  // Se guardan LAS DOS. Un recorte automático mal hecho puede comerse el CAE o
+  // un renglón entero, y de la escaneada eso no se recupera: la original es el
+  // seguro.
+  variante     String   @default("ORIGINAL")
   documentId   String
   document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   s3Key        String   @unique
@@ -117,6 +126,33 @@ model Attachment {
   createdAt    DateTime @default(now())
 
   @@index([documentId, page])
+}
+
+// Un renglón de la factura. Es lo que convierte un comprobante en algo que se
+// puede preguntar: "cuánto pagamos por queso reggianito en seis meses".
+//
+// Los importes van en centavos como todo lo demás. `cantidad` va en MILÉSIMAS
+// —"4,40 KG" es 4400— porque las cantidades traen decimales y el mismo
+// argumento del punto flotante vale acá.
+//
+// El detalle además VERIFICA la cabecera: cada renglón cumple
+// `cantidad × precio = subtotal`, y la suma de todos da el subtotal general.
+// Con el detalle adentro el documento queda sobredeterminado, así que un dígito
+// mal leído rompe alguna de esas cuentas y se nota.
+model DocumentLine {
+  id             String   @id @default(cuid())
+  documentId     String
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  orden          Int      // el orden en que aparecen en el papel
+  codigo         String?  // el código del proveedor, si lo trae
+  descripcion    String
+  cantidad       BigInt?  // MILÉSIMAS: 4,40 KG = 4400
+  unidad         String?  // KG | UN | LT | ...
+  precioUnitario BigInt?  // CENTAVOS
+  subtotal       BigInt?  // CENTAVOS, tal como está impreso
+
+  @@index([documentId, orden])
+  @@index([descripcion])
 }
 
 // Historial campo por campo. Mismo patrón que ProductChange en la otra base.

@@ -169,6 +169,7 @@ model Document {
   mergedIntoId String?
 
   attachments Attachment[]
+  lines       DocumentLine[]
   changes     DocumentChange[]
 
   // Los cuatro campos juntos son la identidad de una factura electrónica
@@ -184,6 +185,13 @@ model Document {
 // Una foto, o varias: la factura de tres hojas. El archivo vive en S3.
 model Attachment {
   id           String   @id @default(cuid())
+  // ORIGINAL = la foto tal como salió de la cámara.
+  // ESCANEADA = la misma, recortada al borde del papel, enderezada y con el
+  // fondo blanqueado. Es la que se muestra y la que se archiva.
+  //
+  // Se guardan LAS DOS. Un recorte automático mal hecho puede comerse el CAE o
+  // un renglón entero, y de la escaneada eso no se recupera.
+  variante     String   @default("ORIGINAL")
   documentId   String
   document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   s3Key        String   @unique
@@ -194,6 +202,29 @@ model Attachment {
   createdAt    DateTime @default(now())
 
   @@index([documentId, page])
+}
+
+// Un renglón de la factura. Es lo que convierte un comprobante en algo que se
+// puede preguntar: "cuánto pagamos por queso reggianito en seis meses".
+//
+// El detalle además VERIFICA la cabecera: cada renglón cumple
+// `cantidad × precio = subtotal`, y la suma de todos da el subtotal general.
+// Con el detalle adentro el documento queda sobredeterminado, así que un dígito
+// mal leído rompe alguna de esas cuentas y se nota.
+model DocumentLine {
+  id             String   @id @default(cuid())
+  documentId     String
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  orden          Int
+  codigo         String?
+  descripcion    String
+  cantidad       BigInt?  // MILÉSIMAS: 4,40 KG = 4400
+  unidad         String?
+  precioUnitario BigInt?  // CENTAVOS
+  subtotal       BigInt?  // CENTAVOS, tal como está impreso
+
+  @@index([documentId, orden])
+  @@index([descripcion])
 }
 
 // Historial campo por campo. Mismo patrón que ProductChange en la otra base.
@@ -2716,6 +2747,9 @@ export type CamposLeidos = {
 export type Controles = {
   /** `subtotal + iva + percepciones === total`. `null` = faltan sumandos. */
   cierraLaCuenta: boolean | null;
+  /** Cada renglón cumple `cantidad × precio = subtotal`, y la suma de todos da
+   *  el subtotal general. `null` = no se leyeron renglones. */
+  cierranLosRenglones: boolean | null;
   /** Dígito verificador del CUIT. `null` = no se leyó ningún CUIT. */
   cuitValido: boolean | null;
 };
@@ -2751,6 +2785,25 @@ function esquemaDe(kind: Kind) {
     cuitEmisor: { type: "string", description: "CUIT del emisor, solo dígitos" },
     fechaEmision: { type: "string", description: "Fecha de emisión en formato AAAA-MM-DD" },
   };
+  const renglones = {
+    renglones: {
+      type: "array",
+      description: "Un elemento por renglón del detalle, en el orden impreso",
+      items: {
+        type: "object",
+        properties: {
+          codigo: { type: "string", description: "Código del artículo si lo trae" },
+          descripcion: { type: "string" },
+          cantidad: { type: "string", description: "Cantidad tal cual está impresa" },
+          unidad: { type: "string", description: "KG, UN, LT..." },
+          precioUnitario: { type: "string", description: "Precio unitario tal cual está impreso" },
+          subtotal: { type: "string", description: "Importe del renglón tal cual está impreso" },
+        },
+        required: ["descripcion"],
+        additionalProperties: false,
+      },
+    },
+  };
   const plata = {
     subtotal: { type: "string", description: "Subtotal sin IVA, tal cual está impreso" },
     iva: { type: "string", description: "Importe de IVA, tal cual está impreso" },
@@ -2759,7 +2812,7 @@ function esquemaDe(kind: Kind) {
     vencimiento: { type: "string", description: "Fecha de vencimiento DEL PAGO en AAAA-MM-DD. NO el vencimiento del CAE." },
     condicionPago: { type: "string", description: 'Condición de pago si en vez de fecha dice un plazo, por ejemplo "7 DIAS" o "CONTADO"' },
   };
-  const props = kind === "REMITO" ? base : { ...base, ...plata };
+  const props = kind === "REMITO" ? { ...base, ...renglones } : { ...base, ...plata, ...renglones };
   return {
     type: "object",
     properties: props,
@@ -2916,10 +2969,285 @@ git commit -m "Leer la foto cuando no hay codigo que leer"
 
 ---
 
+### Task 11: El escaneo del papel
+
+> Lo que llega es una foto de un papel arrugado, de costado, en una carpeta de
+> anillos y con la sombra de quien la saca encima. Lo que se archiva tiene que
+> parecer un escaneo: recortado al borde de la hoja, derecho, fondo blanco.
+>
+> **No es maquillaje.** Aldana está en otra oficina y no puede ir a mirar el
+> papel; y una imagen enderezada y con contraste sube la tasa de lectura del QR
+> —hoy medida en 28% sobre fotos casuales— y mejora la extracción por IA. El
+> escaneo alimenta al resto del sistema, no solo a la vista.
+>
+> **Lo que NO se hace acá es generar un documento nuevo a partir de los datos
+> leídos.** Un PDF reconstruido se ve más confiable que una foto borrosa pero
+> contiene lo que la IA leyó, y un error quedaría lavado dentro de algo con
+> aspecto de comprobante fiscal. Se procesa el original; no se dibuja otro.
+
+**Files:**
+- Create: `lib/comprobantes/escaneo.ts`
+- Modify: `app/(app)/recepcion/captura-cliente.tsx` (el paso de escaneo entre la foto y la subida)
+- Modify: `app/actions/comprobantes.ts` (aceptar las dos variantes)
+- Modify: `package.json` (dependencia `jscanify`)
+- Test: `tests/comprobantes-escaneo.test.ts`
+
+**Interfaces:**
+- Consumes: nada del resto del módulo — es una unidad de imagen, aislada a propósito.
+- Produces:
+  - `type Esquina = { x: number; y: number }`
+  - `ordenarEsquinas(puntos: Esquina[]): [Esquina, Esquina, Esquina, Esquina] | null` — superior-izq, superior-der, inferior-der, inferior-izq
+  - `medidaDeSalida(esquinas: Esquina[]): { ancho: number; alto: number }`
+  - `escanear(fuente: HTMLCanvasElement | HTMLVideoElement, esquinas?: Esquina[]): Promise<Blob>`
+
+- [ ] **Step 1: Escribir la prueba que falla**
+
+Se prueba la **geometría**, que es donde están los errores silenciosos y no
+necesita navegador. El recorte y el realce se comprueban a ojo en el paso 6:
+una prueba automática de "esta imagen se ve linda" no existe.
+
+Crear `tests/comprobantes-escaneo.test.ts`:
+
+```typescript
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { ordenarEsquinas, medidaDeSalida } from "../lib/comprobantes/escaneo";
+
+/**
+ * La geometría del escaneo.
+ *
+ * Ordenar las esquinas mal es el error que no se ve venir: la imagen sale
+ * rotada 90° o espejada, y como igual "parece un escaneo", nadie se da cuenta
+ * hasta que hay que leer un CAE al revés.
+ */
+
+// Una hoja fotografiada de costado: las esquinas NO vienen en orden.
+const DESORDENADAS = [
+  { x: 640, y: 900 }, // inferior derecha
+  { x: 120, y: 80 },  // superior izquierda
+  { x: 100, y: 950 }, // inferior izquierda
+  { x: 700, y: 60 },  // superior derecha
+];
+
+test("ordena las esquinas empezando por la superior izquierda, en sentido horario", () => {
+  const o = ordenarEsquinas(DESORDENADAS);
+  assert.ok(o);
+  assert.deepEqual(o, [
+    { x: 120, y: 80 },
+    { x: 700, y: 60 },
+    { x: 640, y: 900 },
+    { x: 100, y: 950 },
+  ]);
+});
+
+test("con menos de cuatro esquinas no inventa un cuadrilátero", () => {
+  assert.equal(ordenarEsquinas(DESORDENADAS.slice(0, 3)), null);
+  assert.equal(ordenarEsquinas([]), null);
+});
+
+test("la salida conserva la proporción del papel, no la de la foto", () => {
+  // Se toma el lado más largo de cada par: si un borde quedó escorzado por el
+  // ángulo, usar el corto achataría la hoja y con ella los renglones.
+  const m = medidaDeSalida(ordenarEsquinas(DESORDENADAS)!);
+  assert.ok(m.ancho > 0 && m.alto > 0);
+  // Una hoja A4 vertical: más alta que ancha. Si esto se invierte, la imagen
+  // salió acostada.
+  assert.ok(m.alto > m.ancho, `salió acostada: ${m.ancho}x${m.alto}`);
+});
+
+test("una hoja perfectamente derecha no se deforma", () => {
+  const rect = [
+    { x: 0, y: 0 }, { x: 800, y: 0 }, { x: 800, y: 1100 }, { x: 0, y: 1100 },
+  ];
+  const m = medidaDeSalida(rect);
+  assert.equal(m.ancho, 800);
+  assert.equal(m.alto, 1100);
+});
+```
+
+- [ ] **Step 2: Correr la prueba para verificar que falla**
+
+Run: `npx tsx --test tests/comprobantes-escaneo.test.ts`
+Expected: FAIL — no encuentra `../lib/comprobantes/escaneo`.
+
+- [ ] **Step 3: Escribir la geometría**
+
+Crear `lib/comprobantes/escaneo.ts` con las dos funciones puras primero — se
+prueban sin navegador y son donde viven los errores silenciosos:
+
+```typescript
+export type Esquina = { x: number; y: number };
+
+/**
+ * Ordena cuatro puntos como superior-izquierda, superior-derecha,
+ * inferior-derecha, inferior-izquierda.
+ *
+ * El truco es viejo y funciona con cualquier cuadrilátero convexo: la suma
+ * `x + y` es mínima en la esquina superior izquierda y máxima en la inferior
+ * derecha; la resta `x - y` separa las otras dos.
+ *
+ * Equivocarse acá no rompe nada visiblemente: la imagen sale rotada o espejada
+ * y "parece un escaneo" igual. Por eso tiene prueba propia.
+ */
+export function ordenarEsquinas(
+  puntos: Esquina[],
+): [Esquina, Esquina, Esquina, Esquina] | null {
+  if (!Array.isArray(puntos) || puntos.length !== 4) return null;
+
+  const porSuma = [...puntos].sort((a, b) => a.x + a.y - (b.x + b.y));
+  const supIzq = porSuma[0];
+  const infDer = porSuma[3];
+
+  const resto = puntos.filter((p) => p !== supIzq && p !== infDer);
+  const [supDer, infIzq] = resto[0].x > resto[1].x ? resto : [resto[1], resto[0]];
+
+  return [supIzq, supDer, infDer, infIzq];
+}
+
+/**
+ * El tamaño de la imagen enderezada.
+ *
+ * De cada par de lados opuestos se toma el **más largo**: si un borde quedó
+ * escorzado por el ángulo de la foto, usar el corto achataría la hoja y con
+ * ella los renglones, que es justo lo que después hay que leer.
+ */
+export function medidaDeSalida(esquinas: Esquina[]): { ancho: number; alto: number } {
+  const [si, sd, id, ii] = esquinas;
+  const dist = (a: Esquina, b: Esquina) => Math.hypot(a.x - b.x, a.y - b.y);
+  return {
+    ancho: Math.round(Math.max(dist(si, sd), dist(ii, id))),
+    alto: Math.round(Math.max(dist(si, ii), dist(sd, id))),
+  };
+}
+```
+
+- [ ] **Step 4: Correr la prueba para verificar que pasa**
+
+Run: `npx tsx --test tests/comprobantes-escaneo.test.ts`
+Expected: PASS, 4 pruebas.
+
+- [ ] **Step 5: Agregar el escaneo propiamente dicho**
+
+```bash
+npm install jscanify
+```
+
+En el mismo archivo, la parte que necesita navegador:
+
+```typescript
+/**
+ * Recorta al borde del papel, endereza y blanquea el fondo.
+ *
+ * `jscanify` trae OpenCV compilado a WASM: son unos 30 MB, así que se importa
+ * **acá adentro y solo cuando hace falta**. Se carga al abrir la cámara, el
+ * service worker lo cachea, y el resto de la app no lo paga nunca.
+ *
+ * Si `esquinas` viene, se usan esas: son las que la persona arrastró en la
+ * pantalla, y le ganan siempre a la detección automática.
+ */
+export async function escanear(
+  fuente: HTMLCanvasElement,
+  esquinas?: Esquina[],
+): Promise<Blob> {
+  const { default: jscanify } = await import("jscanify");
+  const escaner = new jscanify();
+
+  const puntos = esquinas ?? escaner.getCornerPoints(escaner.getCanny(fuente));
+  const ordenadas = ordenarEsquinas(normalizar(puntos));
+  // Sin cuatro esquinas no hay escaneo, y no se inventa uno: se devuelve el
+  // original. Vale la regla de siempre — nada puede impedir que la foto quede.
+  if (!ordenadas) return aBlob(fuente);
+
+  const { ancho, alto } = medidaDeSalida(ordenadas);
+  const enderezada = escaner.extractPaper(fuente, ancho, alto, aFormatoJscanify(ordenadas));
+  return aBlob(realzar(enderezada));
+}
+```
+
+Y el realce, que es el paso que lo hace parecer un escaneo:
+
+```typescript
+/**
+ * Fondo blanco y texto negro, sin binarizar.
+ *
+ * Un umbral duro (blanco o negro y nada en el medio) se ve muy prolijo y
+ * **arruina el QR y los sellos**. Acá se estira el contraste dejando los grises:
+ * el papel se va a blanco, la tinta a negro, y lo que estaba en el medio
+ * sobrevive.
+ */
+function realzar(lienzo: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = lienzo.getContext("2d")!;
+  const img = ctx.getImageData(0, 0, lienzo.width, lienzo.height);
+  const d = img.data;
+
+  // El punto blanco se estima del propio papel: el percentil 90 de luminancia.
+  const muestras: number[] = [];
+  for (let i = 0; i < d.length; i += 4 * 97) {
+    muestras.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+  }
+  muestras.sort((a, b) => a - b);
+  const blanco = Math.max(1, muestras[Math.floor(muestras.length * 0.9)]);
+
+  for (let i = 0; i < d.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      d[i + c] = Math.min(255, Math.round((d[i + c] / blanco) * 255));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return lienzo;
+}
+
+function aBlob(lienzo: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((listo, error) =>
+    lienzo.toBlob((b) => (b ? listo(b) : error(new Error("No se pudo exportar"))), "image/jpeg", 0.85),
+  );
+}
+```
+
+- [ ] **Step 6: Conectar con la pantalla de captura**
+
+En `captura-cliente.tsx`, entre la foto y la subida:
+
+1. Sacada la foto, mostrarla con **los cuatro bordes detectados dibujados encima**.
+2. **Las esquinas se pueden arrastrar.** Es lo que hace usable a una app de
+   escaneo: la detección automática falla seguido con carpetas de anillos y
+   mesas oscuras, y sin poder corregirla el escaneo es peor que la foto cruda.
+3. Un botón **"usar la foto sin recortar"**, siempre visible.
+4. Al confirmar, se suben **las dos**: `ORIGINAL` y `ESCANEADA`, con el mismo
+   `page`.
+
+Y en `capturarComprobante`, aceptar los dos archivos por página y guardarlos con
+su `variante`. La `ESCANEADA` es la que se muestra en la pantalla de pagos; la
+`ORIGINAL` queda como seguro.
+
+**Si el escaneo falla o `jscanify` no carga, se sube solo la `ORIGINAL`.** El
+comprobante entra igual: la regla de que nada puede impedir que la foto quede
+vale también acá.
+
+- [ ] **Step 7: Comprobar a ojo con fotos reales**
+
+Con cinco de las fotos que ya hay en `Downloads/facturas` —incluida la de CCU,
+que está de costado en una carpeta de anillos—, verificar que:
+
+- El recorte agarra la hoja y no la mesa.
+- El texto queda derecho y legible.
+- **El QR sigue leyéndose en la escaneada.** Si el realce lo rompió, bajar la
+  agresividad: la imagen linda no vale un código perdido.
+- Anotar en cuántas la detección automática acertó sin tocar las esquinas. Ese
+  número dice cuánto se va a usar el arrastre.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/comprobantes/escaneo.ts "app/(app)/recepcion" app/actions/comprobantes.ts tests/comprobantes-escaneo.test.ts package.json package-lock.json
+git commit -m "Hacer que la foto del papel parezca un escaneo"
+```
+
+---
+
 ## Lo que queda fuera de la etapa 1, a propósito
 
 - **La importación del CSV de ARCA y el emparejamiento** — etapa 2. El campo `enArca` y `mergedIntoId` ya están en el esquema para que entre sin migración de datos.
-- **El detalle de ítems** — etapa 3.
 - **Alta y fusión de proveedores desde una pantalla** — hoy se crean solos al completar a mano. La fusión de duplicados escritos distinto es trabajo de administración y va con la etapa 2.
 - **El botón "pedir foto de nuevo"** con aviso push a quien capturó. Está en el diseño y no tiene tarea acá, a propósito: mientras sean tres personas que se conocen y trabajan en el mismo lugar, una foto ilegible se resuelve con un mensaje. El circuito hay que cerrarlo cuando entre gente que no se cruza en el día, y la infraestructura (`web-push`, `Notification`) ya está puesta.
 - **La validación del CAE contra el servicio de constatación de ARCA** — control opcional, sin fecha.

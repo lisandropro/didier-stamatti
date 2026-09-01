@@ -79,3 +79,76 @@ test("dos remitos sin identidad fiscal conviven", async () => {
   const cuantos = await prisma.document.count({ where: { kind: "REMITO" } });
   assert.equal(cuantos, 2);
 });
+
+test("los renglones verifican la cabecera, con una factura real", async () => {
+  // DINAMARK SRL 0002-00028897 del 28/07/2026, los siete renglones tal como
+  // están impresos. Cantidades en milésimas, importes en centavos.
+  const RENGLONES = [
+    { d: "7500-LOGISTICA Y DISTRIBUCION", c: 1000n, p: 165289n, s: 165289n },
+    { d: "1096-QUESO HOLANDA HORMA TREGAR", c: 4400n, p: 1360724n, s: 5987186n },
+    { d: "1095-QUESO CRIOLLO HORMA TREGAR", c: 9550n, p: 1472726n, s: 14064533n },
+    { d: "1099-QUESO PATEGRAS HORMA TREGAR", c: 4400n, p: 1367720n, s: 6017968n },
+    { d: "3907-QUESO ROMANITO PINTADO LA QUESERA", c: 3800n, p: 1914978n, s: 7276916n },
+    { d: "3906-QUESO REGGIANITO LA QUESERA", c: 7500n, p: 1973134n, s: 14798505n },
+    { d: "104-QUESO FONTINA HORMA TREGAR", c: 9130n, p: 1704597n, s: 15562971n },
+  ];
+  const SUBTOTAL = 63873368n; // $638.733,68 impreso
+  const IVA = 13413407n;
+  const TOTAL = 77286775n; // $772.867,75 impreso
+
+  const doc = await prisma.document.create({
+    data: {
+      kind: "FACTURA",
+      source: "LECTURA",
+      importeTotal: TOTAL,
+      clientKey: "k-renglones",
+      cuitEmisor: "30718089413",
+      tipoCbte: "A",
+      puntoVenta: 2,
+      numero: 28897,
+      lines: {
+        create: RENGLONES.map((r, i) => ({
+          orden: i + 1,
+          descripcion: r.d,
+          cantidad: r.c,
+          unidad: "KG",
+          precioUnitario: r.p,
+          subtotal: r.s,
+        })),
+      },
+    },
+    include: { lines: true },
+  });
+
+  assert.equal(doc.lines.length, 7);
+
+  // Cada renglón: cantidad (milésimas) × precio (centavos) = subtotal (centavos).
+  for (const l of doc.lines) {
+    const calculado = (l.cantidad! * l.precioUnitario!) / 1000n;
+    const diferencia = calculado > l.subtotal! ? calculado - l.subtotal! : l.subtotal! - calculado;
+    assert.ok(diferencia <= 1n, `${l.descripcion}: ${calculado} vs ${l.subtotal}`);
+  }
+
+  // Y la suma de los renglones da el subtotal general. Esto es lo que hace que
+  // pedir el detalle sea MENOS riesgoso que pedir solo el total: hay más
+  // números que tienen que coincidir a la vez.
+  const suma = doc.lines.reduce((a, l) => a + l.subtotal!, 0n);
+  assert.equal(suma, SUBTOTAL);
+  assert.equal(SUBTOTAL + IVA, TOTAL);
+});
+
+test("una foto tiene dos variantes: la original y la escaneada", async () => {
+  const doc = await prisma.document.create({
+    data: { kind: "FACTURA", source: "QR", clientKey: "k-variantes" },
+  });
+  await prisma.attachment.createMany({
+    data: [
+      { documentId: doc.id, s3Key: "c/orig.jpg", mimeType: "image/jpeg", sizeBytes: 1, variante: "ORIGINAL" },
+      { documentId: doc.id, s3Key: "c/scan.jpg", mimeType: "image/jpeg", sizeBytes: 1, variante: "ESCANEADA" },
+    ],
+  });
+  // Las dos se guardan: un recorte mal hecho puede comerse el CAE, y de la
+  // escaneada no se recupera.
+  const adj = await prisma.attachment.findMany({ where: { documentId: doc.id } });
+  assert.deepEqual(adj.map((a) => a.variante).sort(), ["ESCANEADA", "ORIGINAL"]);
+});

@@ -86,9 +86,9 @@ sean exactos, la foto para que no se pierda nada**.
 
 | Etapa | Qué entra | Qué resuelve |
 |---|---|---|
-| **1** | Captura por foto · QR · **lectura automática de la foto** · destino · conforme · vista de Aldana con vencimiento, total por proveedor y marcar pagado | Cubre el **100%** de los comprobantes desde el día uno, sean electrónicos o no. Muere la planilla |
+| **1** | Captura por foto · **escaneo** · QR · **lectura automática, con renglones** · destino · conforme · vista de Aldana con vencimiento, total por proveedor y marcar pagado | Cubre el **100%** de los comprobantes desde el día uno, sean electrónicos o no. Muere la planilla |
 | **2** | Importación del CSV de ARCA y emparejamiento | **Mejora** los electrónicos a dato exacto y delata los que nadie trajo |
-| **3** | Detalle de ítems | Control de precios de insumos y la mitad que falta del costeo por evento |
+| **3** | Vincular los renglones al catálogo de productos | Cierra el costeo por evento: precio unitario × consumo |
 
 La etapa 1 está armada para **no depender de cómo dé la mezcla**: si mañana
 resulta que ARCA cubría más de lo pensado, la etapa 2 solo mejora datos que ya
@@ -223,6 +223,7 @@ model Document {
   mergedIntoId String?
 
   attachments Attachment[]
+  lines       DocumentLine[]
   changes     DocumentChange[]
 
   @@unique([cuitEmisor, tipoCbte, puntoVenta, numero])
@@ -233,6 +234,13 @@ model Document {
 // Una foto, o varias: la factura de tres hojas. Vive en S3, no en la base.
 model Attachment {
   id           String   @id @default(cuid())
+  // ORIGINAL = la foto tal como salió de la cámara.
+  // ESCANEADA = la misma, recortada al borde del papel, enderezada y con el
+  // fondo blanqueado. Es la que se muestra y la que se archiva.
+  //
+  // Se guardan LAS DOS. Un recorte automático mal hecho puede comerse el CAE o
+  // un renglón, y de la escaneada no se recupera: la original es el seguro.
+  variante     String   @default("ORIGINAL")
   documentId   String
   document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   s3Key        String   @unique
@@ -243,6 +251,28 @@ model Attachment {
   createdAt    DateTime @default(now())
 
   @@index([documentId, page])
+}
+
+// Un renglón de la factura. Es lo que convierte un comprobante en algo que se
+// puede preguntar: "cuánto pagamos por queso reggianito en seis meses".
+//
+// Los importes van en centavos como todo lo demás. `cantidad` va en MILÉSIMAS
+// —"4,40 KG" es 4400— porque las cantidades traen decimales y el mismo
+// argumento del punto flotante vale acá.
+model DocumentLine {
+  id             String   @id @default(cuid())
+  documentId     String
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  orden          Int      // el orden en que aparecen en el papel
+  codigo         String?  // el código del proveedor, si lo trae
+  descripcion    String
+  cantidad       BigInt?  // MILÉSIMAS: 4,40 KG = 4400
+  unidad         String?  // KG | UN | LT | ...
+  precioUnitario BigInt?  // CENTAVOS
+  subtotal       BigInt?  // CENTAVOS, tal como está impreso
+
+  @@index([documentId, orden])
+  @@index([descripcion])
 }
 
 // Historial. Mismo patrón que ProductChange, por las mismas razones.
@@ -557,6 +587,13 @@ y no necesitan a nadie**:
 - **Que cierre la aritmética.** Se piden subtotal, IVA, percepciones y total, y
   se verifica `subtotal + IVA + percepciones = total`. Un dígito mal leído casi
   nunca deja la cuenta cuadrada.
+- **Que cierren los renglones.** Con el detalle adentro, el documento queda
+  **sobredeterminado**: cada renglón tiene que cumplir `cantidad × precio =
+  subtotal del renglón`, y la suma de todos tiene que dar el subtotal general.
+  Probado sobre la factura real de Dinamark: los siete renglones cierran al
+  centavo, suman exacto $638.733,68, y el IVA da 21,00% clavado. **Pedir más no
+  es más riesgoso: es menos**, porque hay más números que tienen que coincidir a
+  la vez.
 - **Que el CUIT valide.** El CUIT lleva dígito verificador módulo 11. Probado
   contra los cuatro CUIT reales de los emisores de estas facturas: los valida a
   los cuatro, rechaza uno alterado, y rechaza el CUIT malformado del QR roto.
@@ -602,6 +639,45 @@ Un comprobante fotografiado sin identificar y una fila importada de ARCA son
    quedó viva. **No se destruye**: es la única forma de auditar un
    emparejamiento equivocado.
 4. Deja el rastro en `DocumentChange`.
+
+## El escaneo
+
+Lo que llega es una foto de un papel arrugado, de costado, en una carpeta de
+anillos, con la sombra del que la saca encima. Lo que se archiva tiene que
+parecer un escaneo: recortado al borde de la hoja, derecho, fondo blanco, texto
+negro.
+
+No es maquillaje. Tiene tres efectos concretos:
+
+- **Aldana lo lee.** Está en otra oficina y no puede ir a mirar el papel. Y
+  además todos los comprobantes le quedan con el mismo aspecto, en vez de tener
+  que reorientarse con cada proveedor.
+- **Los códigos se leen mejor.** Una imagen enderezada y con contraste sube la
+  tasa de lectura del QR, que hoy está medida en 28% sobre fotos casuales.
+- **La IA lee mejor.** Menos ruido, renglones alineados, sin sombra.
+
+**Cómo:** `jscanify` (30 MB, OpenCV compilado a WASM) **en el teléfono**, cargado
+solo al abrir la cámara y cacheado por el service worker — no en el resto de la
+app. Detecta los cuatro bordes y los muestra; **la persona los puede arrastrar**
+si el automático se equivocó, que es lo que hace usable a una app de escaneo. Con
+el WiFi de la base, 30 MB una sola vez.
+
+**Se guardan las dos imágenes.** La escaneada es la que se muestra y se archiva;
+la original queda como seguro. Un recorte automático mal hecho puede comerse el
+CAE o un renglón entero, y de la escaneada eso no se recupera. Son unos 10 GB al
+año en vez de 5.
+
+**Si el escaneo falla, se sube la foto igual.** Vale la misma regla que ordena
+todo el módulo: nada puede impedir que el comprobante quede.
+
+### Lo que NO se hace: generar un documento nuevo
+
+Se evaluó producir un PDF limpio **reconstruido a partir de los datos leídos**, y
+se descartó. Un documento generado se ve más confiable que una foto borrosa pero
+contiene lo que la IA leyó: un error de lectura quedaría lavado dentro de algo
+con aspecto de comprobante fiscal. Para AFIP, para el contador y para cualquier
+tercero, **el comprobante es el original** — y el original es lo que se escanea,
+no algo que se dibuja de nuevo.
 
 ## Roles
 
@@ -672,8 +748,10 @@ Con `node --test`, como el resto del proyecto:
 
 No emite facturas · no se conecta a ARCA por API (el CSV se sube a mano) · no
 paga ni toca bancos o Mercado Pago · no lleva contabilidad ni libro IVA · no
-tiene detalle de ítems · no concilia pagos parciales ni cheques · no es
-multiempresa · no imputa comprobantes a eventos.
+concilia pagos parciales ni cheques · no es multiempresa · no imputa
+comprobantes a eventos · **no genera un documento nuevo a partir de los datos
+leídos** (ver "El escaneo": lo que se archiva es el original, no una
+reconstrucción) · no lee el código de barras de la RG 1702.
 
 Cada una es una decisión, no un olvido.
 
