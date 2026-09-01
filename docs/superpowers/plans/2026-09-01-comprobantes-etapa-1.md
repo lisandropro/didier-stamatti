@@ -4,7 +4,9 @@
 
 **Goal:** Que un comprobante en papel se fotografíe en el depósito y aparezca al instante en la pantalla de Aldana, con su importe y su vencimiento, sin que nadie lo tipee en una planilla y sin darle acceso a ARCA.
 
-**Architecture:** Un módulo nuevo dentro de la app `didier-catering`, con **base de datos propia** (segundo esquema Prisma, segundo cliente, respaldo aparte). La foto se guarda siempre; la identificación es una cascada que empieza por los códigos impresos y degrada a una carga manual corta. Los permisos se comprueban del lado del servidor: el rol de depósito nunca recibe un importe.
+**Architecture:** Un módulo nuevo dentro de la app `didier-catering`, con **base de datos propia** (segundo esquema Prisma, segundo cliente, respaldo aparte). La foto se guarda siempre; la identificación es una cascada que empieza por el QR de AFIP y degrada a una carga manual corta. Los permisos se comprueban del lado del servidor: el rol de depósito nunca recibe un importe.
+
+**Medido antes de escribir esto:** sobre 18 comprobantes reales, 5 traen QR de factura y **2 de esos 5 no son JSON válido**. Ninguno trae el código de barras de la RG 1702. Por eso el lector de QR es tolerante y no hay lector de código de barras — ver "Lo que dijeron 18 comprobantes reales" en el diseño.
 
 **Tech Stack:** Next.js 16 (App Router, server actions) · Prisma 7 + SQLite (`better-sqlite3`) · TypeScript · `node:test` · S3 en Railway · `BarcodeDetector` del navegador.
 
@@ -34,7 +36,6 @@
 **Lógica pura (sin base de datos, fácil de probar)**
 - `lib/money.ts` — centavos: parsear, formatear, serializar
 - `lib/comprobantes/qr.ts` — decodificar el QR de AFIP (RG 4892)
-- `lib/comprobantes/barcode.ts` — decodificar el código de barras (RG 1702)
 - `lib/comprobantes/tipos.ts` — los tipos que cruzan capas
 
 **Lógica con base de datos**
@@ -103,6 +104,10 @@ model Supplier {
   // ferretería de barrio). SQLite admite varios NULL en un índice único.
   cuit      String?    @unique
   alias     String?
+  // Dias para pagar, cuando el proveedor factura con una condicion en vez de
+  // una fecha ("7 DIAS" en la de Dinamark). Sirve para PROPONER el vencimiento;
+  // si el papel trae una fecha, gana la fecha. NULL = contado o no se sabe.
+  diasPago  Int?
   active    Boolean    @default(true)
   createdAt DateTime   @default(now())
   deletedAt DateTime?
@@ -115,7 +120,7 @@ model Document {
 
   // Cómo se resolvió la cabecera la primera vez, no de dónde salió la foto.
   // Un valor por peldaño de la cascada:
-  //   ARCA | QR | BARCODE | EMPAREJADO | LECTURA | MANUAL
+  //   ARCA | QR | EMPAREJADO | LECTURA | MANUAL
   // Sirve además como medición: en producción dice qué peldaño está
   // funcionando de verdad, que es hoy el número más incierto del proyecto.
   source String
@@ -382,7 +387,7 @@ Lógica pura, sin base de datos. Se hace temprano porque todo lo que lee un impo
 **Interfaces:**
 - Consumes: nada.
 - Produces:
-  - `aCentavos(texto: string): bigint | null`
+  - `aCentavos(texto: string, opts?: { puntoEsDecimal?: boolean }): bigint | null`
   - `formatear(centavos: bigint): string`
   - `aTextoPlano(centavos: bigint): string`
   - `sumar(valores: bigint[]): bigint`
@@ -425,6 +430,22 @@ test("no confunde el separador de miles con el decimal", () => {
   assert.equal(aCentavos("1.500"), 150000n);
   // Pero "1.500.25" con dos puntos solo puede ser punto decimal al final.
   assert.equal(aCentavos("1500.25"), 150025n);
+});
+
+test("aguanta los decimales de relleno que mete un emisor real", () => {
+  // Un QR real trae "387124.5100000000000000": 16 decimales, y los 14 ultimos
+  // son ceros. Es plata legitima con relleno, no una lectura mala.
+  assert.equal(aCentavos("387124.5100000000000000"), 38712451n);
+});
+
+test("el punto con tres digitos atras es ambiguo, y lo desempata quien llama", () => {
+  // "1500.000" escrito por una persona en Argentina es un millon y medio.
+  assert.equal(aCentavos("1500.000"), 150000000n);
+  // El mismo texto dentro de un QR o un CSV de ARCA es mil quinientos: ahi el
+  // punto SIEMPRE es decimal. La cadena sola no alcanza para decidir; el que
+  // sabe de donde vino el dato, si.
+  assert.equal(aCentavos("1500.000", { puntoEsDecimal: true }), 150000n);
+  assert.equal(aCentavos("2231811.45", { puntoEsDecimal: true }), 223181145n);
 });
 
 test("no adivina: lo que no entiende devuelve null", () => {
@@ -487,7 +508,10 @@ const MAX_DECIMALES = 2;
  * Devuelve `null` si no lo entiende, a propósito: adivinar es como un sistema
  * empieza a mentir. Quien llama decide si eso es un error o un campo vacío.
  */
-export function aCentavos(texto: string): bigint | null {
+export function aCentavos(
+  texto: string,
+  opts: { puntoEsDecimal?: boolean } = {},
+): bigint | null {
   if (typeof texto !== "string") return null;
 
   // Fuera el símbolo de moneda, los espacios (incluido el fino que mete Excel)
@@ -496,7 +520,7 @@ export function aCentavos(texto: string): bigint | null {
   if (!limpio) return null;
   if (!/^[\d.,]+$/.test(limpio)) return null;
 
-  const separador = ultimoSeparadorDecimal(limpio);
+  const separador = ultimoSeparadorDecimal(limpio, opts.puntoEsDecimal === true);
   const [enteroCrudo, decimalCrudo] =
     separador === null
       ? [limpio, ""]
@@ -507,25 +531,43 @@ export function aCentavos(texto: string): bigint | null {
   if (!/^\d*$/.test(entero) || !/^\d*$/.test(decimalCrudo)) return null;
   if (entero === "" && decimalCrudo === "") return null;
 
-  // Tres decimales no es plata: es una lectura mal hecha, y hay que avisar.
-  if (decimalCrudo.length > MAX_DECIMALES) return null;
+  // Mas de dos decimales se acepta SOLO si lo que sobra son ceros: un emisor
+  // real imprime "387124.5100000000000000", que es plata legitima con relleno.
+  // Con cualquier otro digito atras es una lectura mal hecha, y hay que avisar.
+  if (decimalCrudo.length > MAX_DECIMALES) {
+    if (!/^0*$/.test(decimalCrudo.slice(MAX_DECIMALES))) return null;
+  }
 
-  const decimal = decimalCrudo.padEnd(MAX_DECIMALES, "0");
+  const decimal = decimalCrudo.slice(0, MAX_DECIMALES).padEnd(MAX_DECIMALES, "0");
   return BigInt(`${entero || "0"}${decimal}`);
 }
 
 /**
  * Dónde está el separador decimal, si es que hay uno.
  *
- * La regla que resuelve la ambigüedad argentina: un separador es decimal solo
- * si le siguen uno o dos dígitos y es el último. Con tres dígitos detrás es
- * separador de miles — por eso "1.500" son mil quinientos y no uno y medio.
+ * Los dos formatos que llegan de verdad se contradicen, así que la regla mira
+ * QUÉ separador es y no solo cuántos dígitos tiene detrás:
+ *
+ * - La **coma** siempre es decimal. Es el formato argentino del papel y de los
+ *   CSV en es-AR.
+ * - El **punto** es decimal salvo que le sigan exactamente tres dígitos, que es
+ *   la forma de un grupo de miles. Por eso "1.500" son mil quinientos y no uno
+ *   y medio, pero "387124.5100000000000000" —que sale de un QR real— sí es
+ *   decimal.
+ *
+ * Un grupo de miles nunca tiene más de tres dígitos, así que con cuatro o más
+ * detrás no hay ambigüedad posible.
+ *
+ * Queda un caso que la cadena sola NO puede resolver: "1500.000" es un millón y
+ * medio si lo escribió una persona, y mil quinientos si viene de un QR o de un
+ * CSV de ARCA, donde el punto siempre es decimal. Por eso `puntoEsDecimal` lo
+ * decide quien llama, que es el único que sabe de dónde salió el dato.
  */
-function ultimoSeparadorDecimal(s: string): number | null {
+function ultimoSeparadorDecimal(s: string, puntoEsDecimal: boolean): number | null {
   const i = Math.max(s.lastIndexOf(","), s.lastIndexOf("."));
   if (i === -1) return null;
-  const detras = s.length - i - 1;
-  return detras >= 1 && detras <= MAX_DECIMALES ? i : null;
+  if (s[i] === "," || puntoEsDecimal) return i;
+  return s.length - i - 1 === 3 ? null : i;
 }
 
 /** Para pantalla, en formato argentino: `$ 2.231.811,45`. */
@@ -712,16 +754,28 @@ git commit -m "Separar quien recibe la mercadería de quien la paga"
 
 ### Task 4: El lector del QR de AFIP
 
+> **Lo que este lector NO puede hacer: usar `JSON.parse`.** De cinco QR sacados
+> de comprobantes reales el 01/09/2026, **dos no son JSON válido**. Uno trae
+> ceros a la izquierda (`"tipoCmp":01`); el otro viene sin comillas, con guiones
+> en el CUIT, la fecha en `DD-MM-YYYY` y **sin `nroCmp`**. Un lector que parsea
+> JSON funciona en las pruebas y falla en el depósito casi la mitad de las veces.
+>
+> Las muestras ya están en `tests/fixtures/qr-muestras.ts`, con los valores
+> cambiados y las patologías intactas.
+
 **Files:**
 - Create: `lib/comprobantes/tipos.ts`
 - Create: `lib/comprobantes/qr.ts`
 - Test: `tests/comprobantes-qr.test.ts`
+- Usa: `tests/fixtures/qr-muestras.ts` (ya existe)
 
 **Interfaces:**
 - Consumes: `aCentavos` de `lib/money.ts`.
 - Produces:
-  - `type Cabecera` en `lib/comprobantes/tipos.ts`
-  - `leerQr(texto: string): Cabecera | null` en `lib/comprobantes/qr.ts`
+  - `type Cabecera`, `type Fuente`, `type Kind`, `type Destino` en `lib/comprobantes/tipos.ts`
+  - `leerQr(texto: string): Cabecera | null`
+  - `elegirQrDeFactura(textos: string[]): string | null`
+  - `CUIT_PROPIO: string` y `esParaNosotros(c: Cabecera): boolean | null`
 
 - [ ] **Step 1: Escribir la prueba que falla**
 
@@ -730,84 +784,86 @@ Crear `tests/comprobantes-qr.test.ts`:
 ```typescript
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { leerQr } from "../lib/comprobantes/qr";
+import { leerQr, elegirQrDeFactura, esParaNosotros } from "../lib/comprobantes/qr";
+import { QR_MUESTRAS, QR_QUE_NO_SON_FACTURA } from "./fixtures/qr-muestras";
 
 /**
- * El QR de la RG 4892: la cámara devuelve una URL de AFIP con un JSON en
- * base64. De ahí sale la cabecera exacta, sin que nadie tipee.
+ * El QR de la RG 4892. La regla que ordena esta unidad salió de mirar
+ * comprobantes reales: **el emisor no siempre genera JSON válido**, así que el
+ * lector extrae campo por campo en vez de parsear.
  *
- * Lo que más se cuida acá es el importe. El JSON trae `"importe":2231811.45`,
- * que como número de JavaScript es un flotante; convertirlo con `* 100` es
- * jugar con la precisión de a un centavo por vez. Por eso el importe se saca
- * del TEXTO del JSON con una expresión regular, antes de que `JSON.parse` lo
- * toque.
+ * Cada caso de acá es una factura que llegó al depósito de verdad.
  */
 
-function armarQr(datos: Record<string, unknown>): string {
-  const json = JSON.stringify(datos);
-  return `https://www.afip.gob.ar/fe/qr/?p=${Buffer.from(json, "utf8").toString("base64")}`;
-}
+const porNombre = (n: string) => QR_MUESTRAS.find((m) => m.nombre === n)!.url;
 
-const CCU = {
-  ver: 1,
-  fecha: "2026-08-27",
-  cuit: 30500001735,
-  ptoVta: 1040,
-  tipoCmp: 1,
-  nroCmp: 6515,
-  importe: 2231811.45,
-  moneda: "PES",
-  ctz: 1,
-  tipoCodAut: "E",
-  codAut: 76234567890123,
-};
-
-test("lee una factura A completa", () => {
-  const c = leerQr(armarQr(CCU));
+test("lee un QR bien formado", () => {
+  const c = leerQr(porNombre("sano"));
   assert.ok(c);
-  assert.equal(c.cuitEmisor, "30500001735");
+  assert.equal(c.cuitEmisor, "20999999993");
   assert.equal(c.tipoCbte, "A");
-  assert.equal(c.puntoVenta, 1040);
-  assert.equal(c.numero, 6515);
+  assert.equal(c.puntoVenta, 6);
+  assert.equal(c.numero, 57875);
   assert.equal(c.fechaEmision, "2026-08-27");
-  assert.equal(c.importeTotal, 223181145n);
-  assert.equal(c.cae, "76234567890123");
+  assert.equal(c.importeTotal, 76410711n);
+  assert.equal(c.cae, "86350106990468");
   assert.equal(c.fuente, "QR");
 });
 
-test("el importe no pasa por el flotante", () => {
-  // 8.883.333,33 es de los que se rompen al multiplicar por 100 en flotante.
-  const c = leerQr(armarQr({ ...CCU, importe: 8883333.33 }));
-  assert.equal(c?.importeTotal, 888333333n);
+test("un CRLF al final no lo rompe", () => {
+  const c = leerQr(porNombre("sanoConSaltoDeLinea"));
+  assert.equal(c?.numero, 38604);
+  assert.equal(c?.importeTotal, 31000001n);
 });
 
-test("traduce los tipos de comprobante que importan", () => {
-  const tipo = (n: number) => leerQr(armarQr({ ...CCU, tipoCmp: n }))?.tipoCbte;
-  assert.equal(tipo(1), "A");
-  assert.equal(tipo(6), "B");
-  assert.equal(tipo(11), "C");
-  assert.equal(tipo(3), "NOTA_CREDITO_A");
-  assert.equal(tipo(8), "NOTA_CREDITO_B");
+test("lee el que tiene ceros a la izquierda, que NO es JSON válido", () => {
+  const c = leerQr(porNombre("cerosALaIzquierda"));
+  assert.ok(c, "este payload rompe JSON.parse: el lector no puede depender de él");
+  assert.equal(c.tipoCbte, "A");     // venía "01"
+  assert.equal(c.numero, 46293);     // venía "00046293"
+  assert.equal(c.puntoVenta, 4552);
+  assert.equal(c.importeTotal, 505020217n);
 });
 
-test("un CUIT de 11 dígitos que arranca con cero no pierde el cero", () => {
-  // Viene como número en el JSON; si se guardara como número se comería el cero.
-  const c = leerQr(armarQr({ ...CCU, cuit: 20123456789 }));
-  assert.equal(c?.cuitEmisor, "20123456789");
-  assert.equal(typeof c?.cuitEmisor, "string");
+test("lee lo que puede del que viene sin comillas y con guiones", () => {
+  const c = leerQr(porNombre("sinComillasNiNumero"));
+  assert.ok(c);
+  assert.equal(c.cuitEmisor, "9062901503");   // venía "906-290150-3"
+  assert.equal(c.fechaEmision, "2026-08-11"); // venía "11-08-2026"
+  assert.equal(c.importeTotal, 38712451n);
+  // No trae nroCmp: no se inventa. Sin número no hay identidad, y el
+  // comprobante va a caer en el peldaño de completar a mano.
+  assert.equal(c.numero, undefined);
+});
+
+test("el importe no pasa nunca por el flotante", () => {
+  // "387124.5100000000000000" — 16 decimales. Multiplicar por 100 en flotante
+  // es exactamente donde se pierden centavos.
+  assert.equal(leerQr(porNombre("sinComillasNiNumero"))?.importeTotal, 38712451n);
+});
+
+test("de varios QR en la misma foto elige el de factura", () => {
+  const enLaFoto = [...QR_QUE_NO_SON_FACTURA, porNombre("sano")];
+  assert.equal(elegirQrDeFactura(enLaFoto), porNombre("sano"));
+  // El de Data Fiscal es de afip.gob.ar y NO es una factura: no alcanza con
+  // mirar el dominio.
+  assert.equal(elegirQrDeFactura(QR_QUE_NO_SON_FACTURA), null);
 });
 
 test("no acepta cualquier cosa que traiga la cámara", () => {
   assert.equal(leerQr(""), null);
   assert.equal(leerQr("https://ejemplo.com"), null);
   assert.equal(leerQr("https://www.afip.gob.ar/fe/qr/?p=no-es-base64!!"), null);
-  // Base64 válido pero no es el JSON de AFIP.
-  assert.equal(leerQr(`https://www.afip.gob.ar/fe/qr/?p=${Buffer.from("{}").toString("base64")}`), null);
+  for (const otro of QR_QUE_NO_SON_FACTURA) assert.equal(leerQr(otro), null);
 });
 
-test("rechaza un QR al que le falta un campo obligatorio", () => {
-  const { nroCmp, ...sinNumero } = CCU;
-  assert.equal(leerQr(armarQr(sinNumero)), null);
+test("avisa cuando la factura no está a nombre de la empresa", () => {
+  // Los cinco QR reales traen nroDocRec con el CUIT propio. Es un control
+  // gratis contra fotografiar la factura de otro.
+  assert.equal(esParaNosotros(leerQr(porNombre("sano"))!), true);
+  assert.equal(esParaNosotros({ fuente: "QR", cuitReceptor: "20111111112" }), false);
+  // Sin dato no se afirma nada: null no es false.
+  assert.equal(esParaNosotros({ fuente: "MANUAL" }), null);
 });
 ```
 
@@ -822,21 +878,25 @@ Crear `lib/comprobantes/tipos.ts`:
 
 ```typescript
 /** Lo que un lector logró sacar de un comprobante. Todo opcional salvo la
- *  fuente, porque cada peldaño de la cascada saca menos que el anterior. */
+ *  fuente, porque cada peldaño de la cascada saca menos que el anterior — y
+ *  porque hay QR reales que vienen sin número. */
 export type Cabecera = {
   fuente: Fuente;
   cuitEmisor?: string;
+  /** A nombre de quién está la factura. Sirve para avisar si alguien
+   *  fotografía la de otra empresa. */
+  cuitReceptor?: string;
   tipoCbte?: string;
   puntoVenta?: number;
   numero?: number;
   fechaEmision?: string; // "AAAA-MM-DD"
   importeTotal?: bigint; // centavos
   cae?: string;
-  caeVence?: string; // "AAAA-MM-DD" — NO es el vencimiento del pago
+  caeVence?: string; // NO es el vencimiento del pago
 };
 
 /** Un valor por peldaño de la cascada de identificación. */
-export type Fuente = "ARCA" | "QR" | "BARCODE" | "EMPAREJADO" | "LECTURA" | "MANUAL";
+export type Fuente = "ARCA" | "QR" | "EMPAREJADO" | "LECTURA" | "MANUAL";
 
 export type Kind = "FACTURA" | "REMITO" | "TICKET" | "NOTA_CREDITO" | "NOTA_DEBITO" | "OTRO";
 
@@ -851,310 +911,154 @@ Crear `lib/comprobantes/qr.ts`:
 import { aCentavos } from "@/lib/money";
 import type { Cabecera } from "./tipos";
 
-// El QR de la RG 4892/2020. La cámara devuelve una URL de AFIP con un JSON
-// codificado en base64 en el parámetro `p`.
+// El QR de la RG 4892/2020: una URL de AFIP con un JSON en base64.
 //
-// De acá sale la cabecera EXACTA: CUIT, punto de venta, tipo, número, fecha,
-// importe y CAE. Es el peldaño más barato de la cascada y el único que no
-// necesita ni red ni que nadie tipee.
+// **No se usa `JSON.parse`, y no es por gusto.** De cinco QR sacados de
+// comprobantes reales, dos no son JSON válido: uno trae ceros a la izquierda
+// (`"tipoCmp":01`) y otro viene sin comillas, con el CUIT separado por guiones
+// y la fecha al revés. Un lector estricto los descarta a los dos, y son casi la
+// mitad de los que llegan.
+//
+// Por eso se extrae campo por campo, tolerando lo que el emisor haya impreso.
 
-/** Los códigos de tipo de comprobante que se ven en la práctica. Los que no
- *  están se guardan como el número crudo: mejor un código raro que un dato
- *  perdido, y el historial deja ver cuál apareció. */
+/** El CUIT de la empresa. Aparece como `nroDocRec` en todas las facturas que le
+ *  emiten, y con eso se puede avisar si alguien fotografió la de otro. */
+export const CUIT_PROPIO = "30717737489";
+
 const TIPOS: Record<number, string> = {
-  1: "A",
-  2: "NOTA_DEBITO_A",
-  3: "NOTA_CREDITO_A",
-  6: "B",
-  7: "NOTA_DEBITO_B",
-  8: "NOTA_CREDITO_B",
-  11: "C",
-  12: "NOTA_DEBITO_C",
-  13: "NOTA_CREDITO_C",
-  51: "M",
-  201: "A",
-  206: "B",
-  211: "C",
+  1: "A", 2: "NOTA_DEBITO_A", 3: "NOTA_CREDITO_A",
+  6: "B", 7: "NOTA_DEBITO_B", 8: "NOTA_CREDITO_B",
+  11: "C", 12: "NOTA_DEBITO_C", 13: "NOTA_CREDITO_C",
+  51: "M", 201: "A", 206: "B", 211: "C",
 };
 
+/**
+ * De todos los QR que la cámara vio en una foto, cuál es el de la factura.
+ *
+ * Una foto trae varios: el de AFIP, uno de marketing del proveedor, y a veces
+ * el de Data Fiscal —que también es de `afip.gob.ar` pero NO identifica un
+ * comprobante—. No alcanza con mirar el dominio.
+ */
+export function elegirQrDeFactura(textos: string[]): string | null {
+  return textos.find((t) => payloadDe(t) !== null) ?? null;
+}
+
 export function leerQr(texto: string): Cabecera | null {
-  if (typeof texto !== "string" || !texto) return null;
-
   const payload = payloadDe(texto);
-  if (!payload) return null;
+  if (payload === null) return null;
 
-  let json: string;
+  let crudo: string;
   try {
-    json = Buffer.from(payload, "base64").toString("utf8");
+    crudo = Buffer.from(payload, "base64").toString("utf8").trim();
   } catch {
     return null;
   }
+  if (!crudo.includes("cuit")) return null;
 
-  let datos: Record<string, unknown>;
-  try {
-    datos = JSON.parse(json);
-  } catch {
-    return null;
-  }
-  if (!datos || typeof datos !== "object") return null;
+  const cuit = soloDigitos(campo(crudo, "cuit"));
+  const ptoVta = aEntero(campo(crudo, "ptoVta"));
+  const tipoCmp = aEntero(campo(crudo, "tipoCmp"));
+  // Hay QR reales SIN nroCmp. No se inventa: sin número no hay identidad y el
+  // comprobante cae en el peldaño de completar a mano.
+  const nroCmp = aEntero(campo(crudo, "nroCmp"));
+  const fecha = aFechaIso(campo(crudo, "fecha"));
 
-  const cuit = entero(datos.cuit);
-  const ptoVta = entero(datos.ptoVta);
-  const tipoCmp = entero(datos.tipoCmp);
-  const nroCmp = entero(datos.nroCmp);
-  const fecha = typeof datos.fecha === "string" ? datos.fecha : null;
-
-  // Sin estos cinco no hay identidad y el QR no sirve para nada.
-  if (cuit === null || ptoVta === null || tipoCmp === null || nroCmp === null) return null;
-  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return null;
+  if (!cuit || ptoVta === null || tipoCmp === null) return null;
 
   return {
     fuente: "QR",
-    cuitEmisor: String(cuit).padStart(11, "0"),
+    cuitEmisor: cuit,
+    cuitReceptor: soloDigitos(campo(crudo, "nroDocRec")) || undefined,
     tipoCbte: TIPOS[tipoCmp] ?? String(tipoCmp),
     puntoVenta: ptoVta,
-    numero: nroCmp,
-    fechaEmision: fecha,
-    importeTotal: importeDelTexto(json) ?? undefined,
-    cae: datos.codAut != null ? String(datos.codAut) : undefined,
+    numero: nroCmp ?? undefined,
+    fechaEmision: fecha ?? undefined,
+    // El payload es de máquina: acá el punto SIEMPRE es decimal.
+    importeTotal: aCentavos(campo(crudo, "importe") ?? "", { puntoEsDecimal: true }) ?? undefined,
+    cae: soloDigitos(campo(crudo, "codAut")) || undefined,
   };
 }
 
-/** El parámetro `p` de una URL de QR de AFIP, y solo de ahí. */
+/** `true` si la factura está a nombre de la empresa, `false` si es de otra,
+ *  `null` si el comprobante no lo dice. Null no es false: no saber y saber que
+ *  no, son cosas distintas. */
+export function esParaNosotros(c: Cabecera): boolean | null {
+  if (!c.cuitReceptor) return null;
+  return c.cuitReceptor === CUIT_PROPIO;
+}
+
+// --- ayudas privadas -------------------------------------------------------
+
+/** El parámetro `p` de una URL de QR **de factura**. El de Data Fiscal usa otro
+ *  host y otro parámetro, así que queda descartado acá mismo. */
 function payloadDe(texto: string): string | null {
+  if (typeof texto !== "string" || !texto) return null;
   let url: URL;
   try {
     url = new URL(texto);
   } catch {
     return null;
   }
-  if (!/(^|\.)afip\.gob\.ar$/.test(url.hostname)) return null;
+  if (url.hostname !== "www.afip.gob.ar" && url.hostname !== "afip.gob.ar") return null;
+  if (!url.pathname.startsWith("/fe/qr")) return null;
   const p = url.searchParams.get("p");
   if (!p || !/^[A-Za-z0-9+/=_-]+$/.test(p)) return null;
   return p.replace(/-/g, "+").replace(/_/g, "/");
 }
 
 /**
- * El importe, sacado del TEXTO del JSON y no del objeto ya parseado.
+ * El valor crudo de un campo, del TEXTO y no de un objeto parseado.
  *
- * `JSON.parse` convierte `2231811.45` en un flotante, y de ahí a centavos hay
- * que multiplicar por 100 — que es exactamente la operación que pierde
- * centavos. Leyendo los dígitos del texto crudo el problema no existe.
+ * Sirve igual para `"cuit":30597532381`, `"cuit":906-290150-3` y
+ * `"moneda":"PES"`. Y el importe sale de acá sin pasar por un flotante, que es
+ * donde se pierden los centavos.
  */
-function importeDelTexto(json: string): bigint | null {
-  const m = /"importe"\s*:\s*"?(-?[\d.,]+)"?/.exec(json);
-  return m ? aCentavos(m[1]) : null;
+function campo(json: string, nombre: string): string | null {
+  const m = new RegExp(`"${nombre}"\\s*:\\s*"?([^",}\\s]*)"?`).exec(json);
+  return m ? m[1] : null;
 }
 
-function entero(v: unknown): number | null {
-  if (typeof v === "number" && Number.isInteger(v)) return v;
-  if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
-  return null;
+function soloDigitos(v: string | null): string {
+  return v ? v.replace(/\D/g, "") : "";
+}
+
+function aEntero(v: string | null): number | null {
+  const d = soloDigitos(v);
+  return d === "" ? null : Number(d);
+}
+
+/** Acepta `"2026-08-27"` y también `11-08-2026`, que es como lo imprime al
+ *  menos un emisor. Devuelve siempre `AAAA-MM-DD`. */
+function aFechaIso(v: string | null): string | null {
+  if (!v) return null;
+  let a: string, m: string, d: string;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  const criollo = /^(\d{2})-(\d{2})-(\d{4})$/.exec(v);
+  if (iso) [, a, m, d] = iso;
+  else if (criollo) [, d, m, a] = criollo;
+  else return null;
+
+  const f = new Date(Date.UTC(+a, +m - 1, +d));
+  if (f.getUTCFullYear() !== +a || f.getUTCMonth() !== +m - 1 || f.getUTCDate() !== +d) return null;
+  return `${a}-${m}-${d}`;
 }
 ```
 
 - [ ] **Step 5: Correr la prueba para verificar que pasa**
 
 Run: `npx tsx --test tests/comprobantes-qr.test.ts`
-Expected: PASS, 6 pruebas.
+Expected: PASS, 8 pruebas.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lib/comprobantes/tipos.ts lib/comprobantes/qr.ts tests/comprobantes-qr.test.ts
-git commit -m "Leer la cabecera del QR de AFIP sin tipear nada"
+git add lib/comprobantes/tipos.ts lib/comprobantes/qr.ts tests/comprobantes-qr.test.ts tests/fixtures/qr-muestras.ts
+git commit -m "Leer el QR aunque el emisor lo genere mal"
 ```
 
 ---
 
-### Task 5: El lector del código de barras
-
-> **Antes de empezar, un paso que no es de código.** Agarrar una factura real y leer su código de barras con cualquier app de celular. Anotar **cuántos dígitos tiene**. La RG 1702 describe CUIT (11) + tipo (3) + punto de venta (5) + código de autorización (14) + vencimiento (8) + verificador (1) = **42**, pero hay implementaciones que usan 40. **El parser se escribe contra el largo real que devuelva ese código**, no contra el que dice este plan. Si son 40, ajustar `ANCHOS` a tipo 2 y punto de venta 4, y corregir la prueba con los dígitos reales.
-
-**Files:**
-- Create: `lib/comprobantes/barcode.ts`
-- Test: `tests/comprobantes-barcode.test.ts`
-
-**Interfaces:**
-- Consumes: `type Cabecera` de `lib/comprobantes/tipos.ts`.
-- Produces: `leerBarcode(digitos: string): Cabecera | null`
-
-- [ ] **Step 1: Escribir la prueba que falla**
-
-Crear `tests/comprobantes-barcode.test.ts`:
-
-```typescript
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { leerBarcode, digitoVerificador } from "../lib/comprobantes/barcode";
-
-/**
- * El código de barras de la RG 1702, Interleaved 2 of 5. Es el SEGUNDO
- * peldaño: cuando el QR no se lee, este suele estar impreso igual.
- *
- * No trae número de comprobante ni importe, así que por sí solo no completa
- * una cabecera. Pero trae el CAE, que es único por comprobante, y con eso
- * alcanza para cruzar exacto contra la fila de ARCA.
- */
-
-// CUIT(11) + tipo(3) + ptoVta(5) + CAE(14) + vtoCAE(8) = 41 dígitos + verificador.
-const CUERPO = "30500001735" + "001" + "01040" + "76234567890123" + "20260906";
-
-test("el cuerpo mide lo que dice la norma", () => {
-  assert.equal(CUERPO.length, 41);
-});
-
-test("lee los campos de un código bien formado", () => {
-  const codigo = CUERPO + digitoVerificador(CUERPO);
-  const c = leerBarcode(codigo);
-  assert.ok(c);
-  assert.equal(c.cuitEmisor, "30500001735");
-  assert.equal(c.tipoCbte, "A");
-  assert.equal(c.puntoVenta, 1040);
-  assert.equal(c.cae, "76234567890123");
-  assert.equal(c.caeVence, "2026-09-06");
-  assert.equal(c.fuente, "BARCODE");
-});
-
-test("no inventa el número ni el importe, porque el código no los trae", () => {
-  const c = leerBarcode(CUERPO + digitoVerificador(CUERPO));
-  assert.equal(c?.numero, undefined);
-  assert.equal(c?.importeTotal, undefined);
-  assert.equal(c?.fechaEmision, undefined);
-});
-
-test("rechaza un código con el verificador equivocado", () => {
-  const bueno = digitoVerificador(CUERPO);
-  const malo = String((Number(bueno) + 1) % 10);
-  assert.equal(leerBarcode(CUERPO + malo), null);
-});
-
-test("rechaza cualquier cosa que no sea el código de una factura", () => {
-  assert.equal(leerBarcode(""), null);
-  assert.equal(leerBarcode("123"), null);
-  assert.equal(leerBarcode("A".repeat(42)), null);
-  // Un EAN-13 de un producto del depósito: 13 dígitos, no 42.
-  assert.equal(leerBarcode("7790895000997"), null);
-});
-
-test("rechaza un vencimiento de CAE imposible", () => {
-  const cuerpo = "30500001735" + "001" + "01040" + "76234567890123" + "20261340";
-  assert.equal(leerBarcode(cuerpo + digitoVerificador(cuerpo)), null);
-});
-```
-
-- [ ] **Step 2: Correr la prueba para verificar que falla**
-
-Run: `npx tsx --test tests/comprobantes-barcode.test.ts`
-Expected: FAIL — no encuentra `../lib/comprobantes/barcode`.
-
-- [ ] **Step 3: Escribir el lector**
-
-Crear `lib/comprobantes/barcode.ts`:
-
-```typescript
-import type { Cabecera } from "./tipos";
-
-// El código de barras de la RG 1702/2004, en Interleaved 2 of 5.
-//
-// Es el segundo peldaño de la cascada, y existe por una razón práctica: cuando
-// el QR no se lee —papel arrugado, térmico desvanecido, grasa— este suele
-// estar impreso igual, y son dos oportunidades en vez de una.
-//
-// No trae número de comprobante ni importe. Sí trae el CAE, que es único por
-// comprobante, y eso alcanza para cruzar exacto contra la fila de ARCA.
-
-const ANCHOS = { cuit: 11, tipo: 3, ptoVta: 5, cae: 14, vto: 8 } as const;
-const LARGO_CUERPO = Object.values(ANCHOS).reduce((a, b) => a + b, 0); // 41
-const LARGO_TOTAL = LARGO_CUERPO + 1;
-
-const TIPOS: Record<number, string> = {
-  1: "A", 2: "NOTA_DEBITO_A", 3: "NOTA_CREDITO_A",
-  6: "B", 7: "NOTA_DEBITO_B", 8: "NOTA_CREDITO_B",
-  11: "C", 12: "NOTA_DEBITO_C", 13: "NOTA_CREDITO_C",
-  51: "M",
-};
-
-export function leerBarcode(digitos: string): Cabecera | null {
-  if (typeof digitos !== "string") return null;
-  const s = digitos.replace(/\s/g, "");
-  if (s.length !== LARGO_TOTAL || !/^\d+$/.test(s)) return null;
-
-  const cuerpo = s.slice(0, LARGO_CUERPO);
-  if (s[LARGO_CUERPO] !== digitoVerificador(cuerpo)) return null;
-
-  let i = 0;
-  const tomar = (n: number) => cuerpo.slice(i, (i += n));
-
-  const cuit = tomar(ANCHOS.cuit);
-  const tipo = Number(tomar(ANCHOS.tipo));
-  const ptoVta = Number(tomar(ANCHOS.ptoVta));
-  const cae = tomar(ANCHOS.cae);
-  const vto = aFechaIso(tomar(ANCHOS.vto));
-  if (!vto) return null;
-
-  return {
-    fuente: "BARCODE",
-    cuitEmisor: cuit,
-    tipoCbte: TIPOS[tipo] ?? String(tipo),
-    puntoVenta: ptoVta,
-    cae,
-    // Vencimiento del CAE, NO del pago. No se muestra a quien paga: es la
-    // fecha que ya se confundió una vez con el "Vto:" del papel.
-    caeVence: vto,
-  };
-}
-
-/**
- * Módulo 10 con pesos 3 y 1, que es el que fija la norma.
- *
- * Se exporta porque la prueba necesita armar códigos válidos, y porque un
- * verificador que solo se puede ejercitar de rebote es un verificador que
- * nadie prueba de verdad.
- */
-export function digitoVerificador(cuerpo: string): string {
-  let suma = 0;
-  // Se pesa desde la derecha: la última posición vale 3, la anterior 1, etc.
-  for (let i = 0; i < cuerpo.length; i++) {
-    const desdeLaDerecha = cuerpo.length - 1 - i;
-    suma += Number(cuerpo[i]) * (desdeLaDerecha % 2 === 0 ? 3 : 1);
-  }
-  return String((10 - (suma % 10)) % 10);
-}
-
-/** "20260906" -> "2026-09-06". Devuelve null si no es un día real. */
-function aFechaIso(aaaammdd: string): string | null {
-  const a = Number(aaaammdd.slice(0, 4));
-  const m = Number(aaaammdd.slice(4, 6));
-  const d = Number(aaaammdd.slice(6, 8));
-  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
-  const f = new Date(Date.UTC(a, m - 1, d));
-  if (f.getUTCFullYear() !== a || f.getUTCMonth() !== m - 1 || f.getUTCDate() !== d) return null;
-  return `${aaaammdd.slice(0, 4)}-${aaaammdd.slice(4, 6)}-${aaaammdd.slice(6, 8)}`;
-}
-```
-
-- [ ] **Step 4: Correr la prueba para verificar que pasa**
-
-Run: `npx tsx --test tests/comprobantes-barcode.test.ts`
-Expected: PASS, 6 pruebas.
-
-- [ ] **Step 5: Contrastar contra el código real**
-
-Tomar los dígitos anotados al principio de la tarea y llamar a `leerBarcode` con ellos en una prueba nueva llamada `"lee el código de una factura real"`. Comparar el CUIT que devuelve contra el CUIT impreso en esa factura.
-
-**Si no coincide, el problema son los anchos, no la factura**: ajustar `ANCHOS` y volver a correr. Dejar esa prueba en el archivo — es la única que prueba contra la realidad y no contra la interpretación de la norma.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add lib/comprobantes/barcode.ts tests/comprobantes-barcode.test.ts
-git commit -m "Leer el código de barras cuando el QR no engancha"
-```
-
----
-
-### Task 6: Guardar una captura
+### Task 5: Guardar una captura
 
 El corazón del módulo. Acá se cumple la regla que ordena todo: **la foto se guarda pase lo que pase**.
 
@@ -1582,7 +1486,7 @@ git commit -m "Guardar la foto pase lo que pase"
 
 ---
 
-### Task 7: Las bandejas y la vista de pagos
+### Task 6: Las bandejas y la vista de pagos
 
 **Files:**
 - Create: `lib/comprobantes/pagos.ts`
@@ -1596,6 +1500,7 @@ git commit -m "Guardar la foto pase lo que pase"
   - `marcarPagados(ids: string[], cuando: Date, actor: { id: string; name: string }): Promise<number>`
   - `ponerVencimiento(id: string, vencimiento: string, actor: { id: string; name: string }): Promise<void>`
   - `bandejas(): Promise<{ sinProveedor: number; sinRevisar: number; sinVencimiento: number }>`
+  - `proponerVencimiento(fechaEmision: string | null, diasPago: number | null): string | null`
 
 - [ ] **Step 1: Escribir la prueba que falla**
 
@@ -1746,6 +1651,28 @@ test("no acepta un vencimiento que no es un día", async () => {
   await assert.rejects(() => pagos.ponerVencimiento(d.id, "2026-13-40", ALDANA), /AAAA-MM-DD/);
 });
 
+test("propone el vencimiento desde la condicion de pago del proveedor", async () => {
+  // Hay facturas que NO traen fecha de vencimiento: la de Dinamark dice
+  // "7 DIAS", que es una condicion y no un dato. Se calcula contra la emision.
+  assert.equal(pagos.proponerVencimiento("2026-07-28", 7), "2026-08-04");
+  // Si el proveedor no tiene condicion cargada, no se inventa nada.
+  assert.equal(pagos.proponerVencimiento("2026-07-28", null), null);
+  assert.equal(pagos.proponerVencimiento(null, 7), null);
+});
+
+test("lo propuesto no se guarda solo", async () => {
+  // Proponer es ayudar a quien paga, no decidir por ella. Hasta que alguien
+  // confirme, el campo sigue vacio y el comprobante sigue en la bandeja.
+  const s = await prisma.supplier.update({ where: { id: donAngel }, data: { diasPago: 7 } });
+  const d = await prisma.document.create({
+    data: { kind: "FACTURA", source: "QR", supplierId: s.id, importeTotal: 100n,
+            fechaEmision: "2026-07-28" },
+  });
+  const leido = await prisma.document.findUniqueOrThrow({ where: { id: d.id } });
+  assert.equal(leido.vencimiento, null);
+  assert.equal((await pagos.bandejas()).sinVencimiento >= 1, true);
+});
+
 test("las bandejas cuentan lo que falta, con nulos y sin columna de estado", async () => {
   await prisma.document.create({
     data: { kind: "REMITO", source: "MANUAL", capturedByName: "Pablo" },
@@ -1768,6 +1695,7 @@ Crear `lib/comprobantes/pagos.ts`:
 
 ```typescript
 import { prismaComprobantes as db } from "@/lib/db-comprobantes";
+import { sumarDias } from "@/lib/dates";
 
 // Lo que ve y hace quien paga.
 //
@@ -1782,6 +1710,26 @@ const DIA = /^\d{4}-\d{2}-\d{2}$/;
  *  siempre positivo y el signo lo decide el tipo: guardar negativos invita a
  *  cargar una factura común en negativo y descuadrar sin que nadie lo note. */
 const RESTAN = new Set(["NOTA_CREDITO"]);
+
+/**
+ * El vencimiento que el sistema SUGIERE, sin guardarlo.
+ *
+ * Hay facturas que no traen fecha: la de Dinamark dice "7 DIAS", que es una
+ * condicion de pago y no un dato. La precedencia es siempre la misma:
+ *
+ *   1. La fecha que dice el papel, si dice una.
+ *   2. Si no, emision + `diasPago` del proveedor, marcado como propuesto.
+ *   3. Si el proveedor no tiene `diasPago`, queda vacio y cae en la bandeja.
+ *
+ * Nunca se escribe solo: proponer es ayudar a quien paga, no decidir por ella.
+ */
+export function proponerVencimiento(
+  fechaEmision: string | null,
+  diasPago: number | null,
+): string | null {
+  if (!fechaEmision || diasPago == null) return null;
+  return sumarDias(fechaEmision, diasPago);
+}
 
 export type DeudaProveedor = {
   supplierId: string | null;
@@ -1953,7 +1901,7 @@ git commit -m "Sumar por proveedor y marcar varias facturas de una vez"
 
 ---
 
-### Task 8: Las server actions, que son la barrera
+### Task 7: Las server actions, que son la barrera
 
 La tarea donde se cumple la promesa central del diseño: **el rol de depósito nunca recibe un importe**. No porque la pantalla lo esconda: porque el dato no sale del servidor.
 
@@ -2028,8 +1976,7 @@ import { canCapturarComprobantes, canVerImportes, canPagar } from "@/lib/permiss
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
 import { porProveedor, queVence, marcarPagados, ponerVencimiento, type DeudaProveedor } from "@/lib/comprobantes/pagos";
 import { subirFoto } from "@/lib/comprobantes/almacenamiento";
-import { leerQr } from "@/lib/comprobantes/qr";
-import { leerBarcode } from "@/lib/comprobantes/barcode";
+import { leerQr, elegirQrDeFactura, esParaNosotros } from "@/lib/comprobantes/qr";
 import { aTextoPlano } from "@/lib/money";
 import type { Cabecera, Destino, Kind } from "@/lib/comprobantes/tipos";
 
@@ -2090,11 +2037,17 @@ export async function capturarComprobante(fd: FormData) {
     if (f.size > MAX_BYTES) return { ok: false, error: "La foto es demasiado grande." };
   }
 
-  // La cabecera viene ya leída del teléfono: el QR y el código de barras se
-  // decodifican con la cámara apuntando, antes de disparar. Acá se vuelve a
-  // parsear el texto crudo en vez de confiar en los campos sueltos que mande
-  // el cliente — un navegador puede mandar cualquier cosa.
-  const cabecera = cabeceraDe(String(fd.get("qr") ?? ""), String(fd.get("barcode") ?? ""));
+  // Los QR vienen ya leídos del teléfono: se decodifican con la cámara
+  // apuntando, antes de disparar. Acá se vuelve a parsear el texto crudo en vez
+  // de confiar en los campos sueltos que mande el cliente — un navegador puede
+  // mandar cualquier cosa.
+  // La camara puede haber visto VARIOS QR en la misma foto: el de AFIP, uno de
+  // marketing del proveedor, el de Data Fiscal. Se elige el de factura.
+  const vistos = fd.getAll("qr").map(String).filter(Boolean);
+  const elegido = elegirQrDeFactura(vistos);
+  const cabecera = (elegido && leerQr(elegido)) || { fuente: "MANUAL" as const };
+  // Aviso, no bloqueo: puede ser un error de foto y la foto igual se guarda.
+  const ajena = esParaNosotros(cabecera) === false;
 
   const hoy = new Date().toISOString().slice(0, 10);
   const adjuntos = [];
@@ -2188,12 +2141,6 @@ export async function cargarVencimiento(id: string, vencimiento: string) {
 
 // --- ayudas privadas -------------------------------------------------------
 
-/** Los códigos, del más completo al menos. El QR trae número e importe; el de
- *  barras no, pero trae el CAE y con eso alcanza para cruzar contra ARCA. */
-function cabeceraDe(qr: string, barcode: string): Cabecera {
-  return leerQr(qr) ?? leerBarcode(barcode) ?? { fuente: "MANUAL" };
-}
-
 function destinoValido(v: string): Destino | undefined {
   return v === "COCINA" || v === "DEPOSITO" || v === "OTRO" ? v : undefined;
 }
@@ -2223,7 +2170,7 @@ git commit -m "Cortar los importes en el servidor, no en la pantalla"
 
 ---
 
-### Task 9: Las dos pantallas
+### Task 8: Las dos pantallas
 
 **Files:**
 - Create: `app/(app)/recepcion/page.tsx`
@@ -2263,11 +2210,11 @@ export default async function RecepcionPage() {
 Crear `app/(app)/recepcion/captura-cliente.tsx`. Lo esencial, en orden:
 
 1. Un botón grande, **"Recibí mercadería"**, que abre la cámara con `getUserMedia({ video: { facingMode: "environment" } })` y enciende la linterna si el dispositivo la expone (`track.applyConstraints({ advanced: [{ torch: true }] })`, dentro de `try/catch` — no todos la tienen).
-2. Un bucle de lectura en vivo con `BarcodeDetector` sobre `["qr_code", "itf"]`, corriendo con `requestAnimationFrame`. Al enganchar: `navigator.vibrate?.(80)` y guardar el texto crudo. **A los 3 segundos sin enganchar, se sigue igual** — no hay que pelearse con un papel arrugado.
+2. Un bucle de lectura en vivo con `BarcodeDetector` sobre `["qr_code"]`, corriendo con `requestAnimationFrame`. Al enganchar: `navigator.vibrate?.(80)` y guardar el texto crudo. **A los 3 segundos sin enganchar, se sigue igual** — no hay que pelearse con un papel arrugado.
 3. Disparar la foto desde el mismo `video` a un `<canvas>`, **reduciendo a 2000 px de lado mayor** y exportando con `canvas.toBlob(blob => ..., "image/jpeg", 0.8)`. Se comprime DESPUÉS de leer los códigos, nunca antes.
 4. `clientKey`: `crypto.randomUUID()` generado **al abrir la cámara**, no al enviar. Es lo que hace que el doble toque no cree dos comprobantes.
 5. Dos botones grandes de destino, **COCINA** y **DEPÓSITO**, con `OTRO` como enlace chico abajo. Y **¿Está todo?** con *Sí* / *Faltan cosas*. Los dos salteables.
-6. Enviar con `FormData` a `capturarComprobante`: `clientKey`, `kind`, `qr`, `barcode`, `destino`, `conforme`, y las fotos en `fotos`.
+6. Enviar con `FormData` a `capturarComprobante`: `clientKey`, `kind`, `destino`, `conforme`, las fotos en `fotos`, y **un campo `qr` por cada QR que la cámara haya visto** (`fd.append("qr", ...)` varias veces). Elegir cuál es el de factura es trabajo del servidor, no de la pantalla.
 7. Al volver `ok`, mostrar **"Listo · Aldana ya lo ve"**. Si viene `aviso`, mostrarlo.
 
 Si `BarcodeDetector` no existe (`typeof window.BarcodeDetector === "undefined"`), saltear el paso 2 entero y sacar la foto igual. La cascada sigue: el comprobante queda sin identificar y se resuelve después.
@@ -2275,18 +2222,20 @@ Si `BarcodeDetector` no existe (`typeof window.BarcodeDetector === "undefined"`)
 Las dos piezas que no son obvias, escritas:
 
 ```typescript
-// Lectura en vivo de los DOS formatos. El de barras suele estar impreso
-// aunque el QR esté arruinado, así que se buscan juntos.
-const detector = new (window as any).BarcodeDetector({ formats: ["qr_code", "itf"] });
-const leidos = { qr: "", barcode: "" };
+// Lectura en vivo del QR. Se juntan TODOS los que aparezcan: una factura real
+// puede traer el de AFIP y uno de marketing, y cual es cual lo decide el
+// servidor. No se busca el codigo de barras de la RG 1702 porque ninguno de los
+// 18 comprobantes revisados lo traia.
+const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+const leidos = new Set<string>();
 const arranque = performance.now();
 
 async function buscar() {
-  if (leidos.qr || performance.now() - arranque > 3000) return; // se sigue igual
+  if (leidos.size > 0 || performance.now() - arranque > 3000) return; // se sigue igual
   try {
     for (const c of await detector.detect(videoRef.current!)) {
-      if (c.format === "qr_code") leidos.qr = c.rawValue;
-      if (c.format === "itf") leidos.barcode = c.rawValue;
+      if (leidos.has(c.rawValue)) continue;
+      leidos.add(c.rawValue); // una foto puede traer varios QR distintos
       navigator.vibrate?.(80);
     }
   } catch {
@@ -2350,7 +2299,7 @@ Crear `app/(app)/pagos/lista-pagos.tsx`. Lo esencial:
 2. Cada fila: proveedor, importe, vencimiento, y un botón que abre la **foto a pantalla completa con zoom**. Aldana está en otra oficina y no puede ir a mirar el papel: el visor reemplaza tenerlo en la mano. Una miniatura no alcanza.
 3. **Por proveedor**: nombre, cantidad de comprobantes y el total sumado por el sistema — `"DON ANGEL · $841.843,26 en 2 facturas"`. Es lo que se transfiere.
 4. **Selección múltiple** con un botón *Marcar pagadas*, que llama a `pagar(ids)`. Se paga por proveedor, no por factura.
-5. Un campo de **vencimiento** editable en las filas que lo tienen vacío, que llama a `cargarVencimiento`. **No mostrar `caeVence` en ninguna parte de esta pantalla**: no sirve para pagar y es la fecha que ya se confundió una vez con el "Vto:".
+5. Un campo de **vencimiento** editable en las filas que lo tienen vacío, que llama a `cargarVencimiento`. Cuando el proveedor tiene `diasPago`, mostrar el valor de `proponerVencimiento` **como sugerencia gris con un botón de confirmar**, nunca como si ya estuviera guardado. **No mostrar `caeVence` en ninguna parte de esta pantalla**: no sirve para pagar y es la fecha que ya se confundió una vez con el "Vto:".
 6. Los importes llegan como `string` de centavos: para mostrarlos, `formatear(BigInt(fila.total))` de `lib/money.ts`.
 
 - [ ] **Step 5: Probar a mano las dos pantallas**
@@ -2376,7 +2325,7 @@ git commit -m "Poner la camara en el deposito y la deuda en la oficina"
 
 ---
 
-### Task 10: La carga manual corta
+### Task 9: La carga manual corta
 
 Sin esto, todo lo que no tiene código legible —que según el usuario es buena parte de lo que entra— se queda sin datos. Es la que cierra la etapa 1.
 

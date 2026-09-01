@@ -147,6 +147,10 @@ model Supplier {
   // ferretería de barrio). SQLite admite varios NULL en un índice único.
   cuit      String?    @unique
   alias     String?    // cómo lo llama el equipo
+  // Días para pagar, cuando el proveedor factura con una condición en vez de
+  // una fecha ("7 DIAS" en la de Dinamark). Sirve para PROPONER el vencimiento;
+  // si el papel trae una fecha, gana la fecha. NULL = contado o no se sabe.
+  diasPago  Int?
   active    Boolean    @default(true)
   createdAt DateTime   @default(now())
   deletedAt DateTime?
@@ -328,8 +332,22 @@ De ahí salen dos reglas duras:
    pagar y es la fuente exacta del error. Un campo que solo puede confundir no
    va en la pantalla de quien decide.
 
-Quien carga el `Vto:` es **Aldana**, mirando la imagen que ya tiene abierta para
-pagar. El tipeo no baja a cero: baja de una factura entera a una fecha.
+Y hay un tercer caso que apareció al mirar comprobantes reales: **a veces no hay
+fecha de vencimiento en absoluto**. La factura de CCU dice `Fecha Vto. 27/08/26`,
+pero la de Dinamark dice **`7 DIAS`** — una condición, no un dato. Hay que
+calcularla contra la fecha de emisión.
+
+Por eso `Supplier.diasPago`: el sistema **propone** el vencimiento sumando los
+días del proveedor a la fecha de emisión, y quien paga lo corrige cuando el
+papel dice otra cosa. La regla de precedencia es una sola:
+
+1. La fecha que dice el papel, si dice una.
+2. Si no, emisión + `diasPago` del proveedor, marcado como propuesto.
+3. Si el proveedor no tiene `diasPago`, queda vacío y cae en la bandeja.
+
+Quien carga o confirma el `Vto:` es **Aldana**, mirando la imagen que ya tiene
+abierta para pagar. El tipeo no baja a cero: baja de una factura entera a una
+fecha, y muchas veces a confirmar la que el sistema propuso.
 
 ## Cómo paga Aldana
 
@@ -407,6 +425,60 @@ número de línea y no se importa a medias. Los importes de estos archivos
 conviven en varios formatos con coma decimal es-AR, y adivinar es como se
 construye un sistema que miente.
 
+## Lo que dijeron 18 comprobantes reales
+
+El 01/09/2026 se procesaron 18 fotos de comprobantes como llegan al depósito.
+Todo local, decodificando con `zxing-cpp`. Estos números reemplazan a las
+estimaciones que había antes en este documento.
+
+| | Cuántas |
+|---|---:|
+| Con QR de factura de AFIP detectado | **5** |
+| De esas, con JSON válido | **3** |
+| Con el JSON roto | **2** |
+| Con otro QR que no es de factura | 2 |
+| Sin ningún código detectado | **12** |
+
+**El QR de AFIP no siempre es JSON válido.** Dos de los cinco no pasan por
+`JSON.parse`. Uno trae ceros a la izquierda (`"tipoCmp":01`), que ya son JSON
+inválido. El otro está roto de verdad:
+
+```
+{"ver":1,"fecha":11-08-2026,"cuit":906-290150-3,"ptoVta":0197,
+ "tipoCmp":001,"importe":387124.51,"moneda":ARS,"tipoCodAut":E, ...}
+```
+
+Textos sin comillas, CUIT con guiones y de largo inválido, fecha `DD-MM-YYYY` en
+vez de `AAAA-MM-DD`, y **sin campo `nroCmp`** — ese comprobante no tiene número
+dentro de su propio QR, así que ni siquiera un lector perfecto puede completar
+su identidad.
+
+**Consecuencia dura para el lector: no puede usar `JSON.parse`.** Tiene que
+extraer campo por campo tolerando comillas o su ausencia, guiones en el CUIT y
+las dos formas de fecha. Sube de 3 a 5 sobre 18 sin cambiar nada más.
+
+**Una foto puede traer varios QR.** En una hay dos: el de AFIP y uno de
+marketing (`qrco.de`). En otra, el único QR es el de **Data Fiscal**
+(`qr.afip.gob.ar/?qr=`), que es otro formato y no identifica un comprobante. Hay
+que quedarse con el de factura —`www.afip.gob.ar/fe/qr/?p=`— y no con el primero
+que aparezca.
+
+**Los cinco QR traen `nroDocRec` con el CUIT de la empresa.** Con eso el sistema
+puede verificar que la factura está a nombre de ustedes y avisar cuando no. Es
+un control que cuesta una línea y no estaba en el diseño.
+
+### Lo que estos números no prueban
+
+Las fotos están sacadas de costado, a brazo extendido, con la hoja en una
+carpeta de anillos. **La app no captura así**: lee el código en vivo mientras se
+apunta, con la linterna prendida. Una de las que dio "sin código" —una factura
+de CCU— **tiene el QR impreso y bien visible**; no se leyó por cómo está la
+foto, no porque el código sea malo.
+
+O sea que **28% es un piso y no la expectativa**. Pero es el único número real
+que hay, y dice lo mismo que venía diciendo el Council: el diseño no puede
+apostar todo al QR.
+
 ## La cascada de identificación
 
 No todas las facturas traen un código legible. Algunas no traen ninguno —remitos,
@@ -432,13 +504,15 @@ leer. Son dos caminos distintos y la cascada se bifurca en el peldaño 3.
 Cinco peldaños, del más barato al más caro:
 
 **1 · QR de AFIP** (RG 4892/2020). Trae CUIT, punto de venta, tipo, número,
-fecha, importe y CAE. Resuelve solo.
+fecha, importe y CAE. Resuelve solo — **cuando el emisor lo genera bien**, que
+no es siempre. Ver "Lo que dijeron 18 comprobantes reales".
 
-**2 · Código de barras** (RG 1702/2004, Interleaved 2 of 5). Obligatorio en
-facturas A, B, C, E y M, y está impreso en muchas que además traen QR. Trae CUIT,
-tipo, punto de venta y **CAE**. No trae número ni importe, pero **el CAE es único
-por comprobante**, así que cruza exacto contra ARCA. Son dos oportunidades de
-lectura, no una, y agregarlo es gratis: el mismo lector soporta los dos formatos.
+**2 · ~~Código de barras~~ — descartado por medición, no por criterio.** La
+versión anterior de este diseño ponía acá el código de la RG 1702 como segundo
+lector. **Se revisaron 18 comprobantes reales y ninguno lo trae.** Los códigos
+lineales que aparecen son internos del proveedor —en una factura de Dinamark,
+`1000100041161`, que es el número de cuenta corriente del cliente— y no tienen
+relación con AFIP. Escribir ese lector era construir para un código que no está.
 
 **3 · Elegir de una lista corta.** Si ningún código se lee, se muestran **las
 filas de ARCA de esa semana que todavía no tienen foto**, de la más reciente a
@@ -543,9 +617,10 @@ pantalla lo oculte — el dato no sale del servidor. Hay un test que lo sostiene
 
 Con `node --test`, como el resto del proyecto:
 
-1. Los dos lectores: QR de AFIP y código de barras ITF, cada uno con un caso
-   real, uno corrupto y uno de otra cosa. Y que el CAE del código de barras
-   cruce contra la fila correcta de ARCA.
+1. El lector de QR, **contra los cinco payloads reales ya capturados**: los tres
+   con JSON válido, el de los ceros a la izquierda y el que viene sin comillas,
+   con guiones y sin `nroCmp`. Más una foto con dos QR, para que elija el de
+   factura y no el de marketing.
 2. El parser del CSV de ARCA: formatos de número, filas de total, campos vacíos.
 3. La deduplicación: la misma factura por ARCA y por foto da **una** fila.
    Y el emparejamiento manual: los adjuntos se mudan, la fila de la foto queda
@@ -583,11 +658,10 @@ etapa 2, y si hace falta la lectura automática del peldaño 4.
    comprobantes están, y **cuánta plata** representan. Los dos números van a dar
    distinto, y el segundo es el que dice cuánto vale la etapa 2 — si ARCA cubre
    el 30% de los papeles pero el 80% del dinero, sigue valiendo mucho.
-2. **Agarrar 20 comprobantes reales** —arrugados, con grasa, como llegan— y
-   contarlos en tres montones: **cuántos tienen QR legible**, cuántos tienen
-   **código de barras legible** (aunque el QR no se lea), y cuántos **no tienen
-   ninguno**. Ese tercer montón es el único que va a necesitar tipeo, y su
-   tamaño decide si hace falta el peldaño 4 de la cascada.
+2. ~~Contar los comprobantes por tipo de código.~~ **Hecha el 01/09/2026** sobre
+   18 comprobantes reales. Resultados y consecuencias en "Lo que dijeron 18
+   comprobantes reales". Conviene repetirla una vez que la app esté capturando
+   en vivo: la columna `source` da ese número solo, sin contar nada a mano.
 
 ## Lo que quedó sin resolver
 
