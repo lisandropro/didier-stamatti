@@ -53,7 +53,7 @@ import { ROLES, canManagePeriods } from "../lib/permissions";
 // Permisos: la matriz completa, sin base
 // ---------------------------------------------------------------------------
 
-const PUEDE_GESTIONAR_PERIODOS = { ADMIN: true, ARMADOR: true, LOGISTICA: false } as const;
+const PUEDE_GESTIONAR_PERIODOS = { ADMIN: true, ARMADOR: true, LOGISTICA: false, RECEPCION: false, PAGOS: false } as const; // los roles de comprobantes no gestionan eventos ni períodos
 
 for (const rol of Object.keys(PUEDE_GESTIONAR_PERIODOS) as (keyof typeof PUEDE_GESTIONAR_PERIODOS)[]) {
   test(`${rol}: puede crear, editar y borrar períodos = ${PUEDE_GESTIONAR_PERIODOS[rol]}`, () => {

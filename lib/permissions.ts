@@ -8,13 +8,15 @@
 // REGLA: esconder un botón NO es un permiso. Toda acción que escribe algo tiene
 // que llamar a la comprobación que corresponde, del lado del servidor.
 
-export const ROLES = ["ADMIN", "ARMADOR", "LOGISTICA"] as const;
+export const ROLES = ["ADMIN", "ARMADOR", "LOGISTICA", "RECEPCION", "PAGOS"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Administradora",
   ARMADOR: "Armador/a",
   LOGISTICA: "Encargado de logística",
+  RECEPCION: "Recepción de mercadería",
+  PAGOS: "Pagos a proveedores",
 };
 
 /** Descripción corta para la pantalla de Usuarios. */
@@ -22,6 +24,8 @@ export const ROLE_HELP: Record<string, string> = {
   ADMIN: "Control total",
   ARMADOR: "Arma pedidos",
   LOGISTICA: "Mira todo y cambia el responsable de la fiesta",
+  RECEPCION: "Fotografía los comprobantes que llegan",
+  PAGOS: "Ve qué se debe y qué vence, y marca lo pagado",
 };
 
 export function isRole(value: string): value is Role {
@@ -92,6 +96,39 @@ export function canManageSuggestions(role: string): boolean {
  *  equipo una lista de pendientes que no le toca resolver la convierte en ruido,
  *  y una lista que se ignora deja de controlar. */
 export function canSeeChecks(role: string): boolean {
+  return role === "ADMIN";
+}
+
+// ---------------------------------------------------------------------------
+// Comprobantes de proveedores
+// ---------------------------------------------------------------------------
+
+/** Sacarle la foto a un comprobante que llega con la mercadería. */
+export function canCapturarComprobantes(role: string): boolean {
+  return role === "ADMIN" || role === "RECEPCION";
+}
+
+/** Ver importes, deuda y vencimientos.
+ *
+ *  Es el permiso más importante del módulo y el único que se apoya en algo más
+ *  que la costumbre: quien recibe la mercadería no tiene por qué saber cuánto
+ *  sale. Las acciones que devuelven plata comprueban ESTO antes de armar la
+ *  respuesta, así que a un teléfono de depósito el número no le llega nunca.
+ *
+ *  Es lo que hace aceptable meter un módulo de plata dentro de una app que usa
+ *  todo el equipo: compartir base de datos no es compartir visibilidad. */
+export function canVerImportes(role: string): boolean {
+  return role === "ADMIN" || role === "PAGOS";
+}
+
+/** Cargar el vencimiento del papel y marcar comprobantes como pagados. */
+export function canPagar(role: string): boolean {
+  return role === "ADMIN" || role === "PAGOS";
+}
+
+/** Dar de alta proveedores, fusionar duplicados, corregir vínculos, importar
+ *  el CSV de ARCA y ver el historial de cambios. */
+export function canAdministrarComprobantes(role: string): boolean {
   return role === "ADMIN";
 }
 

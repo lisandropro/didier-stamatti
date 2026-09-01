@@ -38,7 +38,7 @@ import {
 // Permisos
 // ---------------------------------------------------------------------------
 
-const PUEDE_CORREGIR = { ADMIN: true, ARMADOR: true, LOGISTICA: false } as const;
+const PUEDE_CORREGIR = { ADMIN: true, ARMADOR: true, LOGISTICA: false, RECEPCION: false, PAGOS: false } as const; // los roles de comprobantes no gestionan eventos ni períodos
 
 for (const rol of Object.keys(PUEDE_CORREGIR) as (keyof typeof PUEDE_CORREGIR)[]) {
   test(`${rol}: puede corregir un evento = ${PUEDE_CORREGIR[rol]}`, () => {
