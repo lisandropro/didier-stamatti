@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { capturarComprobante } from "@/app/actions/comprobantes";
+import Recorte from "./recorte";
+import { escanear, type Esquina } from "@/lib/comprobantes/escaneo";
 import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 
 // La pantalla del depósito. Una sola cosa: sacar la foto.
@@ -33,6 +35,11 @@ export default function CapturaCliente({
   const [capturas, setCapturas] = useState(capturasIniciales);
 
   const [foto, setFoto] = useState<Blob | null>(null);
+  // El lienzo de la foto, para poder recortarla. Se guarda aparte del blob
+  // porque volver a decodificar el JPEG para recortar pierde calidad dos veces.
+  const [lienzoFoto, setLienzoFoto] = useState<HTMLCanvasElement | null>(null);
+  const esquinasRef = useRef<Esquina[] | null>(null);
+  const [recortar, setRecortar] = useState(true);
   const [destino, setDestino] = useState<Destino | null>(null);
   const [conforme, setConforme] = useState<boolean | null>(null);
   const [codigoLeido, setCodigoLeido] = useState(false);
@@ -176,6 +183,9 @@ export default function CapturaCliente({
     navigator.vibrate?.(30);
     cerrarCamara();
     setFoto(blob);
+    setLienzoFoto(lienzo);
+    esquinasRef.current = null;
+    setRecortar(true);
     setPaso("revision");
   }
 
@@ -187,9 +197,26 @@ export default function CapturaCliente({
     const fd = new FormData();
     fd.set("clientKey", clientKeyRef.current);
     fd.set("kind", "FACTURA");
+
+    // La ORIGINAL va SIEMPRE y va primero. Es el seguro: lo que se archiva es
+    // la escaneada, pero si el recorte se comio un borde, el papel de verdad
+    // sigue estando.
     fd.append("fotos", new File([foto], "comprobante.jpg", { type: "image/jpeg" }));
     fd.append("variante", "ORIGINAL");
     fd.append("pagina", "1");
+
+    // Y la escaneada, si se pudo. **Si falla no pasa nada**: se sube solo la
+    // original y el comprobante entra igual. Vale la regla del modulo — nada
+    // puede impedir que la foto quede.
+    if (recortar && lienzoFoto && esquinasRef.current) {
+      const escaneada = await escanear(lienzoFoto, esquinasRef.current);
+      if (escaneada) {
+        fd.append("fotos", new File([escaneada], "escaneada.jpg", { type: "image/jpeg" }));
+        fd.append("variante", "ESCANEADA");
+        fd.append("pagina", "1");
+      }
+    }
+
     for (const qr of qrRef.current) fd.append("qr", qr);
     if (destino) fd.set("destino", destino);
     if (conforme !== null) fd.set("conforme", conforme ? "si" : "no");
@@ -272,8 +299,25 @@ export default function CapturaCliente({
 
       {paso === "revision" && vistaPrevia && (
         <section className="cap-revision">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={vistaPrevia} alt="El comprobante que acabás de fotografiar" className="cap-previa" />
+          {recortar && lienzoFoto ? (
+            <Recorte
+              fuente={lienzoFoto}
+              onCambio={(e) => {
+                esquinasRef.current = e;
+              }}
+            />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={vistaPrevia} alt="El comprobante que acabás de fotografiar" className="cap-previa" />
+          )}
+
+          {/* Siempre visible, siempre disponible: si el recorte no ayuda, se
+              sale de él en un toque y la foto se guarda como está. */}
+          {lienzoFoto && (
+            <button type="button" className="btn ghost cap-sin-recorte" onClick={() => setRecortar((v) => !v)}>
+              {recortar ? "Usar la foto sin recortar" : "Recortar el papel"}
+            </button>
+          )}
 
           <p className={`cap-lectura${codigoLeido ? " ok" : ""}`}>
             {codigoLeido

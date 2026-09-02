@@ -1406,3 +1406,18 @@ tbody tr:hover{background:var(--surface-2)}
   .cmp-semaforo-bien{background:#EFF7F1; border-color:#A9CDB5; color:#1B5E31}
   .cmp-semaforo-mal{background:#FDF2F2; border-color:#E4B4B4; color:#8A1F27}
 }
+
+/* ===== Marcar el papel antes de guardar ===== */
+
+.rec-caja{display:flex; flex-direction:column; gap:var(--sp-2)}
+.rec-lienzo{
+  width:100%; height:auto; display:block; border-radius:var(--r-md);
+  background:var(--surface-2);
+  /* Sin esto, arrastrar una esquina desplaza la página en vez de mover el punto:
+     el navegador se queda con el gesto antes de que lo vea el lienzo. */
+  touch-action:none;
+  cursor:grab;
+}
+.rec-lienzo:active{cursor:grabbing}
+.rec-ayuda{font-size:var(--t-sm); color:var(--muted); margin:0; text-wrap:pretty}
+.cap-sin-recorte{width:100%; min-height:var(--tap)}

@@ -24,12 +24,16 @@ export async function leerComprobante(documentId: string): Promise<Lectura> {
   });
   if (!doc) throw new Error("Ese comprobante no existe.");
 
-  // La ORIGINAL y no la ESCANEADA: el recorte automático puede haberse comido un
-  // borde, y lo que se le manda al lector conviene que sea la foto completa.
-  // El orden por `variante` descendente pone ORIGINAL primero.
+  // La ESCANEADA cuando existe: enderezada y con el fondo blanco es justamente
+  // lo que sube la tasa de extracción, y el recorte lo confirmó una persona en
+  // la pantalla de captura, así que no hay riesgo de que se haya comido un borde
+  // sin que nadie lo viera.
+  //
+  // `ESCANEADA` va antes que `ORIGINAL` alfabéticamente, así que el orden
+  // ascendente la pone primero y cae sola a la original cuando no hay escaneo.
   const adjunto = await db.attachment.findFirst({
     where: { documentId },
-    orderBy: [{ page: "asc" }, { variante: "desc" }],
+    orderBy: [{ page: "asc" }, { variante: "asc" }],
     select: { s3Key: true, mimeType: true },
   });
   if (!adjunto) throw new Error("Ese comprobante no tiene foto para leer.");
