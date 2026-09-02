@@ -3019,7 +3019,30 @@ git commit -m "Leer la foto cuando no hay codigo que leer"
 
 ---
 
-### Task 11: El escaneo del papel
+### Task 11: El escaneo del papel ✅ HECHA (2026-09-02)
+
+> **No se agregó `jscanify`.** Trae OpenCV en WASM (30 MB) y arrastra `canvas`
+> —binding nativo que necesita cairo y pango— y `jsdom`; los dos son
+> irrelevantes en el navegador pero se instalan igual y pueden romper el build
+> de Railway. Treinta megas para encontrar cuatro esquinas, en un teléfono que
+> puede estar con datos móviles, cuando este mismo plan ya exigía el arrastre
+> manual porque la detección automática falla seguido.
+>
+> En su lugar: homografía escrita a mano (forma cerrada del cuadrado unitario al
+> cuadrilátero), muestreo bilineal y detección propia por perfil de filas y
+> columnas. Se pierde la detección de OpenCV, que es mejor; se gana que la app
+> siga pesando lo que pesa.
+>
+> La detección propia devuelve un **rectángulo**, no un cuadrilátero torcido: un
+> cuadrilátero mal calculado es peor que uno recto, porque el recto se corrige
+> moviendo una esquina y el torcido hay que rehacerlo entero.
+>
+> **La prueba que importa es la de ida y vuelta**: se deforma un documento
+> conocido y se comprueba que el enderezado lo recupera derecho y sin espejar.
+>
+> **Pendiente: el paso 7** (comprobar a ojo con fotos reales). Necesita un
+> navegador. Sin eso no está medido cuántas veces la detección acierta sola ni
+> si el realce se lleva puesto algún QR.
 
 > Lo que llega es una foto de un papel arrugado, de costado, en una carpeta de
 > anillos y con la sombra de quien la saca encima. Lo que se archiva tiene que
