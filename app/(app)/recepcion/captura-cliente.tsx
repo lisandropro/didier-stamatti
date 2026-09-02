@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { capturarComprobante } from "@/app/actions/comprobantes";
 import Recorte from "./recorte";
 import { escanear, type Esquina } from "@/lib/comprobantes/escaneo";
+import { crearLectorQr } from "@/lib/comprobantes/lector-qr";
 import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 
 // La pantalla del depósito. Una sola cosa: sacar la foto.
@@ -21,7 +22,32 @@ import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 type Paso = "inicio" | "camara" | "revision" | "guardando" | "listo";
 type Destino = "COCINA" | "DEPOSITO";
 
-const MAX_LADO = 2000;
+/**
+ * El lado más largo de la foto que se guarda.
+ *
+ * **3000 y no 2000, y el número está medido.** Contra las 18 fotos reales del
+ * depósito, decodificando con zxing:
+ *
+ *     1600 px → 1 de 18 QR legibles
+ *     2000 px → 3 de 18        ← lo que había
+ *     2400 px → 4 de 18
+ *     2800 px → 6 de 18
+ *     3200 px → 7 de 18
+ *     nativo  → 5 de 18
+ *
+ * O sea que el achicado del disparo estaba tirando más de la mitad de los
+ * códigos **antes de que existiera el escaneo**, y en silencio: un QR que no se
+ * lee es indistinguible de un comprobante que no lo trae.
+ *
+ * Que el nativo rinda peor que 3200 no es un error de medición: un achicado
+ * suave promedia el ruido del sensor y le deja los bordes más limpios al
+ * decodificador.
+ *
+ * Cuesta el doble de peso —alrededor de 1 MB por foto contra 500 KB— y lo vale:
+ * un QR perdido manda el comprobante a carga manual, que es exactamente lo que
+ * este módulo vino a evitar.
+ */
+const MAX_LADO = 3000;
 const MS_BUSCANDO_CODIGO = 3000;
 
 export default function CapturaCliente({
@@ -40,6 +66,8 @@ export default function CapturaCliente({
   const [lienzoFoto, setLienzoFoto] = useState<HTMLCanvasElement | null>(null);
   const esquinasRef = useRef<Esquina[] | null>(null);
   const [recortar, setRecortar] = useState(true);
+  const [giro, setGiro] = useState<0 | 90 | 180 | 270>(0);
+  const [escaneando, setEscaneando] = useState(0);
   const [destino, setDestino] = useState<Destino | null>(null);
   const [conforme, setConforme] = useState<boolean | null>(null);
   const [codigoLeido, setCodigoLeido] = useState(false);
@@ -133,32 +161,32 @@ export default function CapturaCliente({
       /* muchos teléfonos no la tienen; no es motivo para frenar nada */
     }
 
-    const Detector = (window as unknown as { BarcodeDetector?: new (o: unknown) => { detect(s: unknown): Promise<{ rawValue: string }[]> } }).BarcodeDetector;
-    if (!Detector) return; // sin lector, se saca la foto igual
-    const detector = new Detector({ formats: ["qr_code"] });
-
     let vivo = true;
     const arranque = performance.now();
-    async function buscar() {
-      if (!vivo) return;
-      // A los tres segundos se deja de insistir. No hay que pelearse con un
-      // papel arrugado: la foto se saca igual y el código se resuelve después.
-      if (performance.now() - arranque > MS_BUSCANDO_CODIGO) return;
-      try {
-        for (const c of await detector.detect(video)) {
-          if (qrRef.current.has(c.rawValue)) continue;
+
+    // El lector se elige al vuelo: nativo donde existe, jsQR donde no. Antes
+    // acá había un `if (!BarcodeDetector) return`, y en iPhone —que es lo que
+    // este equipo usa— esa rama se tomaba SIEMPRE, en silencio.
+    crearLectorQr().then((lector) => {
+      if (!lector || !vivo) return;
+
+      async function buscar() {
+        if (!vivo) return;
+        // A los tres segundos se deja de insistir. No hay que pelearse con un
+        // papel arrugado: la foto se saca igual y el código se resuelve después.
+        if (performance.now() - arranque > MS_BUSCANDO_CODIGO) return;
+        for (const valor of await lector!.leer(video!)) {
+          if (qrRef.current.has(valor)) continue;
           // Una foto puede traer varios QR —el de AFIP, uno de marketing—; se
           // juntan todos y cuál es cuál lo decide el servidor.
-          qrRef.current.add(c.rawValue);
+          qrRef.current.add(valor);
           setCodigoLeido(true);
           navigator.vibrate?.(60);
         }
-      } catch {
-        /* un cuadro borroso no es un error: se prueba con el siguiente */
+        requestAnimationFrame(buscar);
       }
       requestAnimationFrame(buscar);
-    }
-    requestAnimationFrame(buscar);
+    });
     return () => {
       vivo = false;
     };
@@ -186,6 +214,7 @@ export default function CapturaCliente({
     setLienzoFoto(lienzo);
     esquinasRef.current = null;
     setRecortar(true);
+    setGiro(0);
     setPaso("revision");
   }
 
@@ -209,7 +238,10 @@ export default function CapturaCliente({
     // original y el comprobante entra igual. Vale la regla del modulo — nada
     // puede impedir que la foto quede.
     if (recortar && lienzoFoto && esquinasRef.current) {
-      const escaneada = await escanear(lienzoFoto, esquinasRef.current);
+      const escaneada = await escanear(lienzoFoto, esquinasRef.current, {
+        giro,
+        alAvanzar: setEscaneando,
+      });
       if (escaneada) {
         fd.append("fotos", new File([escaneada], "escaneada.jpg", { type: "image/jpeg" }));
         fd.append("variante", "ESCANEADA");
@@ -302,6 +334,8 @@ export default function CapturaCliente({
           {recortar && lienzoFoto ? (
             <Recorte
               fuente={lienzoFoto}
+              giro={giro}
+              onGirar={() => setGiro((g) => ((g + 90) % 360) as 0 | 90 | 180 | 270)}
               onCambio={(e) => {
                 esquinasRef.current = e;
               }}
@@ -388,6 +422,13 @@ export default function CapturaCliente({
 
       {paso === "guardando" && (
         <section className="cap-revision" aria-busy="true">
+          {/* El escaneo tarda segundos a resolución completa. Sin esta barra la
+              pantalla se ve congelada y quien saca la foto vuelve a tocar. */}
+          {escaneando > 0 && escaneando < 1 && (
+            <p className="cap-progreso" role="status">
+              Enderezando el papel… {Math.round(escaneando * 100)}%
+            </p>
+          )}
           <div className="sk cap-previa" />
           <div className="sk" style={{ height: 14, width: "60%" }} />
         </section>

@@ -172,17 +172,25 @@ export function puntoBlanco(datos: Uint8ClampedArray): number {
 export type Recuadro = { x0: number; y0: number; x1: number; y1: number };
 
 /**
- * Una propuesta de recorte: la caja donde está el contenido.
+ * Una propuesta de recorte: dónde está el papel.
  *
- * No es detección de bordes de OpenCV y no pretende serlo. Recorre filas y
- * columnas buscando dónde deja de haber sólo fondo, que resuelve el caso común
- * —el papel más o menos de frente, con mesa alrededor— y falla en el difícil,
- * que es para lo que están las esquinas arrastrables.
+ * **El papel es lo CLARO.** La primera versión de esto buscaba lo que se
+ * despegaba de la mediana, y contra 18 fotos reales acertó **cero veces**: la
+ * mediana ES el papel —ocupa casi todo el cuadro— así que la caja se expandía
+ * hasta abarcar el fondo oscuro. Estaba exactamente al revés.
  *
- * Devuelve `null` cuando no encuentra nada distinto o cuando el recorte agarra
- * casi toda la foto. En los dos casos proponer un recorte sería peor que no
- * proponerlo: uno recorta al azar y el otro no aporta nada y arriesga comerse un
- * borde.
+ * Ahora: se umbraliza por Otsu, se etiquetan las regiones claras y se toma la
+ * más grande **que pase por el centro**. Quien saca la foto apunta al papel que
+ * quiere; el del medio es el suyo, aunque atrás haya otros.
+ *
+ * Y **una cobertura alta no se rechaza**. La versión anterior descartaba todo lo
+ * que pasara del 90% "porque recortar no aportaba nada", y contra fotos reales
+ * el papel cubre entre el 84% y el 99%: rechazaba justamente la respuesta
+ * correcta. Cuando el papel llena el cuadro, la propuesta correcta es el cuadro
+ * casi entero.
+ *
+ * Devuelve `null` cuando no hay una región clara plausible: ahí la pantalla
+ * propone el marco por defecto y la persona arrastra.
  */
 export function recuadroDeContenido(
   datos: Uint8ClampedArray,
@@ -191,60 +199,124 @@ export function recuadroDeContenido(
 ): Recuadro | null {
   if (ancho < 8 || alto < 8) return null;
 
-  const lum = new Float32Array(ancho * alto);
-  for (let i = 0; i < ancho * alto; i++) {
+  const n = ancho * alto;
+  const lum = new Float32Array(n);
+  const histograma = new Int32Array(256);
+  for (let i = 0; i < n; i++) {
     const j = i * 4;
-    lum[i] = 0.299 * datos[j] + 0.587 * datos[j + 1] + 0.114 * datos[j + 2];
+    const v = 0.299 * datos[j] + 0.587 * datos[j + 1] + 0.114 * datos[j + 2];
+    lum[i] = v;
+    histograma[Math.round(v)]++;
   }
 
-  // El fondo es la mediana: en una foto de una hoja sobre una mesa, lo que más
-  // hay es una de las dos cosas, y la que sea sirve de referencia.
-  const orden = Float32Array.from(lum).sort();
-  const fondo = orden[Math.floor(orden.length / 2)];
-  // Un umbral proporcional al contraste real de la imagen, no un número fijo:
-  // una foto a contraluz y una con flash no tienen el mismo rango.
-  const p05 = orden[Math.floor(orden.length * 0.05)];
-  const p95 = orden[Math.floor(orden.length * 0.95)];
-  const umbral = Math.max(18, (p95 - p05) * 0.25);
+  const umbralOtsu = otsu(histograma, n);
+  // Sin dos grupos no hay nada que separar: una imagen de un solo tono no tiene
+  // hoja, y devolver el cuadro entero sería afirmar que se encontró algo.
+  if (umbralOtsu === null) return null;
+  const umbral = umbralOtsu;
 
-  const distinto = (i: number) => Math.abs(lum[i] - fondo) > umbral;
+  // Etiquetado por inundación. Sobre la imagen de análisis —240 px de ancho— son
+  // unos 76.000 píxeles: instantáneo, y sin recursión para no reventar la pila
+  // con una región grande.
+  const visto = new Uint8Array(n);
+  const pila: number[] = [];
+  const cx = ancho / 2;
+  const cy = alto / 2;
 
-  // Una fila o columna cuenta si al menos el 2% de sus píxeles se despegan del
-  // fondo. Un píxel suelto es ruido del sensor, no un borde de papel.
-  const minFila = Math.max(2, Math.floor(ancho * 0.02));
-  const minCol = Math.max(2, Math.floor(alto * 0.02));
+  let mejorTam = 0;
+  let mejor: Recuadro | null = null;
 
-  let y0 = -1;
-  let y1 = -1;
-  for (let y = 0; y < alto; y++) {
-    let n = 0;
-    for (let x = 0; x < ancho; x++) if (distinto(y * ancho + x)) n++;
-    if (n >= minFila) {
-      if (y0 === -1) y0 = y;
-      y1 = y;
+  for (let inicio = 0; inicio < n; inicio++) {
+    if (lum[inicio] <= umbral || visto[inicio]) continue;
+
+    let tam = 0;
+    let x0 = ancho;
+    let y0 = alto;
+    let x1 = 0;
+    let y1 = 0;
+    let pasaPorElCentro = false;
+
+    pila.length = 0;
+    pila.push(inicio);
+    visto[inicio] = 1;
+
+    while (pila.length > 0) {
+      const p = pila.pop()!;
+      const px = p % ancho;
+      const py = (p - px) / ancho;
+      tam++;
+      if (px < x0) x0 = px;
+      if (px > x1) x1 = px;
+      if (py < y0) y0 = py;
+      if (py > y1) y1 = py;
+      // "El centro" es un rectángulo del 40% central, no un punto: un píxel
+      // oscuro justo en el medio —una letra— no puede decidir esto.
+      if (Math.abs(px - cx) < ancho * 0.2 && Math.abs(py - cy) < alto * 0.2) {
+        pasaPorElCentro = true;
+      }
+
+      if (px > 0) empujar(p - 1);
+      if (px < ancho - 1) empujar(p + 1);
+      if (py > 0) empujar(p - ancho);
+      if (py < alto - 1) empujar(p + ancho);
+    }
+
+    if (pasaPorElCentro && tam > mejorTam) {
+      mejorTam = tam;
+      mejor = { x0, y0, x1, y1 };
+    }
+
+    function empujar(q: number) {
+      if (!visto[q] && lum[q] > umbral) {
+        visto[q] = 1;
+        pila.push(q);
+      }
     }
   }
 
-  let x0 = -1;
-  let x1 = -1;
-  for (let x = 0; x < ancho; x++) {
-    let n = 0;
-    for (let y = 0; y < alto; y++) if (distinto(y * ancho + x)) n++;
-    if (n >= minCol) {
-      if (x0 === -1) x0 = x;
-      x1 = x;
+  if (!mejor || mejor.x1 <= mejor.x0 || mejor.y1 <= mejor.y0) return null;
+
+  const area = (mejor.x1 - mejor.x0) * (mejor.y1 - mejor.y0);
+  // Una mancha chica no es una hoja.
+  if (area / n < 0.25) return null;
+  // Y si la región clara llena su propia caja a menos de la mitad, no es una
+  // hoja: es luz dispersa, o dos papeles unidos por un hilo de píxeles.
+  if (mejorTam / area < 0.5) return null;
+
+  return mejor;
+}
+
+/**
+ * El umbral que mejor separa lo claro de lo oscuro, por Otsu.
+ *
+ * Un número fijo no sirve: una foto a contraluz y una con flash no tienen el
+ * mismo rango, y el mismo depósito con la luz prendida o apagada tampoco.
+ */
+function otsu(histograma: Int32Array, total: number): number | null {
+  let suma = 0;
+  for (let t = 0; t < 256; t++) suma += t * histograma[t];
+
+  let sumaFondo = 0;
+  let pesoFondo = 0;
+  let mejorVarianza = 0;
+  let umbral: number | null = null;
+
+  for (let t = 0; t < 256; t++) {
+    pesoFondo += histograma[t];
+    if (pesoFondo === 0) continue;
+    const pesoFrente = total - pesoFondo;
+    if (pesoFrente === 0) break;
+
+    sumaFondo += t * histograma[t];
+    const mediaFondo = sumaFondo / pesoFondo;
+    const mediaFrente = (suma - sumaFondo) / pesoFrente;
+    const entreClases = pesoFondo * pesoFrente * (mediaFondo - mediaFrente) ** 2;
+    if (entreClases > mejorVarianza) {
+      mejorVarianza = entreClases;
+      umbral = t;
     }
   }
-
-  if (x0 === -1 || y0 === -1 || x1 <= x0 || y1 <= y0) return null;
-
-  // Si ya ocupa casi todo, recortar no aporta.
-  const cubre = ((x1 - x0) * (y1 - y0)) / (ancho * alto);
-  if (cubre > 0.9) return null;
-  // Y si es minúsculo, encontró una mancha y no una hoja.
-  if (cubre < 0.05) return null;
-
-  return { x0, y0, x1, y1 };
+  return umbral;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,9 +383,19 @@ export function marcoPorDefecto(ancho: number, alto: number): Esquina[] {
   ];
 }
 
-/** Más allá de esto el archivo pesa de más para lo que aporta: una hoja A4 a
- *  1600 px de ancho ya tiene el CAE legible y el QR decodificable. */
-const ANCHO_MAXIMO = 1600;
+/**
+ * El ancho máximo de la imagen escaneada.
+ *
+ * **2400 y no 1600, y el número está medido.** Con un banco de 12 QR de AFIP a
+ * escala real —distintos tamaños de impresión, con y sin desenfoque, con tinta
+ * gastada— achicar a 1600 px perdía 2; a 2400 no perdía ninguno. El realce, en
+ * cambio, no cambió el resultado en ninguna combinación: lo que rompe el código
+ * es el achicado, no el contraste.
+ *
+ * Sube el peso del archivo alrededor de un 50%, y vale la pena: un QR perdido
+ * manda el comprobante a carga manual, que es lo que este módulo vino a evitar.
+ */
+export const ANCHO_MAXIMO = 2400;
 
 /**
  * Recorta al cuadrilátero, endereza y blanquea el fondo.
@@ -321,38 +403,6 @@ const ANCHO_MAXIMO = 1600;
  * Devuelve `null` si no puede: quien llama sube la original. La regla del módulo
  * vale también acá — **nada puede impedir que la foto quede**.
  */
-export function enderezar(fuente: HTMLCanvasElement, esquinas: Esquina[]): HTMLCanvasElement | null {
-  const ordenadas = ordenarEsquinas(esquinas);
-  if (!ordenadas) return null;
-
-  const mapa = mapaDePerspectiva(ordenadas);
-  if (!mapa) return null;
-
-  const medida = medidaDeSalida(ordenadas);
-  if (medida.ancho < 8 || medida.alto < 8) return null;
-
-  const escala = Math.min(1, ANCHO_MAXIMO / medida.ancho);
-  const ancho = Math.round(medida.ancho * escala);
-  const alto = Math.round(medida.alto * escala);
-
-  const origen = fuente.getContext("2d", { willReadFrequently: true });
-  if (!origen) return null;
-  const entrada = origen.getImageData(0, 0, fuente.width, fuente.height);
-
-  const resultado = enderezarPixeles(entrada, ordenadas, ancho, alto);
-  if (!resultado) return null;
-
-  const destino = document.createElement("canvas");
-  destino.width = ancho;
-  destino.height = alto;
-  const ctxDestino = destino.getContext("2d");
-  if (!ctxDestino) return null;
-  const salida = ctxDestino.createImageData(ancho, alto);
-  salida.data.set(resultado.data);
-  ctxDestino.putImageData(salida, 0, 0);
-  return destino;
-}
-
 /** Una imagen, sin depender de que exista un navegador. */
 export type Mapa = { data: Uint8ClampedArray; width: number; height: number };
 
@@ -371,23 +421,148 @@ export function enderezarPixeles(
   alto: number,
   opciones: { realzar?: boolean } = {},
 ): Mapa | null {
+  const trabajo = crearEnderezador(entrada, esquinas, ancho, alto);
+  if (!trabajo) return null;
+  trabajo.banda(0, alto);
+  return trabajo.terminar(opciones.realzar !== false);
+}
+
+/**
+ * El mismo trabajo, partido en bandas de filas.
+ *
+ * Existe porque este bucle **bloquea el hilo**. Medido contra fotos reales del
+ * deposito: 700 ms a 1500 px de ancho, y mas de 2 s a resolucion completa. En un
+ * telefono de gama media eso son varios segundos con la pantalla congelada y sin
+ * ninguna senal — que se lee como "se colgo" y termina en un segundo toque.
+ *
+ * Partirlo permite ceder el hilo entre bandas y mostrar que algo esta pasando.
+ */
+export function crearEnderezador(
+  entrada: Mapa,
+  esquinas: Esquina[],
+  ancho: number,
+  alto: number,
+): { banda(desde: number, hasta: number): void; terminar(realzar: boolean): Mapa } | null {
   const mapa = mapaDePerspectiva(esquinas);
   if (!mapa || ancho < 1 || alto < 1) return null;
 
   const data = new Uint8ClampedArray(ancho * alto * 4);
-  for (let y = 0; y < alto; y++) {
-    // El medio pixel centra la muestra en la celda en vez de en su esquina. Sin
-    // eso la imagen queda corrida medio pixel, que a simple vista no se nota
-    // pero le come nitidez al texto chico — que aca es el CAE.
+
+  return {
+    banda(desde: number, hasta: number) {
+      recorrer(entrada, mapa, data, ancho, alto, desde, Math.min(alto, hasta));
+    },
+    terminar(realzar: boolean) {
+      if (realzar) realzarDatos(data);
+      return { data, width: ancho, height: alto };
+    },
+  };
+}
+
+function recorrer(
+  entrada: Mapa,
+  mapa: (u: number, v: number) => Esquina,
+  data: Uint8ClampedArray,
+  ancho: number,
+  alto: number,
+  desde: number,
+  hasta: number,
+): void {
+  for (let y = desde; y < hasta; y++) {
+    // El medio pixel centra la muestra en la celda en vez de en su esquina.
     const v = (y + 0.5) / alto;
     for (let x = 0; x < ancho; x++) {
       const p = mapa((x + 0.5) / ancho, v);
       muestrear(entrada, p.x, p.y, data, (y * ancho + x) * 4);
     }
   }
+}
 
-  if (opciones.realzar !== false) realzar(data);
-  return { data, width: ancho, height: alto };
+/** Cuántas filas se procesan antes de ceder el hilo. Con 64, cada tanda tarda
+ *  unas decenas de milisegundos: bastante para avanzar, poco para que se note. */
+const FILAS_POR_BANDA = 64;
+
+/**
+ * Recorta al cuadrilátero, endereza, rota y blanquea el fondo.
+ *
+ * Cede el hilo entre bandas para que la pantalla pueda dibujar el progreso: el
+ * bucle tarda segundos a resolución completa, y sin esto el teléfono se queda
+ * congelado y quien saca la foto vuelve a tocar.
+ *
+ * Devuelve `null` si no puede: quien llama sube la original. La regla del módulo
+ * vale también acá — **nada puede impedir que la foto quede**.
+ */
+export async function enderezar(
+  fuente: HTMLCanvasElement,
+  esquinas: Esquina[],
+  opciones: { giro?: 0 | 90 | 180 | 270; alAvanzar?: (fraccion: number) => void } = {},
+): Promise<HTMLCanvasElement | null> {
+  const ordenadas = ordenarEsquinas(esquinas);
+  if (!ordenadas) return null;
+
+  const medida = medidaDeSalida(ordenadas);
+  if (medida.ancho < 8 || medida.alto < 8) return null;
+
+  const escala = Math.min(1, ANCHO_MAXIMO / medida.ancho);
+  const ancho = Math.round(medida.ancho * escala);
+  const alto = Math.round(medida.alto * escala);
+
+  const origen = fuente.getContext("2d", { willReadFrequently: true });
+  if (!origen) return null;
+  const entrada = origen.getImageData(0, 0, fuente.width, fuente.height);
+
+  const trabajo = crearEnderezador(entrada, ordenadas, ancho, alto);
+  if (!trabajo) return null;
+
+  for (let y = 0; y < alto; y += FILAS_POR_BANDA) {
+    trabajo.banda(y, y + FILAS_POR_BANDA);
+    opciones.alAvanzar?.(Math.min(1, (y + FILAS_POR_BANDA) / alto));
+    // `setTimeout(0)` y no `queueMicrotask`: una microtarea NO deja pintar, y el
+    // punto de todo esto es que la pantalla pueda dibujar.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  const resultado = trabajo.terminar(true);
+
+  const derecha = aLienzo(resultado);
+  return girar(derecha, opciones.giro ?? 0);
+}
+
+function aLienzo(m: Mapa): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = m.width;
+  c.height = m.height;
+  const ctx = c.getContext("2d")!;
+  const img = ctx.createImageData(m.width, m.height);
+  img.data.set(m.data);
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/**
+ * Gira la imagen en múltiplos de 90°.
+ *
+ * Hace falta y no es un lujo: entre las 18 fotos reales del depósito hay una
+ * orden de reparación fotografiada de costado, y el enderezado no la corrige —
+ * conserva la proporción del papel tal como estaba en la foto. Una factura
+ * acostada en la pantalla de quien paga se lee girando la cabeza.
+ *
+ * Se gira acá, sobre la imagen ya derecha, y no antes: rotar la foto entera
+ * costaría otra pasada por todos los píxeles.
+ */
+export function girar(lienzo: HTMLCanvasElement, grados: 0 | 90 | 180 | 270): HTMLCanvasElement {
+  if (grados === 0) return lienzo;
+
+  const vertical = grados === 90 || grados === 270;
+  const salida = document.createElement("canvas");
+  salida.width = vertical ? lienzo.height : lienzo.width;
+  salida.height = vertical ? lienzo.width : lienzo.height;
+
+  const ctx = salida.getContext("2d")!;
+  ctx.translate(salida.width / 2, salida.height / 2);
+  ctx.rotate((grados * Math.PI) / 180);
+  ctx.drawImage(lienzo, -lienzo.width / 2, -lienzo.height / 2);
+  return salida;
 }
 
 /**
@@ -404,19 +579,36 @@ function muestrear(
   i: number,
 ): void {
   const { width: w, height: h, data: d } = img;
-  if (x < 0 || y < 0 || x > w - 1 || y > h - 1) {
+  // El límite es `w`, no `w - 1`. La coordenada es CONTINUA: el píxel `w-1`
+  // ocupa `[w-1, w)`, así que un punto en 63.5 de una imagen de 64 está adentro.
+  // Comparando contra `w - 1` la última fila y la última columna de toda imagen
+  // escaneada salían en blanco — un borde de un píxel, invisible, y aun así
+  // mal. Lo agarró la prueba de identidad.
+  if (x < 0 || y < 0 || x > w || y > h) {
     // Fuera de la foto: blanco. Es lo que hay alrededor de una hoja escaneada.
     destino[i] = destino[i + 1] = destino[i + 2] = 255;
     destino[i + 3] = 255;
     return;
   }
 
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
+  // **El medio pixel se RESTA acá.** El mapa devuelve una coordenada continua,
+  // donde el pixel `i` ocupa `[i, i+1)` y su centro esta en `i+0.5`. La grilla
+  // de interpolacion, en cambio, esta en los CENTROS. Sin este ajuste, una
+  // transformacion identidad interpolaba cada pixel al 50% con su vecino: la
+  // imagen entera salia con medio pixel de desenfoque en cada eje.
+  //
+  // No se veia. Lo que se veia era el resultado: de 18 comprobantes reales, el
+  // unico cuyo QR se leia dejaba de leerse despues de escanearlo — con recorte
+  // identidad y sin realce. Un QR tiene modulos de tres o cuatro pixeles, asi
+  // que medio pixel de mezcla alcanza para romperlo.
+  const cx = x - 0.5;
+  const cy = y - 0.5;
+  const x0 = Math.max(0, Math.floor(cx));
+  const y0 = Math.max(0, Math.floor(cy));
   const x1 = Math.min(w - 1, x0 + 1);
   const y1 = Math.min(h - 1, y0 + 1);
-  const fx = x - x0;
-  const fy = y - y0;
+  const fx = Math.max(0, Math.min(1, cx - x0));
+  const fy = Math.max(0, Math.min(1, cy - y0));
 
   const a = (y0 * w + x0) * 4;
   const b = (y0 * w + x1) * 4;
@@ -438,7 +630,7 @@ function muestrear(
  * arruina el QR y los sellos. Acá se estira el contraste dejando los grises: el
  * papel se va a blanco, la tinta a negro, y lo que estaba en el medio sobrevive.
  */
-function realzar(d: Uint8ClampedArray): void {
+function realzarDatos(d: Uint8ClampedArray): void {
   const blanco = puntoBlanco(d);
   // Una pizca por debajo del punto blanco para que el papel llegue a 255 limpio,
   // sin llevarse la tinta clara puesta.
@@ -455,9 +647,13 @@ function realzar(d: Uint8ClampedArray): void {
  *
  * Devuelve `null` ante cualquier problema, y quien llama sube la original.
  */
-export async function escanear(fuente: HTMLCanvasElement, esquinas: Esquina[]): Promise<Blob | null> {
+export async function escanear(
+  fuente: HTMLCanvasElement,
+  esquinas: Esquina[],
+  opciones: { giro?: 0 | 90 | 180 | 270; alAvanzar?: (fraccion: number) => void } = {},
+): Promise<Blob | null> {
   try {
-    const derecha = enderezar(fuente, esquinas);
+    const derecha = await enderezar(fuente, esquinas, opciones);
     if (!derecha) return null;
     return await new Promise<Blob | null>((listo) =>
       derecha.toBlob((b) => listo(b), "image/jpeg", 0.85),

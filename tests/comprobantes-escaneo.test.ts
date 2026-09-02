@@ -169,46 +169,74 @@ test("una imagen negra no produce un punto blanco de cero", () => {
 // ---------------------------------------------------------------------------
 // La detección automática
 // ---------------------------------------------------------------------------
+//
+// **El papel es lo CLARO.** La primera versión de estas pruebas usaba un bloque
+// oscuro sobre fondo claro, que es como se ve un objeto sobre una mesa blanca —
+// y no es como se ve una factura. Contra 18 fotos reales del depósito, aquel
+// detector acertó CERO veces: la mediana era el papel, así que la caja se
+// expandía hasta abarcar el fondo oscuro.
 
-/** Una imagen de `ancho`×`alto` gris claro con un bloque oscuro adentro. */
-function conBloque(
+/** Una foto: fondo oscuro con una hoja clara adentro. */
+function conHoja(
   ancho: number,
   alto: number,
-  caja: { x0: number; y0: number; x1: number; y1: number },
+  hoja: { x0: number; y0: number; x1: number; y1: number },
 ): Uint8ClampedArray {
   const d = new Uint8ClampedArray(ancho * alto * 4);
   for (let y = 0; y < alto; y++) {
     for (let x = 0; x < ancho; x++) {
-      const dentro = x >= caja.x0 && x <= caja.x1 && y >= caja.y0 && y <= caja.y1;
-      const v = dentro ? 40 : 230;
+      const dentro = x >= hoja.x0 && x <= hoja.x1 && y >= hoja.y0 && y <= hoja.y1;
+      const v = dentro ? 225 : 35;
       d.set([v, v, v, 255], (y * ancho + x) * 4);
     }
   }
   return d;
 }
 
-test("encuentra el recuadro del papel dentro de la foto", () => {
-  const r = recuadroDeContenido(conBloque(100, 100, { x0: 20, y0: 30, x1: 70, y1: 80 }), 100, 100);
+test("encuentra la hoja clara dentro de la foto", () => {
+  const r = recuadroDeContenido(conHoja(100, 100, { x0: 20, y0: 15, x1: 78, y1: 88 }), 100, 100);
   assert.ok(r);
-  // Con margen: la detección no tiene que ser exacta, tiene que estar cerca.
-  assert.ok(Math.abs(r.x0 - 20) <= 4, `x0=${r.x0}`);
-  assert.ok(Math.abs(r.y0 - 30) <= 4, `y0=${r.y0}`);
-  assert.ok(Math.abs(r.x1 - 70) <= 4, `x1=${r.x1}`);
-  assert.ok(Math.abs(r.y1 - 80) <= 4, `y1=${r.y1}`);
+  assert.ok(Math.abs(r.x0 - 20) <= 3, `x0=${r.x0}`);
+  assert.ok(Math.abs(r.y0 - 15) <= 3, `y0=${r.y0}`);
+  assert.ok(Math.abs(r.x1 - 78) <= 3, `x1=${r.x1}`);
+  assert.ok(Math.abs(r.y1 - 88) <= 3, `y1=${r.y1}`);
+});
+
+test("una hoja que llena casi todo el cuadro SÍ se propone", () => {
+  // La versión anterior descartaba todo lo que pasara del 90% "porque recortar
+  // no aportaba nada". Contra fotos reales el papel cubre entre el 84% y el
+  // 99%: rechazaba justamente la respuesta correcta.
+  const r = recuadroDeContenido(conHoja(100, 100, { x0: 1, y0: 1, x1: 97, y1: 97 }), 100, 100);
+  assert.ok(r, "rechazó una hoja que llena el cuadro, que es el caso real");
+  assert.ok(r.x1 - r.x0 > 90);
+});
+
+test("gana la hoja del centro, no la más grande de atrás", () => {
+  // En el depósito la factura se fotografía sobre una pila de papeles. Quien
+  // saca la foto apunta a la que le importa, así que la del medio es la suya.
+  const d = conHoja(120, 120, { x0: 30, y0: 12, x1: 108, y1: 108 });
+  // Otra hoja clara pegada al borde izquierdo, separada por fondo oscuro y sin
+  // pasar por el centro.
+  for (let y = 0; y < 120; y++) {
+    for (let x = 0; x < 18; x++) d.set([235, 235, 235, 255], (y * 120 + x) * 4);
+  }
+  const r = recuadroDeContenido(d, 120, 120);
+  assert.ok(r);
+  assert.ok(r.x0 >= 25, `agarró la hoja de atrás: x0=${r.x0}`);
 });
 
 test("una imagen sin nada distinto no propone ningún recorte", () => {
-  // Todo del mismo color: no hay papel que encontrar. Devolver un recuadro
-  // igual sería recortar al azar, que es peor que no recortar.
+  // Todo del mismo color: no hay hoja que encontrar. Devolver un recuadro igual
+  // sería recortar al azar, que es peor que no recortar.
   const lisa = new Uint8ClampedArray(100 * 100 * 4).fill(200);
   assert.equal(recuadroDeContenido(lisa, 100, 100), null);
 });
 
-test("un recorte que agarra casi toda la foto no se propone", () => {
-  // Si el papel ocupa todo, recortar no aporta nada y solo arriesga comerse un
-  // borde. Se deja la foto como está.
-  const casiTodo = conBloque(100, 100, { x0: 1, y0: 1, x1: 98, y1: 98 });
-  assert.equal(recuadroDeContenido(casiTodo, 100, 100), null);
+test("una mancha chica no se confunde con una hoja", () => {
+  assert.equal(
+    recuadroDeContenido(conHoja(100, 100, { x0: 45, y0: 45, x1: 58, y1: 58 }), 100, 100),
+    null,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -319,3 +347,35 @@ function invertir(destino: Esquina[], ancho: number, alto: number): Esquina[] {
   };
   return [buscar(0, 0), buscar(400, 0), buscar(400, 480), buscar(0, 480)];
 }
+
+test("una transformación identidad devuelve la imagen INTACTA, píxel por píxel", () => {
+  // La prueba que faltaba, y la que habría atrapado el peor error de este
+  // módulo: `muestrear` interpolaba en `x + 0.5` en vez de `x - 0.5`, así que
+  // mezclaba cada píxel al 50% con su vecino. **Toda imagen escaneada salía con
+  // medio píxel de desenfoque en cada eje.**
+  //
+  // No se veía: la imagen quedaba apenas más blanda y aun así "parecía un
+  // escaneo". Lo que sí se veía era el resultado — contra fotos reales, el
+  // único comprobante cuyo QR se leía dejaba de leerse después de escanearlo,
+  // con recorte identidad y sin realce. Un QR tiene módulos de tres o cuatro
+  // píxeles: medio píxel de mezcla alcanza para romperlo.
+  //
+  // Con las esquinas en las esquinas y el mismo tamaño de salida, no hay nada
+  // que interpolar y el resultado tiene que ser idéntico. Si alguna vez deja de
+  // serlo, algo volvió a correrse.
+  const orig = documento(64, 96);
+  const identidad: Esquina[] = [
+    { x: 0, y: 0 },
+    { x: 64, y: 0 },
+    { x: 64, y: 96 },
+    { x: 0, y: 96 },
+  ];
+  const r = enderezarPixeles(orig, identidad, 64, 96, { realzar: false });
+  assert.ok(r);
+
+  let distintos = 0;
+  for (let i = 0; i < orig.data.length; i += 4) {
+    if (Math.abs(r.data[i] - orig.data[i]) > 0) distintos++;
+  }
+  assert.equal(distintos, 0, `${distintos} píxeles cambiaron en una identidad`);
+});

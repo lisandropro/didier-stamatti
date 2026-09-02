@@ -1421,3 +1421,8 @@ tbody tr:hover{background:var(--surface-2)}
 .rec-lienzo:active{cursor:grabbing}
 .rec-ayuda{font-size:var(--t-sm); color:var(--muted); margin:0; text-wrap:pretty}
 .cap-sin-recorte{width:100%; min-height:var(--tap)}
+
+.rec-pie{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); flex-wrap:wrap}
+.rec-girar{min-height:var(--tap); display:inline-flex; align-items:center; gap:6px; flex-shrink:0}
+.rec-girar svg{width:18px; height:18px}
+.cap-progreso{font-size:var(--t-sm); font-weight:600; color:var(--muted); margin:0 0 var(--sp-2)}

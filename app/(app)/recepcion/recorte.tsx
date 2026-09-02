@@ -21,10 +21,14 @@ const RADIO_TOQUE = 22;
 export default function Recorte({
   fuente,
   onCambio,
+  giro,
+  onGirar,
 }: {
   fuente: HTMLCanvasElement;
   /** Se llama con las esquinas en coordenadas de la foto original. */
   onCambio: (esquinas: Esquina[]) => void;
+  giro: 0 | 90 | 180 | 270;
+  onGirar: () => void;
 }) {
   const lienzoRef = useRef<HTMLCanvasElement>(null);
   const [esquinas, setEsquinas] = useState<Esquina[]>(() => {
@@ -145,11 +149,25 @@ export default function Recorte({
         onPointerUp={soltar}
         onPointerCancel={soltar}
       />
-      <p className="rec-ayuda">
-        {autodetectado
-          ? "Arrastrá los puntos si el recorte no agarra bien el papel."
-          : "No se encontró el borde del papel. Arrastrá los cuatro puntos hasta las esquinas."}
-      </p>
+      <div className="rec-pie">
+        <p className="rec-ayuda">
+          {autodetectado
+            ? "Arrastrá los puntos si el recorte no agarra bien el papel."
+            : "No se encontró el borde del papel. Arrastrá los cuatro puntos hasta las esquinas."}
+        </p>
+        {/* Rotar hace falta y no es un lujo: entre las 18 fotos reales del
+            depósito hay una orden de reparación fotografiada de costado, y el
+            enderezado no la corrige — conserva la proporción del papel tal como
+            estaba en la foto. Una factura acostada en la pantalla de quien paga
+            se lee girando la cabeza. */}
+        <button type="button" className="btn ghost rec-girar" onClick={onGirar}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-3-6.7" />
+            <path d="M21 4v5h-5" />
+          </svg>
+          Rotar{giro ? ` · ${giro}°` : ""}
+        </button>
+      </div>
     </div>
   );
 }
