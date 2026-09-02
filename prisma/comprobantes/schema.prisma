@@ -177,9 +177,19 @@ model DocumentLine {
   orden          Int      // el orden en que aparecen en el papel
   codigo         String?  // el código del proveedor, si lo trae
   descripcion    String
+  // La regla de unidades de esta tabla, que NO es la del resto del módulo:
+  //
+  //   cantidades y precios unitarios  ->  MILÉSIMAS
+  //   importes                        ->  CENTAVOS
+  //
+  // Porque un precio unitario **no es un importe, es una tasa**: una factura
+  // real de carnicería imprime el kilo a "31.574,674", con tres decimales,
+  // porque el precio se multiplica por la cantidad y recién ahí se redondea.
+  // Guardarlo en centavos obligaba a redondear el dato impreso, y el documento
+  // reconstruido dejaba de coincidir con el papel en esa columna.
   cantidad       BigInt?  // MILÉSIMAS: 4,40 KG = 4400
   unidad         String?  // KG | UN | LT | ...
-  precioUnitario BigInt?  // CENTAVOS
+  precioUnitario BigInt?  // MILÉSIMAS de peso: $13.607,240 = 13607240
   subtotal       BigInt?  // CENTAVOS, tal como está impreso
 
   @@index([documentId, orden])

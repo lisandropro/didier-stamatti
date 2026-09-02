@@ -227,11 +227,38 @@ export default function ListaPagos({
                         </td>
                         <td>{f.vencimiento ? legible(f.vencimiento) : "—"}</td>
                         <td className="pg-num">{f.total ? formatear(BigInt(f.total)) : "—"}</td>
-                        <td className="pg-ver" aria-hidden>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-                            <circle cx="12" cy="12" r="2.6" />
-                          </svg>
+                        {/* Dos acciones distintas y con nombres distintos: el
+                            COMPROBANTE es la foto del papel —lo que vale ante un
+                            tercero— y el DETALLE es la hoja que arma el sistema.
+                            Un solo icono para las dos garantizaba que alguna vez
+                            alguien mandara la reconstrucción creyendo que
+                            mandaba la factura. */}
+                        <td className="pg-ver" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="pg-accion"
+                            onClick={() => setVerFoto(f)}
+                            title="Ver el comprobante"
+                            aria-label={`Ver el comprobante de ${f.nombre}`}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                              <circle cx="12" cy="12" r="2.6" />
+                            </svg>
+                          </button>
+                          <a
+                            className="pg-accion"
+                            href={`/api/comprobantes/${f.id}/documento`}
+                            target="_blank"
+                            rel="noopener"
+                            title="Ver el detalle"
+                            aria-label={`Ver el detalle de ${f.nombre}`}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                              <path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" />
+                              <path d="M9 12h6M9 16h6" />
+                            </svg>
+                          </a>
                         </td>
                       </tr>
                     );
@@ -348,6 +375,16 @@ export default function ListaPagos({
           <div className="pg-visor" onClick={(e) => e.stopPropagation()}>
             <header>
               <strong>{verFoto.nombre}</strong>
+              {/* Desde la foto se llega al detalle, que es donde alguien está
+                  cuando quiere leer los renglones sin pelearse con el papel. */}
+              <a
+                className="btn ghost"
+                href={`/api/comprobantes/${verFoto.id}/documento`}
+                target="_blank"
+                rel="noopener"
+              >
+                Ver el detalle
+              </a>
               <button type="button" className="btn ghost" onClick={() => setVerFoto(null)}>
                 Cerrar
               </button>

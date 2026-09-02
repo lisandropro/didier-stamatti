@@ -1,5 +1,6 @@
 import { aCentavos, aEscala } from "@/lib/money";
 import { cuitValido } from "./cuit";
+import { renglonesCierran } from "./renglones";
 import type { Kind } from "./tipos";
 
 // Lee una foto de comprobante y PROPONE los campos.
@@ -84,54 +85,26 @@ export function revisar(campos: CamposLeidos): Controles {
 }
 
 /**
- * La cuenta de los renglones, con tolerancia de un centavo por renglón.
+ * La cuenta de los renglones, sobre lo que devolvió el lector.
  *
- * La tolerancia no es descuido: 3 unidades a $33,33 dan $99,99 y muchos emisores
- * imprimen $100,00. Sin tolerancia el control daría rojo en facturas correctas,
- * se volvería ruido, y en dos semanas nadie lo miraría — que es la forma en que
- * un control deja de existir sin que nadie lo borre.
+ * Los importes vienen como texto —tal cual impresos— así que se convierten acá
+ * y la regla vive en `renglones.ts`, compartida con el documento reconstruido.
  */
 function revisarRenglones(campos: CamposLeidos): boolean | null {
   const renglones = campos.renglones;
   if (!renglones?.length || campos.subtotal == null) return null;
 
-  // Solo cuentan los que traen los tres números. Si ninguno los trae, no se
-  // afirma nada.
-  const conNumeros = renglones.filter(
-    (r) => r.cantidad != null && r.precioUnitario != null && r.subtotal != null,
+  return renglonesCierran(
+    campos.subtotal,
+    renglones.map((r) => ({
+      // La cantidad y el precio unitario van en MILÉSIMAS: un precio unitario no
+      // es un importe —una factura de carnicería imprime el kilo a
+      // "31.574,674"— y con dos decimales se rechazaría.
+      cantidad: r.cantidad ? aEscala(r.cantidad, 3) : null,
+      precioUnitario: r.precioUnitario ? aEscala(r.precioUnitario, 3) : null,
+      subtotal: r.subtotal ? aCentavos(r.subtotal) : null,
+    })),
   );
-  if (conNumeros.length === 0) return null;
-  // Si algunos renglones tienen números y otros no, la suma no puede cerrar
-  // contra el subtotal general: falta parte del detalle.
-  if (conNumeros.length !== renglones.length) return null;
-
-  let suma = 0n;
-  for (const r of conNumeros) {
-    const sub = aCentavos(r.subtotal!);
-    // El precio unitario NO es un importe: una factura real de carnicería
-    // imprime el kilo a "31.574,674". Con la regla de dos decimales ese precio
-    // se rechazaba y el control quedaba en "no se pudo verificar" justo en la
-    // forma de factura más común.
-    const precio = aEscala(r.precioUnitario!, 3);
-    const cantidad = aEscala(r.cantidad!, 3);
-    if (sub == null || precio == null || cantidad == null) return null;
-
-    // Todo en enteros: `2.5 * 40000` en coma flotante es de donde salen las
-    // diferencias de un centavo que nadie puede explicar.
-    //
-    // Las dos vienen en milésimas, así que el producto queda en millonésimas de
-    // peso; dividido por 10.000 da centavos.
-    const esperado = (cantidad * precio) / 10_000n;
-    if (abs(esperado - sub) > 1n) return false;
-    suma += sub;
-  }
-
-  // Un centavo de redondeo por renglón, acumulado.
-  return abs(suma - campos.subtotal) <= BigInt(conNumeros.length);
-}
-
-function abs(v: bigint): bigint {
-  return v < 0n ? -v : v;
 }
 
 /**

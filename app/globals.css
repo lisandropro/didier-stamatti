@@ -1426,3 +1426,16 @@ tbody tr:hover{background:var(--surface-2)}
 .rec-girar{min-height:var(--tap); display:inline-flex; align-items:center; gap:6px; flex-shrink:0}
 .rec-girar svg{width:18px; height:18px}
 .cap-progreso{font-size:var(--t-sm); font-weight:600; color:var(--muted); margin:0 0 var(--sp-2)}
+
+/* Las dos acciones de cada fila de pago: la foto del comprobante y el detalle
+   reconstruido. Van separadas y con nombres distintos a propósito — un solo
+   icono para las dos terminaba en que alguien mandara la reconstrucción
+   creyendo que mandaba la factura. */
+.pg-accion{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border:none; background:none; cursor:pointer;
+  color:var(--muted); border-radius:var(--r-sm); text-decoration:none;
+}
+.pg-accion:hover{color:var(--gold); background:var(--surface-2)}
+.pg-accion:focus-visible{outline:2px solid var(--gold); outline-offset:1px}
+.pg-accion svg{width:19px; height:19px}

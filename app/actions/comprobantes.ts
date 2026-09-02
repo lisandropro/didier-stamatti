@@ -6,6 +6,7 @@ import { canCapturarComprobantes, canPagar } from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
 import { completarCabecera } from "@/lib/comprobantes/completar";
 import { leerComprobante } from "@/lib/comprobantes/leer-documento";
+import { guardarDetalleLeido } from "@/lib/comprobantes/guardar-lectura";
 import {
   porProveedor,
   queVence,
@@ -336,6 +337,24 @@ export async function leerComprobanteConIA(documentId: string): Promise<Resultad
   }
 
   const { campos, controles } = lectura;
+
+  // **El detalle se guarda; la cabecera no.**
+  //
+  // Los renglones y el desglose de IVA documentan: se miran al lado de la foto y
+  // no le cuestan plata a nadie. El total, el proveedor y las fechas deciden
+  // cuánto sale y cuándo, y ésos siguen esperando que una persona los confirme
+  // en el formulario.
+  //
+  // Sin esto la tabla de renglones no se llenaba nunca —nadie escribía
+  // `DocumentLine`— y el documento reconstruido salía vacío.
+  let renglonesGuardados = 0;
+  try {
+    renglonesGuardados = await guardarDetalleLeido(documentId, campos);
+  } catch {
+    // Que no se pueda guardar el detalle no puede impedir proponer la cabecera,
+    // que es para lo que se tocó el botón.
+  }
+
   const plata = (v: bigint | undefined) => (v == null ? undefined : aTextoPlano(v));
 
   return {
@@ -352,6 +371,6 @@ export async function leerComprobanteConIA(documentId: string): Promise<Resultad
       total: plata(campos.total),
     },
     controles,
-    renglones: campos.renglones?.length ?? 0,
+    renglones: renglonesGuardados,
   };
 }
