@@ -3334,7 +3334,37 @@ git commit -m "Hacer que la foto del papel parezca un escaneo"
 
 ---
 
-### Task 12: El documento reconstruido
+### Task 12: El documento reconstruido ✅ HECHA (2026-09-02)
+
+> **Hubo que tapar un hueco antes.** Nadie escribía nunca `DocumentLine`,
+> `neto`, `iva` ni `percepciones`: la lectura los extraía y la acción los
+> tiraba. El documento habría salido con la tabla vacía —el mismo patrón que la
+> auditoría encontró con `supplierId`—. `guardar-lectura.ts` los persiste, y
+> **solo el detalle**: el total, el proveedor y las fechas siguen esperando la
+> confirmación de una persona.
+>
+> **Tres cosas aparecieron al mirar el PDF con la factura real**, y ninguna se
+> habría visto con datos inventados:
+>
+> 1. La factura tiene una **columna de 19% de descuento**, así que
+>    `cantidad × precio ≠ subtotal` por diseño. El control de renglones habría
+>    dado rojo en la mayoría de los comprobantes. Ahora vive en `renglones.ts`,
+>    tolera un descuento parejo, y conserva lo que importa: que los subtotales
+>    sumen el neto.
+> 2. **La advertencia estaba 15 cm debajo del total que cuestiona.** Ahora va en
+>    una franja arriba.
+> 3. **`destino`, `conforme` y `faltantesNota` no los veía nadie fuera de la
+>    captura.** Si el depósito marcó faltantes, quien paga transfería el total
+>    sin enterarse.
+>
+> Y una corrección a mi propio criterio: "sin datos para verificar" se pintaba
+> de rojo igual que "la cuenta no cierra". `null` no es `false`, y todo remito
+> habría salido en alerta.
+>
+> `armarDatos(doc, lines)` **recalcula** las verificaciones en vez de
+> recibirlas: guardadas envejecerían respecto de los datos.
+>
+> Cambio de esquema sin migración de datos: `precioUnitario` pasa a MILÉSIMAS.
 
 > **Qué es.** Un PDF limpio y siempre igual, armado **con los datos leídos** —no
 > con la foto—: emisor, identidad fiscal, la tabla de renglones, los totales, el
