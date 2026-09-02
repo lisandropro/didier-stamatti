@@ -5,6 +5,7 @@ import { sesionVigente } from "@/lib/auth";
 import { canCapturarComprobantes, canPagar } from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
 import { completarCabecera } from "@/lib/comprobantes/completar";
+import { leerComprobante } from "@/lib/comprobantes/leer-documento";
 import {
   porProveedor,
   queVence,
@@ -282,4 +283,75 @@ export async function completarAMano(id: string, fd: FormData): Promise<Resultad
   revalidatePath("/pagos");
   revalidatePath("/recepcion");
   return { ok: true, posibleDuplicado: r.posibleDuplicado };
+}
+
+export type CampoLeido = string | undefined;
+
+export type ResultadoLectura =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      campos: {
+        nombreProveedor: CampoLeido;
+        cuitEmisor: CampoLeido;
+        fechaEmision: CampoLeido;
+        vencimiento: CampoLeido;
+        condicionPago: CampoLeido;
+        // Los importes cruzan como TEXTO: BigInt no serializa a JSON.
+        subtotal: CampoLeido;
+        iva: CampoLeido;
+        percepciones: CampoLeido;
+        total: CampoLeido;
+      };
+      controles: {
+        cierraLaCuenta: boolean | null;
+        cierranLosRenglones: boolean | null;
+        cuitValido: boolean | null;
+      };
+      renglones: number;
+    };
+
+/**
+ * Lee la foto y PROPONE los campos. No escribe nada en la base.
+ *
+ * Lo que devuelve va al formulario para que una persona lo confirme. Guardar
+ * sigue siendo `completarAMano`, que es la unica via de escritura y la que deja
+ * el rastro en `DocumentChange`.
+ *
+ * Pide `canPagar` y no `canCapturarComprobantes`: esto devuelve importes.
+ */
+export async function leerComprobanteConIA(documentId: string): Promise<ResultadoLectura> {
+  const sesion = await sesionVigente();
+  if (!sesion || !canPagar(sesion.role)) {
+    return { ok: false, error: "No tenés permiso para leer comprobantes." };
+  }
+
+  let lectura;
+  try {
+    lectura = await leerComprobante(documentId);
+  } catch (e) {
+    // Una lectura fallida NO puede impedir cargar el comprobante: se avisa y la
+    // pantalla queda como una carga a mano comun.
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo leer la foto." };
+  }
+
+  const { campos, controles } = lectura;
+  const plata = (v: bigint | undefined) => (v == null ? undefined : aTextoPlano(v));
+
+  return {
+    ok: true,
+    campos: {
+      nombreProveedor: campos.nombreProveedor,
+      cuitEmisor: campos.cuitEmisor,
+      fechaEmision: campos.fechaEmision,
+      vencimiento: campos.vencimiento,
+      condicionPago: campos.condicionPago,
+      subtotal: plata(campos.subtotal),
+      iva: plata(campos.iva),
+      percepciones: plata(campos.percepciones),
+      total: plata(campos.total),
+    },
+    controles,
+    renglones: campos.renglones?.length ?? 0,
+  };
 }

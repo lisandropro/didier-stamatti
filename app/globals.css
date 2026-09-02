@@ -1379,3 +1379,30 @@ tbody tr:hover{background:var(--surface-2)}
   .pg-faltantes-que{grid-column:1; grid-row:2}
   .pg-faltantes-ir{grid-column:2; grid-row:1 / span 2}
 }
+
+/* ===== La lectura automática ===== */
+
+.cmp-leer{width:100%; min-height:var(--tap)}
+
+/* Un campo propuesto por el lector y todavía no confirmado. El borde punteado
+   dice "esto no lo escribió nadie todavía" sin depender del color, que en una
+   pantalla al sol o con daltonismo puede no llegar. */
+.cmp-propuesto input{border-style:dashed; border-color:var(--gold); background:var(--surface-2)}
+.cmp-propuesto > span::after{
+  content:" · propuesto"; font-weight:600; color:var(--gold); font-size:var(--t-xs);
+}
+
+.cmp-nota{font-size:var(--t-sm); color:var(--muted); margin:0; text-wrap:pretty}
+
+.cmp-semaforo{
+  padding:12px 14px; border-radius:var(--r-md); border:1px solid;
+  font-size:var(--t-sm); text-wrap:pretty;
+}
+.cmp-semaforo-bien{background:var(--ok-bg,#0f2a1a); border-color:var(--ok-line,#1f6b3f); color:var(--ok-ink,#7ee0a5)}
+.cmp-semaforo-mal{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8)}
+.cmp-semaforo-neutro{background:var(--surface-2); border-color:var(--hair); color:var(--ink)}
+
+@media(prefers-color-scheme:light){
+  .cmp-semaforo-bien{background:#EFF7F1; border-color:#A9CDB5; color:#1B5E31}
+  .cmp-semaforo-mal{background:#FDF2F2; border-color:#E4B4B4; color:#8A1F27}
+}

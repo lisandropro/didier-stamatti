@@ -22,6 +22,26 @@ export function aCentavos(
   texto: string,
   opts: { puntoEsDecimal?: boolean } = {},
 ): bigint | null {
+  return aEscala(texto, MAX_DECIMALES, opts);
+}
+
+/**
+ * Lo mismo, con la cantidad de decimales que haga falta.
+ *
+ * Existe porque **un precio unitario no es un importe**. Una factura real de
+ * carnicería imprime el kilo a `31.574,674`: tres decimales, porque el precio se
+ * multiplica por una cantidad y recién ahí se redondea. Con la regla de dos
+ * decimales ese precio se rechazaba y el control de renglones quedaba en "no se
+ * pudo verificar" justo en la forma de factura más común.
+ *
+ * La regla de qué separador es el decimal vive acá y en un solo lugar: si se
+ * copiara, las dos copias se irían separando.
+ */
+export function aEscala(
+  texto: string,
+  decimales: number,
+  opts: { puntoEsDecimal?: boolean } = {},
+): bigint | null {
   if (typeof texto !== "string") return null;
 
   // Fuera el símbolo de moneda, los espacios (incluido el fino que mete Excel)
@@ -45,14 +65,15 @@ export function aCentavos(
   if (!/^\d*$/.test(entero) || !/^\d*$/.test(decimalCrudo)) return null;
   if (entero === "" && decimalCrudo === "") return null;
 
-  // Más de dos decimales se acepta SOLO si lo que sobra son ceros: un emisor
-  // real imprime "387124.5100000000000000", que es plata legítima con relleno.
-  // Con cualquier otro dígito atrás es una lectura mal hecha, y hay que avisar.
-  if (decimalCrudo.length > MAX_DECIMALES && !/^0*$/.test(decimalCrudo.slice(MAX_DECIMALES))) {
+  // Más decimales de los pedidos se acepta SOLO si lo que sobra son ceros: un
+  // emisor real imprime "387124.5100000000000000", que es plata legítima con
+  // relleno. Con cualquier otro dígito atrás es una lectura mal hecha, y hay que
+  // avisar.
+  if (decimalCrudo.length > decimales && !/^0*$/.test(decimalCrudo.slice(decimales))) {
     return null;
   }
 
-  const decimal = decimalCrudo.slice(0, MAX_DECIMALES).padEnd(MAX_DECIMALES, "0");
+  const decimal = decimalCrudo.slice(0, decimales).padEnd(decimales, "0");
   return BigInt(`${entero || "0"}${decimal}`);
 }
 

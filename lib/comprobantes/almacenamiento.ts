@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
 
 // Las fotos de los comprobantes viven en S3, no en la base.
@@ -59,4 +59,25 @@ export async function subirFoto(
     new PutObjectCommand({ Bucket: bucket, Key: s3Key, Body: bytes, ContentType: mimeType }),
   );
   return { s3Key, sizeBytes: bytes.byteLength };
+}
+
+/**
+ * Baja una foto ya subida.
+ *
+ * La necesita la lectura automatica, que tiene que mandarle los bytes al
+ * modelo. Va por aca y no por la ruta HTTP de la foto para no dar una vuelta por
+ * la red ni depender de una cookie de sesion.
+ *
+ * Tira si no puede: quien llama decide que hacer, y en el caso de la lectura la
+ * respuesta correcta es avisar y dejar cargar a mano.
+ */
+export async function bajarFoto(s3Key: string): Promise<Buffer> {
+  const cliente = s3();
+  const bucket = process.env.BACKUP_S3_BUCKET;
+  if (!cliente || !bucket) {
+    throw new Error("Almacenamiento no configurado (faltan variables BACKUP_S3_*).");
+  }
+  const r = await cliente.send(new GetObjectCommand({ Bucket: bucket, Key: s3Key }));
+  if (!r.Body) throw new Error("La foto no esta en el almacenamiento.");
+  return Buffer.from(await r.Body.transformToByteArray());
 }

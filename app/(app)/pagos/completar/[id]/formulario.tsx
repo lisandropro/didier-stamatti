@@ -3,13 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { completarAMano } from "@/app/actions/comprobantes";
+import { completarAMano, leerComprobanteConIA } from "@/app/actions/comprobantes";
+import { formatear } from "@/lib/money";
 
 type Inicial = {
   nombreProveedor: string;
   importe: string;
   fechaEmision: string;
   vencimiento: string;
+};
+
+type Controles = {
+  cierraLaCuenta: boolean | null;
+  cierranLosRenglones: boolean | null;
+  cuitValido: boolean | null;
 };
 
 /**
@@ -24,6 +31,13 @@ function camposDe(kind: string): { importe: boolean; vencimiento: boolean } {
   if (kind === "REMITO") return { importe: false, vencimiento: false };
   if (kind === "TICKET") return { importe: true, vencimiento: false };
   return { importe: true, vencimiento: true };
+}
+
+/** `"1245080"` (centavos) -> `"12450,80"`, que es como se va a editar. */
+function aCampo(centavosTexto: string | undefined): string | undefined {
+  if (!centavosTexto) return undefined;
+  const t = centavosTexto.padStart(3, "0");
+  return `${t.slice(0, -2)},${t.slice(-2)}`;
 }
 
 export default function FormularioCompletar({
@@ -46,6 +60,72 @@ export default function FormularioCompletar({
   const [error, setError] = useState<string | null>(null);
   const [duplicado, setDuplicado] = useState(false);
   const campos = camposDe(kind);
+
+  // Los valores del formulario son controlados para que la lectura pueda
+  // proponerlos. `propuestos` es lo que vino del lector y todavía no confirmó
+  // nadie: se marca distinto y se limpia en cuanto la persona toca el campo.
+  const [valores, setValores] = useState<Inicial>(inicial);
+  const [propuestos, setPropuestos] = useState<Set<keyof Inicial>>(new Set());
+  const [leyendo, setLeyendo] = useState(false);
+  const [controles, setControles] = useState<Controles | null>(null);
+  const [avisoLectura, setAvisoLectura] = useState<string | null>(null);
+
+  function escribir(campo: keyof Inicial, valor: string) {
+    setValores((v) => ({ ...v, [campo]: valor }));
+    // Tocado por una persona: deja de ser una propuesta.
+    setPropuestos((p) => {
+      if (!p.has(campo)) return p;
+      const n = new Set(p);
+      n.delete(campo);
+      return n;
+    });
+  }
+
+  async function leer() {
+    setLeyendo(true);
+    setAvisoLectura(null);
+    setControles(null);
+    try {
+      const r = await leerComprobanteConIA(id);
+      if (!r.ok) {
+        setAvisoLectura(r.error);
+        return;
+      }
+
+      // Solo se proponen los campos VACÍOS. Pisar algo que una persona ya
+      // escribió sería el único caso en que una lectura probabilística le gana a
+      // un dato confirmado, y es exactamente al revés.
+      const nuevos = new Set<keyof Inicial>();
+      setValores((v) => {
+        const sig = { ...v };
+        const poner = (campo: keyof Inicial, valor: string | undefined) => {
+          if (!valor || sig[campo]) return;
+          sig[campo] = valor;
+          nuevos.add(campo);
+        };
+        poner("nombreProveedor", r.campos.nombreProveedor);
+        poner("importe", aCampo(r.campos.total));
+        poner("fechaEmision", r.campos.fechaEmision);
+        poner("vencimiento", r.campos.vencimiento);
+        return sig;
+      });
+      setPropuestos(nuevos);
+      setControles(r.controles);
+
+      if (nuevos.size === 0) {
+        setAvisoLectura("La lectura no encontró nada nuevo que proponer.");
+      } else if (r.campos.condicionPago && !r.campos.vencimiento) {
+        // El papel dice un plazo en vez de una fecha. Es un dato real y útil,
+        // pero no es un vencimiento: lo tiene que convertir una persona, que es
+        // la que sabe desde cuándo se cuenta.
+        setAvisoLectura(`El papel dice "${r.campos.condicionPago}" en vez de una fecha de vencimiento.`);
+      }
+    } catch {
+      setAvisoLectura("No se pudo leer la foto. Cargalo a mano.");
+    } finally {
+      setLeyendo(false);
+    }
+  }
 
   async function enviar(fd: FormData) {
     setGuardando(true);
@@ -72,6 +152,9 @@ export default function FormularioCompletar({
       setGuardando(false);
     }
   }
+
+  const marca = (campo: keyof Inicial) => (propuestos.has(campo) ? " cmp-propuesto" : "");
+  const hayPropuestas = propuestos.size > 0;
 
   return (
     <>
@@ -130,11 +213,26 @@ export default function FormularioCompletar({
           </div>
 
           <form action={enviar} className="cmp-form">
-            <label className="cmp-campo">
+            {tieneFoto && (
+              <button type="button" className="btn ghost cmp-leer" onClick={leer} disabled={leyendo}>
+                {leyendo ? "Leyendo la foto…" : "Leer la foto y proponer los campos"}
+              </button>
+            )}
+
+            {avisoLectura && (
+              <p className="cmp-nota" role="status">
+                {avisoLectura}
+              </p>
+            )}
+
+            {hayPropuestas && <Semaforo controles={controles} valores={valores} campos={campos} />}
+
+            <label className={`cmp-campo${marca("nombreProveedor")}`}>
               <span>Proveedor</span>
               <input
                 name="nombreProveedor"
-                defaultValue={inicial.nombreProveedor}
+                value={valores.nombreProveedor}
+                onChange={(e) => escribir("nombreProveedor", e.target.value)}
                 list="proveedores-conocidos"
                 autoComplete="off"
                 placeholder="Como figura en el papel"
@@ -151,11 +249,12 @@ export default function FormularioCompletar({
             </label>
 
             {campos.importe && (
-              <label className="cmp-campo">
+              <label className={`cmp-campo${marca("importe")}`}>
                 <span>Importe total</span>
                 <input
                   name="importe"
-                  defaultValue={inicial.importe}
+                  value={valores.importe}
+                  onChange={(e) => escribir("importe", e.target.value)}
                   // `inputMode="decimal"` y no `type="number"`: en el teléfono
                   // abre el teclado numérico igual, pero acepta la coma
                   // argentina y no le agrega flechitas de incremento a un campo
@@ -169,25 +268,104 @@ export default function FormularioCompletar({
               </label>
             )}
 
-            <label className="cmp-campo">
+            <label className={`cmp-campo${marca("fechaEmision")}`}>
               <span>Fecha de emisión</span>
-              <input type="date" name="fechaEmision" defaultValue={inicial.fechaEmision} />
+              <input
+                type="date"
+                name="fechaEmision"
+                value={valores.fechaEmision}
+                onChange={(e) => escribir("fechaEmision", e.target.value)}
+              />
             </label>
 
             {campos.vencimiento && (
-              <label className="cmp-campo">
+              <label className={`cmp-campo${marca("vencimiento")}`}>
                 <span>Vencimiento</span>
-                <input type="date" name="vencimiento" defaultValue={inicial.vencimiento} />
+                <input
+                  type="date"
+                  name="vencimiento"
+                  value={valores.vencimiento}
+                  onChange={(e) => escribir("vencimiento", e.target.value)}
+                />
                 <small>El &quot;Vto:&quot; del papel. No es la fecha del CAE.</small>
               </label>
             )}
 
             <button type="submit" className="btn primary cmp-guardar" disabled={guardando}>
-              {guardando ? "Guardando…" : "Guardar"}
+              {guardando ? "Guardando…" : hayPropuestas ? "Confirmar y guardar" : "Guardar"}
             </button>
           </form>
         </div>
       </div>
     </>
   );
+}
+
+/**
+ * Qué tan confiable es lo que propuso la lectura.
+ *
+ * Tres estados y no dos. **`null` no se muestra como rojo**: no poder verificar
+ * y verificar que está mal son cosas distintas, y pintarlas igual sería mentirle
+ * a quien paga — además de gastar la alarma, que es lo que hace que dejen de
+ * mirarse.
+ *
+ * En verde el trabajo es un toque. En rojo se señala qué campo mirar, y es el
+ * único momento del flujo en que vale la pena comparar contra el papel.
+ */
+function Semaforo({
+  controles,
+  valores,
+  campos,
+}: {
+  controles: Controles | null;
+  valores: Inicial;
+  campos: { importe: boolean };
+}) {
+  if (!controles) return null;
+
+  const rojos: string[] = [];
+  if (controles.cierraLaCuenta === false) rojos.push("el total no da la suma de sus partes");
+  if (controles.cierranLosRenglones === false) rojos.push("los renglones no suman el subtotal");
+  if (controles.cuitValido === false) rojos.push("el CUIT no valida");
+
+  const verdes =
+    controles.cierraLaCuenta === true ||
+    controles.cierranLosRenglones === true ||
+    controles.cuitValido === true;
+
+  if (rojos.length > 0) {
+    return (
+      <div className="cmp-semaforo cmp-semaforo-mal" role="alert">
+        <strong>Revisá contra el papel:</strong> {rojos.join(", ")}.
+        {campos.importe && valores.importe && <> El importe propuesto es {conSigno(valores.importe)}.</>}
+      </div>
+    );
+  }
+
+  if (verdes) {
+    return (
+      <div className="cmp-semaforo cmp-semaforo-bien" role="status">
+        <strong>Las cuentas cierran.</strong> Mirá que el proveedor sea el correcto y confirmá.
+      </div>
+    );
+  }
+
+  // Todo en null: se leyó, pero no había con qué verificar. Se dice, sin
+  // pintarlo de ningún color.
+  return (
+    <div className="cmp-semaforo cmp-semaforo-neutro" role="status">
+      No se pudo verificar la lectura contra nada. Compará el importe con el papel antes de
+      confirmar.
+    </div>
+  );
+}
+
+/** `"12450,80"` -> `"$ 12.450,80"`, solo para leerlo en el cartel. */
+function conSigno(campo: string): string {
+  const centavos = campo.replace(/\./g, "").replace(",", "");
+  try {
+    return formatear(BigInt(centavos || "0"));
+  } catch {
+    return campo;
+  }
 }
