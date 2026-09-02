@@ -5,6 +5,7 @@ import { capturarComprobante } from "@/app/actions/comprobantes";
 import Recorte from "./recorte";
 import { escanear, type Esquina } from "@/lib/comprobantes/escaneo";
 import { crearLectorQr } from "@/lib/comprobantes/lector-qr";
+import { llaveDeCliente, porQueNoHayCamara } from "@/lib/llave-cliente";
 import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 
 // La pantalla del depósito. Una sola cosa: sacar la foto.
@@ -112,18 +113,34 @@ export default function CapturaCliente({
     // al primero y el primero queda encendido para siempre.
     if (abriendo.current) return;
     abriendo.current = true;
-    cerrarCamara();
-    setError(null);
-    setAviso(null);
-    // La llave se genera acá, al abrir la cámara y no al enviar: es lo que hace
-    // que un doble toque nervioso no cree dos comprobantes.
-    clientKeyRef.current = crypto.randomUUID();
-    qrRef.current = new Set();
-    setCodigoLeido(false);
-    setDestino(null);
-    setConforme(null);
 
+    // **TODO va adentro del `try`.** Antes la preparación estaba afuera, y
+    // cuando algo de ahí tiraba —`crypto.randomUUID()` no existe fuera de un
+    // contexto seguro— la excepción se llevaba puesto este `finally`.
+    // `abriendo.current` quedaba en `true` para siempre y **todos los toques
+    // siguientes salían por el `return` de arriba**: un botón que no hace nada,
+    // sin un solo mensaje. Lo reportó alguien usándolo desde el teléfono.
     try {
+      // Antes de pedir permiso: si el navegador directamente no puede, decir por
+      // qué. "No se pudo abrir la cámara" manda a revisar permisos cuando el
+      // problema es la dirección.
+      const impedimento = porQueNoHayCamara();
+      if (impedimento) {
+        setError(impedimento);
+        return;
+      }
+
+      cerrarCamara();
+      setError(null);
+      setAviso(null);
+      // La llave se genera acá, al abrir la cámara y no al enviar: es lo que
+      // hace que un doble toque nervioso no cree dos comprobantes.
+      clientKeyRef.current = llaveDeCliente();
+      qrRef.current = new Set();
+      setCodigoLeido(false);
+      setDestino(null);
+      setConforme(null);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } },
       });
@@ -139,7 +156,9 @@ export default function CapturaCliente({
             ? "Otra app está usando la cámara. Cerrá WhatsApp o la cámara del teléfono y volvé a intentar."
             : nombre === "NotFoundError"
               ? "Este dispositivo no tiene cámara."
-              : "No se pudo abrir la cámara. Probá de nuevo.",
+              // El mensaje ahora incluye el detalle: un error mudo es lo que
+              // hizo falta media hora de investigación la primera vez.
+              : `No se pudo abrir la cámara${nombre ? ` (${nombre})` : ""}. Probá de nuevo.`,
       );
     } finally {
       abriendo.current = false;

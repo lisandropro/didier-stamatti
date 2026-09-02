@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { llaveDeCliente } from "@/lib/llave-cliente";
 import { createSuggestion } from "@/app/actions/suggestions";
 import { SUGGESTION_KINDS, KIND_LABEL, LIMITS, screenLabel } from "@/lib/suggestions";
 
@@ -45,12 +46,7 @@ function Formulario({ pathname, onClose }: { pathname: string; onClose: () => vo
   // daría dos llaves distintas y, con ellas, dos sugerencias iguales.
   const clientKey = useRef<string | null>(null);
   function llave(): string {
-    if (!clientKey.current) {
-      clientKey.current =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    }
+    if (!clientKey.current) clientKey.current = llaveDeCliente();
     return clientKey.current;
   }
 

@@ -319,8 +319,21 @@ tbody tr:hover{background:var(--surface-2)}
 .remember input{width:16px; height:16px; accent-color:var(--gold)}
 .login-error{background:var(--crit-soft); color:var(--crit); border:1px solid color-mix(in srgb,var(--crit) 30%,transparent); border-radius:var(--r-sm); padding:9px 12px; font-size:var(--t-sm); font-weight:500; margin-top:12px}
 .pass-wrap{position:relative}
-.pass-wrap input{padding-right:46px}
-.pass-toggle{position:absolute; top:50%; right:6px; transform:translateY(-50%); background:none; border:none; padding:7px; margin:0; cursor:pointer; color:var(--muted); display:grid; place-items:center; border-radius:var(--r-sm)}
+.pass-wrap input{padding-right:50px}
+/* El ojo de "mostrar contraseña".
+   Medía 33x33 y el sistema define --tap:44px como mínimo para algo que se toca
+   con el pulgar. En el teléfono el dedo caía al lado, tocaba el campo de texto,
+   se abría el teclado y parecía que el botón no funcionaba. Lo reportó alguien
+   usándolo.
+   El área táctil llega a 44px; el icono sigue viéndose igual. */
+.pass-toggle{
+  position:absolute; top:50%; right:2px; transform:translateY(-50%);
+  background:none; border:none; margin:0; cursor:pointer; color:var(--muted);
+  display:grid; place-items:center; border-radius:var(--r-sm);
+  width:var(--tap); height:var(--tap); padding:0;
+  /* Sin esto, en iOS un toque sostenido selecciona el icono en vez de activarlo. */
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
 .pass-toggle:hover{color:var(--ink)}
 .pass-toggle:focus-visible{outline:2px solid var(--gold); outline-offset:0}
 .pass-toggle svg{width:19px; height:19px}
