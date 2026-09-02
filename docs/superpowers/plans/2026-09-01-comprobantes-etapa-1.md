@@ -2611,7 +2611,28 @@ git commit -m "Cargar a mano lo que no trae codigo ni esta en ARCA"
 
 ---
 
-### Task 10: La lectura automática de la foto
+### Task 10: La lectura automática de la foto ✅ HECHA (2026-09-02)
+
+> **Lo que cambió respecto de lo escrito acá.**
+>
+> - El tipo `Controles` declaraba `cierranLosRenglones` y `revisar()` no lo
+>   devolvía: no compilaba. Se implementó, y resultó el control más valioso —
+>   es el único que detecta un renglón **faltante**.
+> - Un PDF no es una imagen. El plan lo casteaba a `"image/jpeg"`, una mentira
+>   que el compilador acepta y la API no. Va como bloque `document`.
+> - `getSessionUser` → `sesionVigente`, porque esto devuelve importes.
+> - La pantalla es `/pagos/completar/[id]`, no `/recepcion/completar/[id]`.
+> - Timeout de 60 s y mensaje claro si falta `ANTHROPIC_API_KEY`.
+>
+> **Hallazgo nuevo: el precio unitario no es un importe.** Una factura real de
+> carnicería imprime el kilo a `31.574,674` — tres decimales, porque el precio
+> se multiplica antes de redondear. Con la regla de dos decimales de
+> `aCentavos`, ese renglón se rechazaba y el control quedaba en "no se pudo
+> verificar" justo en la forma de factura más común. Se generalizó el parser a
+> N decimales (`aEscala`), con la regla del separador en un solo lugar.
+>
+> **El paso 6 NO se corrió**: no hay `ANTHROPIC_API_KEY` en el entorno. Queda
+> `scripts/probar-lectura.mts` listo. Es lo único pendiente de esta tarea.
 
 > **Por qué está en la etapa 1 y no después.** La medición del 01/09 dice que
 > **13 de 18 comprobantes no traen QR legible**. Sin esta tarea, la mayoría de
