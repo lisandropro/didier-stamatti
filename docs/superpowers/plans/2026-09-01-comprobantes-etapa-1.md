@@ -3040,9 +3040,25 @@ git commit -m "Leer la foto cuando no hay codigo que leer"
 > **La prueba que importa es la de ida y vuelta**: se deforma un documento
 > conocido y se comprueba que el enderezado lo recupera derecho y sin espejar.
 >
-> **Pendiente: el paso 7** (comprobar a ojo con fotos reales). Necesita un
-> navegador. Sin eso no está medido cuántas veces la detección acierta sola ni
-> si el realce se lleva puesto algún QR.
+> **Paso 7 HECHO (2026-09-02), y encontró cuatro errores.** Medido contra las 18
+> fotos reales del depósito con zxing-cpp como árbitro. Resultado del pipeline
+> real: **6 de 18 QR en la foto, 6 de 18 después de escanear, cero perdidos**
+> (antes eran 3 de 18).
+>
+> 1. **Medio píxel de desenfoque en toda imagen escaneada** — `muestrear`
+>    interpolaba en `x + 0.5` en vez de `x - 0.5`. Rompía QR y no se veía.
+> 2. **La última fila y columna salían en blanco** — el borde se comparaba
+>    contra `w - 1` y las coordenadas son continuas hasta `w`.
+> 3. **La detección acertaba 0 de 18** — buscaba lo que se despegaba de la
+>    mediana, y la mediana ES el papel. Ahora Otsu + región clara del centro:
+>    18 de 18.
+> 4. **El disparo tiraba más de la mitad de los QR** — `MAX_LADO` era 2000 px.
+>    La curva medida: 1600→1, 2000→3, 2400→4, 2800→6, 3200→7, nativo→5. Se
+>    subió a 3000.
+>
+> Y uno ajeno al escaneo: las fotos son `.HEIC`, o sea **iPhone**, y
+> `BarcodeDetector` no existe en Safari — el lector de QR **nunca corrió** en
+> los teléfonos que este equipo usa. Se agregó respaldo con jsQR.
 
 > Lo que llega es una foto de un papel arrugado, de costado, en una carpeta de
 > anillos y con la sombra de quien la saca encima. Lo que se archiva tiene que
