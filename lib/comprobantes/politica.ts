@@ -20,6 +20,12 @@ export type FilaDeuda = {
   nombre: string;
   total: string;
   cantidad: number;
+  /** Cuántos de esos comprobantes NO tienen importe cargado.
+   *
+   *  Se calculaba y se tiraba acá. Sin esto, un proveedor cuyo único
+   *  comprobante todavía no tiene importe se mostraba como **$ 0,00**, que se
+   *  lee como "no debe nada" cuando lo que pasa es que no se sabe cuánto. */
+  sinImporte: number;
 };
 
 /**
@@ -40,6 +46,7 @@ export function aFilaDeuda(d: DeudaProveedor): FilaDeuda {
     nombre: d.nombre,
     total: aTextoPlano(d.total),
     cantidad: d.cantidad,
+    sinImporte: d.sinImporte,
   };
 }
 

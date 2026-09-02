@@ -3,6 +3,20 @@ import { sesionVigente } from "@/lib/auth";
 import { canVerImportes } from "@/lib/permissions";
 import { prismaComprobantes as db } from "@/lib/db-comprobantes";
 
+// Runtime de Node, explícito.
+//
+// Sin esto Next elige por su cuenta, y esta ruta usa paquetes que solo corren en
+// Node. La ruta del PDF de pedidos ya lo declaraba; las de comprobantes no, y el
+// síntoma fue opaco: **HTTP 500 con "Jest worker encountered child process
+// exceptions"** al compilar, sin ninguna mención al runtime. No lo detectó ni el
+// build, ni el typecheck, ni las pruebas — solo abrirla en la app corriendo.
+//
+// `force-dynamic` porque la respuesta depende de la sesión y de datos que
+// cambian: cachearla serviría el documento de otro, o el de ayer.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+
 // La foto de un comprobante.
 //
 // Va por una ruta propia y no por una URL firmada del bucket a propósito: una

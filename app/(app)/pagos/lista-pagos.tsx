@@ -36,7 +36,7 @@ export default function ListaPagos({
   incompletos,
 }: {
   hoy: string;
-  deuda: { supplierId: string | null; nombre: string; total: string; cantidad: number }[];
+  deuda: { supplierId: string | null; nombre: string; total: string; cantidad: number; sinImporte: number }[];
   vencen: Fila[];
   bandejas: { sinProveedor: number; sinRevisar: number; sinVencimiento: number };
   duplicados: Duplicado[];
@@ -290,7 +290,20 @@ export default function ListaPagos({
                 <tr key={d.supplierId ?? "sin"}>
                   <td>{d.nombre}</td>
                   <td className="pg-num">{d.cantidad}</td>
-                  <td className="pg-num pg-fuerte">{formatear(BigInt(d.total))}</td>
+                  <td className="pg-num pg-fuerte">
+                    {formatear(BigInt(d.total))}
+                    {/* Un comprobante sin importe NO es un importe de cero.
+                        Mostrando solo el total, un proveedor cuyo único
+                        comprobante todavía no tiene importe aparecía como
+                        "$ 0,00" — que se lee como "no debe nada" cuando lo que
+                        pasa es que no se sabe cuánto. El dato se calculaba y
+                        se tiraba antes de llegar a la pantalla. */}
+                    {d.sinImporte > 0 && (
+                      <span className="pg-sin-importe">
+                        + {d.sinImporte} sin importe
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

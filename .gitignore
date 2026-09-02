@@ -51,3 +51,4 @@ next-env.d.ts
 
 # configuración local del servidor de desarrollo
 /.claude
+dev-local.log

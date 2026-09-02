@@ -1439,3 +1439,12 @@ tbody tr:hover{background:var(--surface-2)}
 .pg-accion:hover{color:var(--gold); background:var(--surface-2)}
 .pg-accion:focus-visible{outline:2px solid var(--gold); outline-offset:1px}
 .pg-accion svg{width:19px; height:19px}
+
+/* "+ 2 sin importe" junto al total de un proveedor. Va en su propia línea y en
+   el color de atención: es la diferencia entre "debe $0" y "no se sabe cuánto
+   debe", y esa diferencia se paga. */
+.pg-sin-importe{
+  display:block; font-size:var(--t-xs); font-weight:600;
+  color:var(--warn-ink,#f0cf7a); margin-top:2px; white-space:nowrap;
+}
+@media(prefers-color-scheme:light){ .pg-sin-importe{color:#6B4E10} }
