@@ -1461,3 +1461,11 @@ tbody tr:hover{background:var(--surface-2)}
   color:var(--warn-ink,#f0cf7a); margin-top:2px; white-space:nowrap;
 }
 @media(prefers-color-scheme:light){ .pg-sin-importe{color:#6B4E10} }
+
+/* El marco que sigue al papel en el visor.
+   Reemplaza a `.cap-marco`, que era un recuadro fijo: aquel decía "poné el papel
+   más o menos acá" y éste dice "encontré el papel, es esto". */
+.cap-marco-vivo{
+  position:absolute; inset:0; width:100%; height:100%;
+  object-fit:cover; pointer-events:none; z-index:2;
+}

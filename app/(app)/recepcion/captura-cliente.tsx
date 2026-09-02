@@ -6,6 +6,7 @@ import Recorte from "./recorte";
 import { escanear, type Esquina } from "@/lib/comprobantes/escaneo";
 import { crearLectorQr } from "@/lib/comprobantes/lector-qr";
 import { llaveDeCliente, porQueNoHayCamara } from "@/lib/llave-cliente";
+import { usarDeteccionViva, aEscalaDeFoto, type EstadoDeteccion } from "./usar-deteccion-viva";
 import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 
 // La pantalla del depósito. Una sola cosa: sacar la foto.
@@ -69,11 +70,27 @@ export default function CapturaCliente({
   const [recortar, setRecortar] = useState(true);
   const [giro, setGiro] = useState<0 | 90 | 180 | 270>(0);
   const [escaneando, setEscaneando] = useState(0);
+
+  // El marco verde que sigue al papel en el visor. Guardarlo en una ref y no en
+  // estado es deliberado: se actualiza diez veces por segundo y un `setState`
+  // por lectura volvería a dibujar toda la pantalla diez veces por segundo para
+  // nada — el marco lo pinta su propio lienzo.
+  const marcoLienzoRef = useRef<HTMLCanvasElement>(null);
+  const deteccionRef = useRef<EstadoDeteccion>({ cuadro: null, lejos: false });
+  // Este SÍ es estado: cambia poco y hay que mostrarlo.
+  const [consejo, setConsejo] = useState<"nada" | "buscando" | "lejos" | "listo">("buscando");
+
   const [destino, setDestino] = useState<Destino | null>(null);
   const [conforme, setConforme] = useState<boolean | null>(null);
   const [codigoLeido, setCodigoLeido] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  usarDeteccionViva(videoRef, marcoLienzoRef, paso === "camara", (e) => {
+    deteccionRef.current = e;
+    setConsejo(!e.cuadro ? "buscando" : e.lejos ? "lejos" : "listo");
+  });
+
   const avisoError = useRef<HTMLParagraphElement>(null);
   const abriendo = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
@@ -228,10 +245,18 @@ export default function CapturaCliente({
       return;
     }
     navigator.vibrate?.(30);
+
+    // **Las esquinas ya están.** El visor viene siguiendo el papel, así que al
+    // disparar no hay nada que calcular ni que preguntar: se llevan las que
+    // estaban dibujadas, escaladas al tamaño de la foto.
+    const detectado = deteccionRef.current.cuadro;
+    esquinasRef.current = detectado
+      ? aEscalaDeFoto(detectado, video.videoWidth, lienzo.width)
+      : null;
+
     cerrarCamara();
     setFoto(blob);
     setLienzoFoto(lienzo);
-    esquinasRef.current = null;
     setRecortar(true);
     setGiro(0);
     setPaso("revision");
@@ -310,9 +335,19 @@ export default function CapturaCliente({
     return (
       <div className="cap-camara">
         <video ref={videoRef} className="cap-video" playsInline muted />
-        <div className={`cap-marco${codigoLeido ? " leido" : ""}`} aria-hidden />
+        {/* El marco del papel, dibujado en vivo. Reemplaza al recuadro fijo que
+            había antes: aquel decía "poné el papel más o menos acá" y éste dice
+            "encontré el papel, es esto". Cuando disparás, el recorte ya está
+            decidido — por eso deja de hacer falta una pantalla de ajuste. */}
+        <canvas ref={marcoLienzoRef} className="cap-marco-vivo" aria-hidden />
         <p className="cap-estado" role="status">
-          {codigoLeido ? "Código leído" : "Apuntá al comprobante"}
+          {codigoLeido
+            ? "Código leído"
+            : consejo === "listo"
+              ? "Listo para sacar"
+              : consejo === "lejos"
+                ? "Acercate un poco"
+                : "Apuntá al comprobante"}
         </p>
         <div className="cap-controles">
           <button
