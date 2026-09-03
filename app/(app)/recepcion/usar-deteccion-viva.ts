@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { recuadroDeContenido, type Esquina } from "@/lib/comprobantes/escaneo";
+import type { Esquina } from "@/lib/comprobantes/escaneo";
+import { detectarCuadrilatero } from "@/lib/comprobantes/cuadrilatero";
 import { SeguidorDePapel, ocupaPoco, type Cuadro } from "@/lib/comprobantes/seguidor";
 
 // Detecta el papel mientras la cámara apunta, y dibuja el marco encima del video.
@@ -10,16 +11,26 @@ import { SeguidorDePapel, ocupaPoco, type Cuadro } from "@/lib/comprobantes/segu
 // disparás, el recorte **ya está decidido**, así que no hace falta una pantalla
 // de ajuste después.
 //
-// Medido contra las 18 fotos reales del depósito, reducidas a resolución de
-// video y con desenfoque de movimiento: **18 de 18 detectadas** a 160 px de
-// ancho, a 25 ms por lectura. En un teléfono eso son unas 10 lecturas por
-// segundo, de sobra para un marco que sigue la mano.
+// **Encuentra un cuadrilátero, no una caja recta.** La primera versión de esto
+// devolvía el rectángulo del componente claro más grande, y contra las 18 fotos
+// reales del depósito "acertaba" 18 de 18 marcando siempre el cuadro entero —
+// que es lo mismo que no detectar nada. De ahí venía tener que ajustar el
+// recorte casi siempre.
+//
+// Ahora corre el pipeline de `cuadrilatero.ts`, que es el que usan los
+// escáneres de documentos serios: bordes por Canny, rectas por Hough, y el
+// cuadrilátero que mejor puntúa. Contra las mismas 18 fotos encuentra el papel
+// **con su inclinación real** en 13, y en las otras 5 devuelve `null` en vez de
+// un marco equivocado. Los 5 son el mismo caso: tickets angostos que se salen
+// del cuadro.
 
 /** Ancho al que se analiza cada cuadro.
  *
- *  160 px acierta igual que 240 y cuesta la mitad. Se midió: 18/18 a 120, 160,
- *  200 y 240 px — la resolución extra no compra aciertos, compra latencia. */
-const ANCHO_DE_ANALISIS = 160;
+ *  200 px: la detección de bordes necesita más resolución que la vieja búsqueda
+ *  de regiones, porque una recta de tres píxeles se pierde. A 200 el pipeline
+ *  completo —Canny más Hough— tarda unos 22 ms, que en un teléfono son unas 6
+ *  lecturas por segundo: suficiente para un marco que sigue la mano. */
+const ANCHO_DE_ANALISIS = 200;
 
 /** Cada cuánto se mira. No es por cuadro de video: a 30 fps sobraría trabajo
  *  para nada, porque el papel no se mueve tan rápido y el suavizado del seguidor
@@ -117,20 +128,15 @@ export function usarDeteccionViva(
 
       let lectura: Cuadro | null = null;
       try {
-        const r = recuadroDeContenido(
+        const d = detectarCuadrilatero(
           ctxChico.getImageData(0, 0, chico.width, chico.height).data,
           chico.width,
           chico.height,
         );
-        if (r) {
+        if (d) {
           // De vuelta a coordenadas del video.
           const a = (n: number) => n / escala;
-          lectura = [
-            { x: a(r.x0), y: a(r.y0) },
-            { x: a(r.x1), y: a(r.y0) },
-            { x: a(r.x1), y: a(r.y1) },
-            { x: a(r.x0), y: a(r.y1) },
-          ];
+          lectura = d.esquinas.map((p) => ({ x: a(p.x), y: a(p.y) })) as Cuadro;
         }
       } catch {
         // Un cuadro que no se pudo leer no es un error: se prueba el siguiente.
