@@ -33,6 +33,29 @@
 // acá. Lo que se gana: que la app siga pesando lo que pesa. El arrastre —que
 // iba a existir de todos modos— cubre la diferencia.
 
+// ---------------------------------------------------------------------------
+//
+// **El QR no se lee de esta imagen.** Se lee en vivo en el visor, del cuadro de
+// video, y viaja con la captura (`app/actions/comprobantes.ts`). Nada vuelve a
+// decodificar el archivo guardado.
+//
+// Vale anotarlo porque medir "cuantos QR sobreviven al escaneo" es una trampa
+// que se pisa sola: sobre las 18 fotos reales el enderezado baja de 6 de 6 a
+// 2 de 6, y eso NO es una regresion de nada. El dato ya se leyo, y la original
+// se archiva entera al lado de la escaneada.
+//
+// Aislado con un decodificador serio (zxing), variando una cosa por vez:
+//
+//     recorte identidad, con y sin realce      6 de 6
+//     recorte detectado, con y sin realce      2 de 6
+//     idem sin el tope de 2400 px              2 de 6
+//
+// O sea: el realce es inocente y el achicado tambien. Es la interpolacion
+// bilineal de la perspectiva, que ablanda los modulos de un QR de tres pixeles.
+// Agrandar el recorte no cambia nada —probado a 2%, 4% y 6%: el recorte ya toma
+// casi todo el cuadro, no hay borde que cortar— y afilar despues recupera una
+// foto y rompe otra. No hay nada que arreglar aca.
+
 export type Esquina = { x: number; y: number };
 
 /**
@@ -168,221 +191,6 @@ export function puntoBlanco(datos: Uint8ClampedArray): number {
   const p90 = muestras[Math.min(muestras.length - 1, Math.floor(muestras.length * 0.9))];
   return Math.max(1, p90);
 }
-
-export type Recuadro = { x0: number; y0: number; x1: number; y1: number };
-
-/**
- * Una propuesta de recorte: dónde está el papel.
- *
- * **El papel es lo CLARO.** La primera versión de esto buscaba lo que se
- * despegaba de la mediana, y contra 18 fotos reales acertó **cero veces**: la
- * mediana ES el papel —ocupa casi todo el cuadro— así que la caja se expandía
- * hasta abarcar el fondo oscuro. Estaba exactamente al revés.
- *
- * Ahora: se umbraliza por Otsu, se etiquetan las regiones claras y se toma la
- * más grande **que pase por el centro**. Quien saca la foto apunta al papel que
- * quiere; el del medio es el suyo, aunque atrás haya otros.
- *
- * Y **una cobertura alta no se rechaza**. La versión anterior descartaba todo lo
- * que pasara del 90% "porque recortar no aportaba nada", y contra fotos reales
- * el papel cubre entre el 84% y el 99%: rechazaba justamente la respuesta
- * correcta. Cuando el papel llena el cuadro, la propuesta correcta es el cuadro
- * casi entero.
- *
- * Devuelve `null` cuando no hay una región clara plausible: ahí la pantalla
- * propone el marco por defecto y la persona arrastra.
- */
-export function recuadroDeContenido(
-  datos: Uint8ClampedArray,
-  ancho: number,
-  alto: number,
-): Recuadro | null {
-  if (ancho < 8 || alto < 8) return null;
-
-  const n = ancho * alto;
-  const lum = new Float32Array(n);
-  const histograma = new Int32Array(256);
-  for (let i = 0; i < n; i++) {
-    const j = i * 4;
-    const v = 0.299 * datos[j] + 0.587 * datos[j + 1] + 0.114 * datos[j + 2];
-    lum[i] = v;
-    histograma[Math.round(v)]++;
-  }
-
-  const umbralOtsu = otsu(histograma, n);
-  // Sin dos grupos no hay nada que separar: una imagen de un solo tono no tiene
-  // hoja, y devolver el cuadro entero sería afirmar que se encontró algo.
-  if (umbralOtsu === null) return null;
-  const umbral = umbralOtsu;
-
-  // Etiquetado por inundación. Sobre la imagen de análisis —240 px de ancho— son
-  // unos 76.000 píxeles: instantáneo, y sin recursión para no reventar la pila
-  // con una región grande.
-  const visto = new Uint8Array(n);
-  const pila: number[] = [];
-  const cx = ancho / 2;
-  const cy = alto / 2;
-
-  let mejorTam = 0;
-  let mejor: Recuadro | null = null;
-
-  for (let inicio = 0; inicio < n; inicio++) {
-    if (lum[inicio] <= umbral || visto[inicio]) continue;
-
-    let tam = 0;
-    let x0 = ancho;
-    let y0 = alto;
-    let x1 = 0;
-    let y1 = 0;
-    let pasaPorElCentro = false;
-
-    pila.length = 0;
-    pila.push(inicio);
-    visto[inicio] = 1;
-
-    while (pila.length > 0) {
-      const p = pila.pop()!;
-      const px = p % ancho;
-      const py = (p - px) / ancho;
-      tam++;
-      if (px < x0) x0 = px;
-      if (px > x1) x1 = px;
-      if (py < y0) y0 = py;
-      if (py > y1) y1 = py;
-      // "El centro" es un rectángulo del 40% central, no un punto: un píxel
-      // oscuro justo en el medio —una letra— no puede decidir esto.
-      if (Math.abs(px - cx) < ancho * 0.2 && Math.abs(py - cy) < alto * 0.2) {
-        pasaPorElCentro = true;
-      }
-
-      if (px > 0) empujar(p - 1);
-      if (px < ancho - 1) empujar(p + 1);
-      if (py > 0) empujar(p - ancho);
-      if (py < alto - 1) empujar(p + ancho);
-    }
-
-    if (pasaPorElCentro && tam > mejorTam) {
-      mejorTam = tam;
-      mejor = { x0, y0, x1, y1 };
-    }
-
-    function empujar(q: number) {
-      if (!visto[q] && lum[q] > umbral) {
-        visto[q] = 1;
-        pila.push(q);
-      }
-    }
-  }
-
-  if (!mejor || mejor.x1 <= mejor.x0 || mejor.y1 <= mejor.y0) return null;
-
-  const area = (mejor.x1 - mejor.x0) * (mejor.y1 - mejor.y0);
-  // Una mancha chica no es una hoja.
-  if (area / n < 0.25) return null;
-  // Y si la región clara llena su propia caja a menos de la mitad, no es una
-  // hoja: es luz dispersa, o dos papeles unidos por un hilo de píxeles.
-  if (mejorTam / area < 0.5) return null;
-
-  return mejor;
-}
-
-/**
- * El umbral que mejor separa lo claro de lo oscuro, por Otsu.
- *
- * Un número fijo no sirve: una foto a contraluz y una con flash no tienen el
- * mismo rango, y el mismo depósito con la luz prendida o apagada tampoco.
- */
-function otsu(histograma: Int32Array, total: number): number | null {
-  let suma = 0;
-  for (let t = 0; t < 256; t++) suma += t * histograma[t];
-
-  let sumaFondo = 0;
-  let pesoFondo = 0;
-  let mejorVarianza = 0;
-  let umbral: number | null = null;
-
-  for (let t = 0; t < 256; t++) {
-    pesoFondo += histograma[t];
-    if (pesoFondo === 0) continue;
-    const pesoFrente = total - pesoFondo;
-    if (pesoFrente === 0) break;
-
-    sumaFondo += t * histograma[t];
-    const mediaFondo = sumaFondo / pesoFondo;
-    const mediaFrente = (suma - sumaFondo) / pesoFrente;
-    const entreClases = pesoFondo * pesoFrente * (mediaFondo - mediaFrente) ** 2;
-    if (entreClases > mejorVarianza) {
-      mejorVarianza = entreClases;
-      umbral = t;
-    }
-  }
-  return umbral;
-}
-
-// ---------------------------------------------------------------------------
-// La parte que necesita un navegador
-// ---------------------------------------------------------------------------
-
-/** Cuánto se achica la foto para buscar el recuadro. Detectar sobre 12 megapixeles
- *  tarda segundos en un teléfono de gama media; sobre 240 px es instantáneo y la
- *  posición de un borde no necesita más precisión que esa. */
-const ANCHO_DE_ANALISIS = 240;
-
-/**
- * Propone las cuatro esquinas del papel dentro de una foto.
- *
- * Devuelve un rectángulo, no un cuadrilátero torcido: sin OpenCV no se detecta
- * la perspectiva de forma confiable, y proponer un cuadrilátero mal calculado es
- * peor que proponer uno recto — el recto se corrige arrastrando una esquina, el
- * torcido hay que arreglarlo entero.
- *
- * `null` cuando no encuentra nada: ahí la pantalla propone el marco por defecto.
- */
-export function proponerEsquinas(lienzo: HTMLCanvasElement): Esquina[] | null {
-  const escala = Math.min(1, ANCHO_DE_ANALISIS / lienzo.width);
-  const ancho = Math.max(8, Math.round(lienzo.width * escala));
-  const alto = Math.max(8, Math.round(lienzo.height * escala));
-
-  const chico = document.createElement("canvas");
-  chico.width = ancho;
-  chico.height = alto;
-  const ctx = chico.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(lienzo, 0, 0, ancho, alto);
-
-  const r = recuadroDeContenido(ctx.getImageData(0, 0, ancho, alto).data, ancho, alto);
-  if (!r) return null;
-
-  // Un poco de aire: el detector encuentra donde arranca la TINTA, y el borde
-  // del papel está un poco más afuera. Comerse el borde es peor que dejar un
-  // dedo de mesa.
-  const aire = Math.round(Math.min(ancho, alto) * 0.02);
-  const x0 = Math.max(0, r.x0 - aire) / escala;
-  const y0 = Math.max(0, r.y0 - aire) / escala;
-  const x1 = Math.min(ancho - 1, r.x1 + aire) / escala;
-  const y1 = Math.min(alto - 1, r.y1 + aire) / escala;
-
-  return [
-    { x: x0, y: y0 },
-    { x: x1, y: y0 },
-    { x: x1, y: y1 },
-    { x: x0, y: y1 },
-  ];
-}
-
-/** El marco por defecto cuando no se detectó nada: casi toda la foto, con
- *  margen. Se arrastra desde ahí, que es más rápido que desde una esquina. */
-export function marcoPorDefecto(ancho: number, alto: number): Esquina[] {
-  const mx = ancho * 0.05;
-  const my = alto * 0.05;
-  return [
-    { x: mx, y: my },
-    { x: ancho - mx, y: my },
-    { x: ancho - mx, y: alto - my },
-    { x: mx, y: alto - my },
-  ];
-}
-
 /**
  * El ancho máximo de la imagen escaneada.
  *
@@ -478,93 +286,6 @@ function recorrer(
   }
 }
 
-/** Cuántas filas se procesan antes de ceder el hilo. Con 64, cada tanda tarda
- *  unas decenas de milisegundos: bastante para avanzar, poco para que se note. */
-const FILAS_POR_BANDA = 64;
-
-/**
- * Recorta al cuadrilátero, endereza, rota y blanquea el fondo.
- *
- * Cede el hilo entre bandas para que la pantalla pueda dibujar el progreso: el
- * bucle tarda segundos a resolución completa, y sin esto el teléfono se queda
- * congelado y quien saca la foto vuelve a tocar.
- *
- * Devuelve `null` si no puede: quien llama sube la original. La regla del módulo
- * vale también acá — **nada puede impedir que la foto quede**.
- */
-export async function enderezar(
-  fuente: HTMLCanvasElement,
-  esquinas: Esquina[],
-  opciones: { giro?: 0 | 90 | 180 | 270; alAvanzar?: (fraccion: number) => void } = {},
-): Promise<HTMLCanvasElement | null> {
-  const ordenadas = ordenarEsquinas(esquinas);
-  if (!ordenadas) return null;
-
-  const medida = medidaDeSalida(ordenadas);
-  if (medida.ancho < 8 || medida.alto < 8) return null;
-
-  const escala = Math.min(1, ANCHO_MAXIMO / medida.ancho);
-  const ancho = Math.round(medida.ancho * escala);
-  const alto = Math.round(medida.alto * escala);
-
-  const origen = fuente.getContext("2d", { willReadFrequently: true });
-  if (!origen) return null;
-  const entrada = origen.getImageData(0, 0, fuente.width, fuente.height);
-
-  const trabajo = crearEnderezador(entrada, ordenadas, ancho, alto);
-  if (!trabajo) return null;
-
-  for (let y = 0; y < alto; y += FILAS_POR_BANDA) {
-    trabajo.banda(y, y + FILAS_POR_BANDA);
-    opciones.alAvanzar?.(Math.min(1, (y + FILAS_POR_BANDA) / alto));
-    // `setTimeout(0)` y no `queueMicrotask`: una microtarea NO deja pintar, y el
-    // punto de todo esto es que la pantalla pueda dibujar.
-    await new Promise((r) => setTimeout(r, 0));
-  }
-
-  const resultado = trabajo.terminar(true);
-
-  const derecha = aLienzo(resultado);
-  return girar(derecha, opciones.giro ?? 0);
-}
-
-function aLienzo(m: Mapa): HTMLCanvasElement {
-  const c = document.createElement("canvas");
-  c.width = m.width;
-  c.height = m.height;
-  const ctx = c.getContext("2d")!;
-  const img = ctx.createImageData(m.width, m.height);
-  img.data.set(m.data);
-  ctx.putImageData(img, 0, 0);
-  return c;
-}
-
-/**
- * Gira la imagen en múltiplos de 90°.
- *
- * Hace falta y no es un lujo: entre las 18 fotos reales del depósito hay una
- * orden de reparación fotografiada de costado, y el enderezado no la corrige —
- * conserva la proporción del papel tal como estaba en la foto. Una factura
- * acostada en la pantalla de quien paga se lee girando la cabeza.
- *
- * Se gira acá, sobre la imagen ya derecha, y no antes: rotar la foto entera
- * costaría otra pasada por todos los píxeles.
- */
-export function girar(lienzo: HTMLCanvasElement, grados: 0 | 90 | 180 | 270): HTMLCanvasElement {
-  if (grados === 0) return lienzo;
-
-  const vertical = grados === 90 || grados === 270;
-  const salida = document.createElement("canvas");
-  salida.width = vertical ? lienzo.height : lienzo.width;
-  salida.height = vertical ? lienzo.width : lienzo.height;
-
-  const ctx = salida.getContext("2d")!;
-  ctx.translate(salida.width / 2, salida.height / 2);
-  ctx.rotate((grados * Math.PI) / 180);
-  ctx.drawImage(lienzo, -lienzo.width / 2, -lienzo.height / 2);
-  return salida;
-}
-
 /**
  * Muestreo bilineal: el color se interpola entre los cuatro píxeles vecinos.
  *
@@ -639,26 +360,5 @@ function realzarDatos(d: Uint8ClampedArray): void {
     d[i] = Math.min(255, d[i] * factor);
     d[i + 1] = Math.min(255, d[i + 1] * factor);
     d[i + 2] = Math.min(255, d[i + 2] * factor);
-  }
-}
-
-/**
- * De la foto al archivo que se sube.
- *
- * Devuelve `null` ante cualquier problema, y quien llama sube la original.
- */
-export async function escanear(
-  fuente: HTMLCanvasElement,
-  esquinas: Esquina[],
-  opciones: { giro?: 0 | 90 | 180 | 270; alAvanzar?: (fraccion: number) => void } = {},
-): Promise<Blob | null> {
-  try {
-    const derecha = await enderezar(fuente, esquinas, opciones);
-    if (!derecha) return null;
-    return await new Promise<Blob | null>((listo) =>
-      derecha.toBlob((b) => listo(b), "image/jpeg", 0.85),
-    );
-  } catch {
-    return null;
   }
 }

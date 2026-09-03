@@ -219,12 +219,21 @@ export default function CapturaCliente({
 
     // La linterna, si el teléfono la expone. Un depósito no tiene buena luz y
     // es la diferencia entre leer el código y no leerlo.
-    const track = streamRef.current.getVideoTracks()[0];
-    try {
-      track?.applyConstraints({ advanced: [{ torch: true } as never] });
-    } catch {
-      /* muchos teléfonos no la tienen; no es motivo para frenar nada */
-    }
+    // `applyConstraints` devuelve una PROMESA, así que el `try/catch` que
+    // rodeaba esta línea no atrapaba absolutamente nada: el rechazo llegaba
+    // después, por otro camino.
+    //
+    // El síntoma era un `OverconstrainedError: Unsupported constraint torch`
+    // sin capturar en la consola, cada vez que se abría la cámara en un
+    // dispositivo sin linterna — que son la mayoría. No rompía nada, y por eso
+    // llevaba ahí desde el principio: un error que no molesta es un error que
+    // nadie mira, hasta el día que tapa a uno que sí importa.
+    streamRef.current
+      .getVideoTracks()[0]
+      ?.applyConstraints({ advanced: [{ torch: true } as never] })
+      .catch(() => {
+        /* muchos teléfonos no la tienen; no es motivo para frenar nada */
+      });
 
     // **El lector de QR ya no vive acá.** Antes corría en este hilo y por
     // `requestAnimationFrame` —una pasada atrás de otra, sin freno—, y medido

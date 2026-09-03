@@ -5,7 +5,6 @@ import {
   medidaDeSalida,
   mapaDePerspectiva,
   puntoBlanco,
-  recuadroDeContenido,
   enderezarPixeles,
   type Mapa,
   type Esquina,
@@ -170,74 +169,10 @@ test("una imagen negra no produce un punto blanco de cero", () => {
 // La detección automática
 // ---------------------------------------------------------------------------
 //
-// **El papel es lo CLARO.** La primera versión de estas pruebas usaba un bloque
-// oscuro sobre fondo claro, que es como se ve un objeto sobre una mesa blanca —
-// y no es como se ve una factura. Contra 18 fotos reales del depósito, aquel
-// detector acertó CERO veces: la mediana era el papel, así que la caja se
-// expandía hasta abarcar el fondo oscuro.
-
-/** Una foto: fondo oscuro con una hoja clara adentro. */
-function conHoja(
-  ancho: number,
-  alto: number,
-  hoja: { x0: number; y0: number; x1: number; y1: number },
-): Uint8ClampedArray {
-  const d = new Uint8ClampedArray(ancho * alto * 4);
-  for (let y = 0; y < alto; y++) {
-    for (let x = 0; x < ancho; x++) {
-      const dentro = x >= hoja.x0 && x <= hoja.x1 && y >= hoja.y0 && y <= hoja.y1;
-      const v = dentro ? 225 : 35;
-      d.set([v, v, v, 255], (y * ancho + x) * 4);
-    }
-  }
-  return d;
-}
-
-test("encuentra la hoja clara dentro de la foto", () => {
-  const r = recuadroDeContenido(conHoja(100, 100, { x0: 20, y0: 15, x1: 78, y1: 88 }), 100, 100);
-  assert.ok(r);
-  assert.ok(Math.abs(r.x0 - 20) <= 3, `x0=${r.x0}`);
-  assert.ok(Math.abs(r.y0 - 15) <= 3, `y0=${r.y0}`);
-  assert.ok(Math.abs(r.x1 - 78) <= 3, `x1=${r.x1}`);
-  assert.ok(Math.abs(r.y1 - 88) <= 3, `y1=${r.y1}`);
-});
-
-test("una hoja que llena casi todo el cuadro SÍ se propone", () => {
-  // La versión anterior descartaba todo lo que pasara del 90% "porque recortar
-  // no aportaba nada". Contra fotos reales el papel cubre entre el 84% y el
-  // 99%: rechazaba justamente la respuesta correcta.
-  const r = recuadroDeContenido(conHoja(100, 100, { x0: 1, y0: 1, x1: 97, y1: 97 }), 100, 100);
-  assert.ok(r, "rechazó una hoja que llena el cuadro, que es el caso real");
-  assert.ok(r.x1 - r.x0 > 90);
-});
-
-test("gana la hoja del centro, no la más grande de atrás", () => {
-  // En el depósito la factura se fotografía sobre una pila de papeles. Quien
-  // saca la foto apunta a la que le importa, así que la del medio es la suya.
-  const d = conHoja(120, 120, { x0: 30, y0: 12, x1: 108, y1: 108 });
-  // Otra hoja clara pegada al borde izquierdo, separada por fondo oscuro y sin
-  // pasar por el centro.
-  for (let y = 0; y < 120; y++) {
-    for (let x = 0; x < 18; x++) d.set([235, 235, 235, 255], (y * 120 + x) * 4);
-  }
-  const r = recuadroDeContenido(d, 120, 120);
-  assert.ok(r);
-  assert.ok(r.x0 >= 25, `agarró la hoja de atrás: x0=${r.x0}`);
-});
-
-test("una imagen sin nada distinto no propone ningún recorte", () => {
-  // Todo del mismo color: no hay hoja que encontrar. Devolver un recuadro igual
-  // sería recortar al azar, que es peor que no recortar.
-  const lisa = new Uint8ClampedArray(100 * 100 * 4).fill(200);
-  assert.equal(recuadroDeContenido(lisa, 100, 100), null);
-});
-
-test("una mancha chica no se confunde con una hoja", () => {
-  assert.equal(
-    recuadroDeContenido(conHoja(100, 100, { x0: 45, y0: 45, x1: 58, y1: 58 }), 100, 100),
-    null,
-  );
-});
+// Sus pruebas se mudaron a `comprobantes-cuadrilatero.test.ts` junto con el
+// detector. La caja recta que vivía acá se reemplazó por Canny + Hough: contra
+// las 18 fotos reales del depósito, aquella "acertaba" 18 de 18 marcando siempre
+// el cuadro entero, que es lo mismo que no detectar nada.
 
 // ---------------------------------------------------------------------------
 // La prueba de ida y vuelta

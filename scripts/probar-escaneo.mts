@@ -23,8 +23,8 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import jsQR from "jsqr";
+import { detectarCuadrilatero } from "../lib/comprobantes/cuadrilatero";
 import {
-  recuadroDeContenido,
   ordenarEsquinas,
   medidaDeSalida,
   enderezarPixeles,
@@ -70,23 +70,14 @@ function achicar(m: Mapa, anchoDestino: number): Mapa {
   return { data, width: w, height: h };
 }
 
-/** Las mismas esquinas que propondría `proponerEsquinas` en el navegador. */
+/** Las mismas esquinas que encuentra el visor: Canny, Hough, y el cuadrilátero
+ *  que mejor puntúa. A 200 px, igual que en el teléfono. */
 function proponer(m: Mapa): Esquina[] | null {
-  const chico = achicar(m, 240);
-  const r = recuadroDeContenido(chico.data, chico.width, chico.height);
-  if (!r) return null;
+  const chico = achicar(m, 200);
+  const d = detectarCuadrilatero(chico.data, chico.width, chico.height);
+  if (!d) return null;
   const escala = chico.width / m.width;
-  const aire = Math.round(Math.min(chico.width, chico.height) * 0.02);
-  const x0 = Math.max(0, r.x0 - aire) / escala;
-  const y0 = Math.max(0, r.y0 - aire) / escala;
-  const x1 = Math.min(chico.width - 1, r.x1 + aire) / escala;
-  const y1 = Math.min(chico.height - 1, r.y1 + aire) / escala;
-  return [
-    { x: x0, y: y0 },
-    { x: x1, y: y0 },
-    { x: x1, y: y1 },
-    { x: x0, y: y1 },
-  ];
+  return d.esquinas.map((p) => ({ x: p.x / escala, y: p.y / escala }));
 }
 
 function marcoPorDefecto(ancho: number, alto: number): Esquina[] {
