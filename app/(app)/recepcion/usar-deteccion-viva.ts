@@ -2,40 +2,64 @@
 
 import { useEffect, useRef } from "react";
 import type { Esquina } from "@/lib/comprobantes/escaneo";
-import { detectarCuadrilatero } from "@/lib/comprobantes/cuadrilatero";
 import { SeguidorDePapel, ocupaPoco, type Cuadro } from "@/lib/comprobantes/seguidor";
+import type { PedidoAlAnalista, RespuestaDelAnalista } from "./analista.worker";
 
-// Detecta el papel mientras la cámara apunta, y dibuja el marco encima del video.
+// El visor: detecta el papel, lee el QR y dibuja el marco.
 //
 // Es lo que hace que se sienta como un escáner en vez de como una cámara: cuando
 // disparás, el recorte **ya está decidido**, así que no hace falta una pantalla
 // de ajuste después.
 //
-// **Encuentra un cuadrilátero, no una caja recta.** La primera versión de esto
-// devolvía el rectángulo del componente claro más grande, y contra las 18 fotos
-// reales del depósito "acertaba" 18 de 18 marcando siempre el cuadro entero —
-// que es lo mismo que no detectar nada. De ahí venía tener que ajustar el
-// recorte casi siempre.
+// **Todo el trabajo pesado vive en un worker.** Medido sobre cuadros reales a
+// resolución de video, con un teléfono siendo unas cuatro veces más lento que la
+// máquina de desarrollo:
 //
-// Ahora corre el pipeline de `cuadrilatero.ts`, que es el que usan los
-// escáneres de documentos serios: bordes por Canny, rectas por Hough, y el
-// cuadrilátero que mejor puntúa. Contra las mismas 18 fotos encuentra el papel
-// **con su inclinación real** en 13, y en las otras 5 devuelve `null` en vez de
-// un marco equivocado. Los 5 son el mismo caso: tickets angostos que se salen
-// del cuadro.
+//     lector de QR (jsQR) a 1000 px   ~660 ms por pasada
+//     detección del papel a 200 px     ~67 ms por pasada
+//
+// Los dos corrían en el hilo principal, y el de QR además **sin ningún freno**:
+// una pasada atrás de otra por `requestAnimationFrame`. Con el hilo bloqueado
+// más de medio segundo por vez, el video no podía ir fluido por más que se
+// optimizara el dibujo — no había hueco donde dibujar.
+//
+// Acá el hilo principal hace tres cosas baratas: copiar el cuadro a un lienzo
+// chico, mandar los píxeles, y pintar cuatro líneas. Todo lo demás sucede al
+// lado.
 
-/** Ancho al que se analiza cada cuadro.
+/** Ancho al que se analiza el papel. Medido: 200 px acierta igual que 240 y
+ *  cuesta menos; la resolución extra no compra aciertos. */
+const ANCHO_PAPEL = 200;
+
+/** Ancho al que se busca el QR. Más chico pierde códigos; más grande ya no
+ *  compra nada, porque el cuello de botella dejó de ser el hilo principal. */
+const ANCHO_QR = 800;
+
+/** Cada cuánto se pide una lectura del papel. */
+const MS_PAPEL = 90;
+
+/** Cada cuánto se busca un QR. Mucho más espaciado: un código no aparece y
+ *  desaparece en cien milisegundos, y cada pasada es cara aunque no bloquee. */
+const MS_QR = 350;
+
+/**
+ * Cuánto se acerca el marco dibujado a su objetivo en cada cuadro.
  *
- *  200 px: la detección de bordes necesita más resolución que la vieja búsqueda
- *  de regiones, porque una recta de tres píxeles se pierde. A 200 el pipeline
- *  completo —Canny más Hough— tarda unos 22 ms, que en un teléfono son unas 6
- *  lecturas por segundo: suficiente para un marco que sigue la mano. */
-const ANCHO_DE_ANALISIS = 200;
+ * Esto es lo que lo hace deslizar. El seguidor suaviza **entre lecturas** —unas
+ * once por segundo—; esto suaviza **entre cuadros**, sesenta por segundo. Sin
+ * esta segunda capa el marco avanza a saltos de once por segundo y se ve
+ * entrecortado aunque el video vaya perfecto.
+ */
+const ACERCAMIENTO_POR_CUADRO = 0.25;
 
-/** Cada cuánto se mira. No es por cuadro de video: a 30 fps sobraría trabajo
- *  para nada, porque el papel no se mueve tan rápido y el suavizado del seguidor
- *  ya rellena entre lecturas. */
-const MS_ENTRE_LECTURAS = 90;
+/**
+ * Tope de resolución del lienzo del marco.
+ *
+ * Antes se dimensionaba al video —hasta 1920×1080— y se borraba y repintaba
+ * sesenta veces por segundo. Eso es trabajo de GPU y de memoria por un dibujo de
+ * cuatro líneas. A 720 de ancho se ve idéntico en cualquier teléfono.
+ */
+const ANCHO_MARCO = 720;
 
 const VERDE = "#22c07a";
 
@@ -46,131 +70,185 @@ export type EstadoDeteccion = {
   lejos: boolean;
 };
 
-/**
- * Corre la detección sobre `video` y dibuja el marco en `lienzo`.
- *
- * `alCambiar` recibe el estado en cada lectura, para que la pantalla pueda
- * mostrar el consejo de acercarse y para que el disparo sepa dónde está el
- * papel sin volver a calcularlo.
- */
-// El nombre arranca con `use` y no con `usar` a propósito: es la marca por la
-// que React y su linter reconocen un hook. Es la única palabra en inglés del
-// módulo, y no es prosa — es una señal para las herramientas.
 export function useDeteccionViva(
   video: React.RefObject<HTMLVideoElement | null>,
   lienzo: React.RefObject<HTMLCanvasElement | null>,
   activo: boolean,
   alCambiar: (e: EstadoDeteccion) => void,
+  alLeerQr: (valor: string) => void,
 ): React.RefObject<EstadoDeteccion> {
-  // El callback vive en una ref para que cambiarlo no reinicie la detección:
-  // sin esto, cada render volvería a arrancar el bucle y el marco parpadearía.
+  // Los callbacks viven en refs para que cambiarlos no reinicie el visor: sin
+  // esto, cada render volvería a arrancar el bucle y el marco parpadearía.
   //
-  // La asignación va en un efecto y no en el cuerpo: escribir una ref durante
-  // el render es lo que React 19 marca como error, y con razón — en modo
-  // concurrente un render puede descartarse, y la escritura quedaría hecha.
+  // La asignación va en un efecto y no en el cuerpo: escribir una ref durante el
+  // render es lo que React 19 marca, y con razón — en modo concurrente un render
+  // puede descartarse, y la escritura quedaría hecha igual.
   const cb = useRef(alCambiar);
+  const cbQr = useRef(alLeerQr);
   useEffect(() => {
     cb.current = alCambiar;
+    cbQr.current = alLeerQr;
   });
 
-  // La última lectura, para que el disparo sepa dónde está el papel sin volver
-  // a calcularlo. La ref la crea y la escribe **este** hook: pasarle una de
-  // afuera y escribirla desde el callback hacía que React viera una ref tocada
-  // durante el render.
   const ultimaLectura = useRef<EstadoDeteccion>({ cuadro: null, lejos: false });
 
   useEffect(() => {
     if (!activo) return;
 
+    const worker = new Worker(new URL("./analista.worker.ts", import.meta.url));
     const seguidor = new SeguidorDePapel();
-    // Un solo lienzo de análisis para toda la sesión: crear uno por lectura
-    // llena la memoria del teléfono en segundos.
-    const chico = document.createElement("canvas");
-    const ctxChico = chico.getContext("2d", { willReadFrequently: true });
+
+    // Un lienzo por tarea, reusados: crear uno por lectura llena la memoria del
+    // teléfono en segundos.
+    const paraPapel = document.createElement("canvas");
+    const ctxPapel = paraPapel.getContext("2d", { willReadFrequently: true });
+    const paraQr = document.createElement("canvas");
+    const ctxQr = paraQr.getContext("2d", { willReadFrequently: true });
 
     let vivo = true;
-    let ultima = 0;
-    let cuadroPedido = 0;
+    let rafId = 0;
+    let ultimoPapel = 0;
+    let ultimoQr = 0;
+    // Sin esto se acumularían pedidos más rápido de lo que el worker responde y
+    // la cola crecería para siempre.
+    let papelEnVuelo = false;
+    let qrEnVuelo = false;
+    let siguienteId = 1;
 
-    function pintar() {
-      const v = video.current;
-      const l = lienzo.current;
-      if (!v || !l) return;
+    /** Dónde tiene que estar el marco, según la última lectura. */
+    let objetivo: Cuadro | null = null;
+    /** Dónde está dibujado ahora. Persigue al objetivo cuadro a cuadro. */
+    let dibujado: Cuadro | null = null;
 
-      // El lienzo se dimensiona al video una sola vez por cambio de tamaño:
-      // asignar width/height lo borra, así que hacerlo por cuadro parpadea.
-      if (l.width !== v.videoWidth || l.height !== v.videoHeight) {
-        l.width = v.videoWidth;
-        l.height = v.videoHeight;
+    worker.onmessage = (e: MessageEvent<RespuestaDelAnalista>) => {
+      const r = e.data;
+      if (r.tipo === "qr") {
+        qrEnVuelo = false;
+        if (r.valor) cbQr.current(r.valor);
+        return;
       }
 
+      papelEnVuelo = false;
+      const v = video.current;
+      if (!v || !v.videoWidth) return;
+
+      const escala = ANCHO_PAPEL / v.videoWidth;
+      const lectura = r.esquinas
+        ? (r.esquinas.map((p) => ({ x: p.x / escala, y: p.y / escala })) as Cuadro)
+        : null;
+
+      objetivo = seguidor.observar(lectura);
+      if (!dibujado && objetivo) dibujado = objetivo;
+
+      const estado: EstadoDeteccion = {
+        // Para el disparo vale dónde está el papel de verdad, no dónde llegó a
+        // dibujarse el marco.
+        cuadro: objetivo,
+        lejos: objetivo ? ocupaPoco(objetivo, v.videoWidth, v.videoHeight) : false,
+      };
+      ultimaLectura.current = estado;
+      cb.current(estado);
+    };
+
+    function pedir(
+      tipo: "papel" | "qr",
+      ctx: CanvasRenderingContext2D,
+      lienzoAux: HTMLCanvasElement,
+      anchoDestino: number,
+      v: HTMLVideoElement,
+    ) {
+      const escala = anchoDestino / v.videoWidth;
+      lienzoAux.width = anchoDestino;
+      lienzoAux.height = Math.max(8, Math.round(v.videoHeight * escala));
+      ctx.drawImage(v, 0, 0, lienzoAux.width, lienzoAux.height);
+      const img = ctx.getImageData(0, 0, lienzoAux.width, lienzoAux.height);
+
+      const pedido: PedidoAlAnalista = {
+        tipo,
+        id: siguienteId++,
+        datos: img.data.buffer as ArrayBuffer,
+        ancho: img.width,
+        alto: img.height,
+      };
+      // El buffer se TRANSFIERE, no se copia: duplicar un cuadro por lectura,
+      // diez veces por segundo, es basura que después hay que juntar.
+      worker.postMessage(pedido, [pedido.datos]);
+    }
+
+    function pintar(escalaMarco: number) {
+      const l = lienzo.current;
+      if (!l) return;
       const ctx = l.getContext("2d");
       if (!ctx) return;
+
       ctx.clearRect(0, 0, l.width, l.height);
+      if (!dibujado) return;
 
-      const c = seguidor.actual;
-      if (!c) return;
-
-      // Relleno translúcido y borde: el relleno es lo que dice "esto es lo que
-      // se va a guardar" sin una palabra, y el borde marca dónde termina.
       ctx.beginPath();
-      c.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      dibujado.forEach((p, i) => {
+        const x = p.x * escalaMarco;
+        const y = p.y * escalaMarco;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
       ctx.closePath();
       ctx.fillStyle = "rgba(34,192,122,0.22)";
       ctx.fill();
       ctx.strokeStyle = VERDE;
-      // El grosor se escala con el video: 3px sobre 1920 no se ve en la pantalla.
-      ctx.lineWidth = Math.max(3, l.width / 260);
+      ctx.lineWidth = Math.max(2, l.width / 200);
       ctx.stroke();
     }
 
-    function mirar(ahora: number) {
+    function cuadro(ahora: number) {
       if (!vivo) return;
-      cuadroPedido = requestAnimationFrame(mirar);
+      rafId = requestAnimationFrame(cuadro);
 
       const v = video.current;
-      if (!v || v.readyState < 2 || !ctxChico) return;
-      if (ahora - ultima < MS_ENTRE_LECTURAS) {
-        pintar();
-        return;
-      }
-      ultima = ahora;
+      const l = lienzo.current;
+      if (!v || !l || v.readyState < 2 || !v.videoWidth) return;
 
-      const escala = ANCHO_DE_ANALISIS / v.videoWidth;
-      chico.width = ANCHO_DE_ANALISIS;
-      chico.height = Math.max(8, Math.round(v.videoHeight * escala));
-      ctxChico.drawImage(v, 0, 0, chico.width, chico.height);
-
-      let lectura: Cuadro | null = null;
-      try {
-        const d = detectarCuadrilatero(
-          ctxChico.getImageData(0, 0, chico.width, chico.height).data,
-          chico.width,
-          chico.height,
-        );
-        if (d) {
-          // De vuelta a coordenadas del video.
-          const a = (n: number) => n / escala;
-          lectura = d.esquinas.map((p) => ({ x: a(p.x), y: a(p.y) })) as Cuadro;
-        }
-      } catch {
-        // Un cuadro que no se pudo leer no es un error: se prueba el siguiente.
+      // El lienzo se dimensiona una sola vez por cambio: asignar width/height lo
+      // borra, así que hacerlo por cuadro produce un parpadeo.
+      const escalaMarco = Math.min(1, ANCHO_MARCO / v.videoWidth);
+      const w = Math.round(v.videoWidth * escalaMarco);
+      const h = Math.round(v.videoHeight * escalaMarco);
+      if (l.width !== w || l.height !== h) {
+        l.width = w;
+        l.height = h;
       }
 
-      const cuadro = seguidor.observar(lectura);
-      pintar();
-      const estado: EstadoDeteccion = {
-        cuadro,
-        lejos: cuadro ? ocupaPoco(cuadro, v.videoWidth, v.videoHeight) : false,
-      };
-      ultimaLectura.current = estado;
-      cb.current(estado);
+      // El marco persigue a su objetivo en CADA cuadro. Es lo que lo hace
+      // deslizar en vez de avanzar a saltos de once por segundo.
+      if (objetivo) {
+        const meta = objetivo;
+        dibujado = dibujado
+          ? (dibujado.map((p, i) => ({
+              x: p.x + (meta[i].x - p.x) * ACERCAMIENTO_POR_CUADRO,
+              y: p.y + (meta[i].y - p.y) * ACERCAMIENTO_POR_CUADRO,
+            })) as Cuadro)
+          : meta;
+      } else {
+        dibujado = null;
+      }
+      pintar(escalaMarco);
+
+      if (!papelEnVuelo && ahora - ultimoPapel >= MS_PAPEL && ctxPapel) {
+        ultimoPapel = ahora;
+        papelEnVuelo = true;
+        pedir("papel", ctxPapel, paraPapel, ANCHO_PAPEL, v);
+      }
+      if (!qrEnVuelo && ahora - ultimoQr >= MS_QR && ctxQr) {
+        ultimoQr = ahora;
+        qrEnVuelo = true;
+        pedir("qr", ctxQr, paraQr, ANCHO_QR, v);
+      }
     }
 
-    cuadroPedido = requestAnimationFrame(mirar);
+    rafId = requestAnimationFrame(cuadro);
     return () => {
       vivo = false;
-      cancelAnimationFrame(cuadroPedido);
+      cancelAnimationFrame(rafId);
+      worker.terminate();
     };
   }, [activo, video, lienzo]);
 

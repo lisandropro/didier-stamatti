@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { capturarComprobante } from "@/app/actions/comprobantes";
 import type { Esquina } from "@/lib/comprobantes/escaneo";
-import { crearLectorQr } from "@/lib/comprobantes/lector-qr";
 import { llaveDeCliente, porQueNoHayCamara } from "@/lib/llave-cliente";
 import { useDeteccionViva, aEscalaDeFoto } from "./usar-deteccion-viva";
 import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
@@ -69,7 +68,13 @@ type Destino = "COCINA" | "DEPOSITO";
  * este módulo vino a evitar.
  */
 const MAX_LADO = 3000;
-const MS_BUSCANDO_CODIGO = 3000;
+// El límite de tres segundos para buscar el código se quitó con el modo lote:
+// la cámara ahora queda abierta mientras dura el reparto, y **cada foto necesita
+// su propia lectura**. Dejar de buscar a los tres segundos habría leído el QR de
+// la primera factura y ninguno más.
+//
+// Puede quedar buscando todo el rato porque ya no cuesta: son 350 ms de espera
+// entre pasadas, y cada pasada corre en el worker.
 
 export default function CapturaCliente({
   capturasIniciales,
@@ -106,15 +111,25 @@ export default function CapturaCliente({
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const deteccionRef = useDeteccionViva(videoRef, marcoLienzoRef, paso === "camara", (e) => {
-    setConsejo(!e.cuadro ? "buscando" : e.lejos ? "lejos" : "listo");
-  });
+  const deteccionRef = useDeteccionViva(
+    videoRef,
+    marcoLienzoRef,
+    paso === "camara",
+    (e) => setConsejo(!e.cuadro ? "buscando" : e.lejos ? "lejos" : "listo"),
+    (valor) => {
+      if (qrRef.current.has(valor)) return;
+      // Una foto puede traer varios QR —el de AFIP, uno de marketing—; se juntan
+      // todos y cuál es cuál lo decide el servidor.
+      qrRef.current.add(valor);
+      setCodigoLeido(true);
+      navigator.vibrate?.(60);
+    },
+  );
 
   const avisoError = useRef<HTMLParagraphElement>(null);
   const abriendo = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const qrRef = useRef<Set<string>>(new Set());
-  const clientKeyRef = useRef<string>("");
 
   const cerrarCamara = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -161,10 +176,13 @@ export default function CapturaCliente({
       cerrarCamara();
       setError(null);
       setAviso(null);
-      // La llave se genera acá, al abrir la cámara y no al enviar: es lo que
-      // hace que un doble toque nervioso no cree dos comprobantes.
-      clientKeyRef.current = llaveDeCliente();
-      qrRef.current = new Set();
+      // La llave ya no se genera acá: en modo lote cada foto lleva la suya, que
+      // es lo que impide que un doble toque cree dos comprobantes de la misma.
+      //
+      // Se VACÍA el conjunto en vez de reemplazarlo: el worker le escribe desde
+      // su callback, y cambiar el objeto al que apunta la ref mientras algo lo
+      // está leyendo es cómo se pierde un código leído.
+      qrRef.current.clear();
       setCodigoLeido(false);
       setDestino(null);
       setConforme(null);
@@ -208,35 +226,14 @@ export default function CapturaCliente({
       /* muchos teléfonos no la tienen; no es motivo para frenar nada */
     }
 
-    let vivo = true;
-    const arranque = performance.now();
-
-    // El lector se elige al vuelo: nativo donde existe, jsQR donde no. Antes
-    // acá había un `if (!BarcodeDetector) return`, y en iPhone —que es lo que
-    // este equipo usa— esa rama se tomaba SIEMPRE, en silencio.
-    crearLectorQr().then((lector) => {
-      if (!lector || !vivo) return;
-
-      async function buscar() {
-        if (!vivo) return;
-        // A los tres segundos se deja de insistir. No hay que pelearse con un
-        // papel arrugado: la foto se saca igual y el código se resuelve después.
-        if (performance.now() - arranque > MS_BUSCANDO_CODIGO) return;
-        for (const valor of await lector!.leer(video!)) {
-          if (qrRef.current.has(valor)) continue;
-          // Una foto puede traer varios QR —el de AFIP, uno de marketing—; se
-          // juntan todos y cuál es cuál lo decide el servidor.
-          qrRef.current.add(valor);
-          setCodigoLeido(true);
-          navigator.vibrate?.(60);
-        }
-        requestAnimationFrame(buscar);
-      }
-      requestAnimationFrame(buscar);
-    });
-    return () => {
-      vivo = false;
-    };
+    // **El lector de QR ya no vive acá.** Antes corría en este hilo y por
+    // `requestAnimationFrame` —una pasada atrás de otra, sin freno—, y medido
+    // sobre cuadros reales cada pasada cuesta unos 660 ms en un teléfono. Con el
+    // hilo bloqueado más de medio segundo por vez, el video no podía ir fluido
+    // por más que se optimizara todo lo demás.
+    //
+    // Ahora lo hace el mismo worker que detecta el papel, cada 350 ms, y avisa
+    // por `alLeerQr`. Acá queda solo prender la cámara.
   }, [paso]);
 
   async function disparar() {
@@ -279,7 +276,7 @@ export default function CapturaCliente({
     ]);
 
     // El lector de QR arranca de cero para la foto siguiente.
-    qrRef.current = new Set();
+    qrRef.current.clear();
     setCodigoLeido(false);
   }
 
