@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { capturarComprobante } from "@/app/actions/comprobantes";
-import Recorte from "./recorte";
-import { escanear, type Esquina } from "@/lib/comprobantes/escaneo";
+import type { Esquina } from "@/lib/comprobantes/escaneo";
 import { crearLectorQr } from "@/lib/comprobantes/lector-qr";
 import { llaveDeCliente, porQueNoHayCamara } from "@/lib/llave-cliente";
-import { usarDeteccionViva, aEscalaDeFoto, type EstadoDeteccion } from "./usar-deteccion-viva";
+import { useDeteccionViva, aEscalaDeFoto } from "./usar-deteccion-viva";
 import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 
 // La pantalla del depósito. Una sola cosa: sacar la foto.
@@ -22,6 +21,26 @@ import type { CapturaDelDia } from "@/lib/comprobantes/documentos";
 //    fotografiado y sin identificar ya es mejor que un papel sobre un escritorio.
 
 type Paso = "inicio" | "camara" | "revision" | "guardando" | "listo";
+
+/**
+ * Una foto de la tanda, con lo que se supo de ella al sacarla.
+ *
+ * Las esquinas salen del visor —que viene siguiendo el papel— así que al
+ * disparar el recorte ya está decidido y **no hace falta una pantalla de
+ * ajuste**. El enderezado tampoco se hace acá: se manda la foto con sus
+ * esquinas y lo hace el servidor, que es lo que saca el congelamiento de uno a
+ * tres segundos por foto.
+ */
+type Disparo = {
+  blob: Blob;
+  /** En coordenadas de la foto. `null` si el detector no encontró el papel:
+   *  entonces se guarda sin recortar, que es mejor que recortar mal. */
+  esquinas: Esquina[] | null;
+  qrs: string[];
+  /** Para la miniatura. Se libera al descartar la foto. */
+  vista: string;
+  clientKey: string;
+};
 type Destino = "COCINA" | "DEPOSITO";
 
 /**
@@ -62,13 +81,15 @@ export default function CapturaCliente({
   const [aviso, setAviso] = useState<string | null>(null);
   const [capturas, setCapturas] = useState(capturasIniciales);
 
-  const [foto, setFoto] = useState<Blob | null>(null);
-  // El lienzo de la foto, para poder recortarla. Se guarda aparte del blob
-  // porque volver a decodificar el JPEG para recortar pierde calidad dos veces.
-  const [lienzoFoto, setLienzoFoto] = useState<HTMLCanvasElement | null>(null);
-  const esquinasRef = useRef<Esquina[] | null>(null);
-  const [recortar, setRecortar] = useState(true);
-  const [giro, setGiro] = useState<0 | 90 | 180 | 270>(0);
+  // La tanda: las fotos sacadas que todavía no se guardaron.
+  //
+  // Es el cambio estructural. Antes cada foto era un ciclo completo —abrir la
+  // cámara, disparar, salir, revisar, guardar— y cinco facturas de un reparto
+  // eran cinco ciclos. Ahora la cámara es la pantalla de trabajo: se dispara
+  // varias veces seguidas y las fotos se acumulan.
+  const [tanda, setTanda] = useState<Disparo[]>([]);
+
+  // Cuánto de la tanda se subió, de 0 a 1. Alimenta la barra de progreso.
   const [escaneando, setEscaneando] = useState(0);
 
   // El marco verde que sigue al papel en el visor. Guardarlo en una ref y no en
@@ -76,7 +97,6 @@ export default function CapturaCliente({
   // por lectura volvería a dibujar toda la pantalla diez veces por segundo para
   // nada — el marco lo pinta su propio lienzo.
   const marcoLienzoRef = useRef<HTMLCanvasElement>(null);
-  const deteccionRef = useRef<EstadoDeteccion>({ cuadro: null, lejos: false });
   // Este SÍ es estado: cambia poco y hay que mostrarlo.
   const [consejo, setConsejo] = useState<"nada" | "buscando" | "lejos" | "listo">("buscando");
 
@@ -86,8 +106,7 @@ export default function CapturaCliente({
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  usarDeteccionViva(videoRef, marcoLienzoRef, paso === "camara", (e) => {
-    deteccionRef.current = e;
+  const deteccionRef = useDeteccionViva(videoRef, marcoLienzoRef, paso === "camara", (e) => {
     setConsejo(!e.cuadro ? "buscando" : e.lejos ? "lejos" : "listo");
   });
 
@@ -112,17 +131,9 @@ export default function CapturaCliente({
     avisoError.current?.focus();
   }, [error]);
 
-  // La vista previa se DERIVA de la foto, no se guarda aparte. Crearla dentro
-  // de un efecto obligaba a un render de mas —la pantalla se dibujaba una vez
-  // sin imagen y otra con ella— y en un telefono viejo ese parpadeo se ve.
-  const vistaPrevia = useMemo(() => (foto ? URL.createObjectURL(foto) : null), [foto]);
-
-  // Y se libera al cambiar de foto: sin esto cada captura deja un blob colgado
-  // en memoria, y en una jornada larga son decenas.
-  useEffect(() => {
-    if (!vistaPrevia) return;
-    return () => URL.revokeObjectURL(vistaPrevia);
-  }, [vistaPrevia]);
+  // Las vistas previas viven en cada foto de la tanda, no en una sola variable:
+  // ahora puede haber varias sin guardar a la vez. Se liberan al descartar una
+  // foto y al terminar de subir la tanda.
 
   async function abrirCamara() {
     // Entre el toque y el diálogo de permiso pasan segundos sin ninguna señal,
@@ -250,84 +261,117 @@ export default function CapturaCliente({
     // disparar no hay nada que calcular ni que preguntar: se llevan las que
     // estaban dibujadas, escaladas al tamaño de la foto.
     const detectado = deteccionRef.current.cuadro;
-    esquinasRef.current = detectado
-      ? aEscalaDeFoto(detectado, video.videoWidth, lienzo.width)
-      : null;
+    const esquinas = detectado ? aEscalaDeFoto(detectado, video.videoWidth, lienzo.width) : null;
 
-    cerrarCamara();
-    setFoto(blob);
-    setLienzoFoto(lienzo);
-    setRecortar(true);
-    setGiro(0);
-    setPaso("revision");
+    // Y **NO se sale de la cámara**. La foto se apila y se puede sacar la
+    // siguiente enseguida: un reparto son cinco comprobantes, no uno.
+    setTanda((prev) => [
+      ...prev,
+      {
+        blob,
+        esquinas,
+        qrs: [...qrRef.current],
+        vista: URL.createObjectURL(blob),
+        // Una llave por foto: es lo que impide que un doble toque nervioso o un
+        // reintento cree dos comprobantes de la misma.
+        clientKey: llaveDeCliente(),
+      },
+    ]);
+
+    // El lector de QR arranca de cero para la foto siguiente.
+    qrRef.current = new Set();
+    setCodigoLeido(false);
   }
 
+  /**
+   * Sube toda la tanda.
+   *
+   * Una llamada por comprobante —cada uno es su propio documento— pero **una
+   * sola vez las preguntas**: el destino de un reparto es siempre el mismo, y
+   * contestarlo cinco veces era la mitad de los toques.
+   *
+   * El enderezado NO se hace acá: se mandan la foto y sus esquinas, y lo hace el
+   * servidor. Medido a la resolución real de captura, hacerlo en el teléfono
+   * costaba 1,2 s de media y 1,8 s el peor caso — por foto.
+   */
   async function guardar() {
-    if (!foto) return;
+    if (tanda.length === 0) return;
     setPaso("guardando");
     setError(null);
 
-    const fd = new FormData();
-    fd.set("clientKey", clientKeyRef.current);
-    fd.set("kind", "FACTURA");
+    const nuevas: CapturaDelDia[] = [];
+    for (const [i, d] of tanda.entries()) {
+      setEscaneando((i + 1) / tanda.length);
 
-    // La ORIGINAL va SIEMPRE y va primero. Es el seguro: lo que se archiva es
-    // la escaneada, pero si el recorte se comio un borde, el papel de verdad
-    // sigue estando.
-    fd.append("fotos", new File([foto], "comprobante.jpg", { type: "image/jpeg" }));
-    fd.append("variante", "ORIGINAL");
-    fd.append("pagina", "1");
+      const fd = new FormData();
+      fd.set("clientKey", d.clientKey);
+      fd.set("kind", "FACTURA");
+      fd.append("fotos", new File([d.blob], "comprobante.jpg", { type: "image/jpeg" }));
+      fd.append("variante", "ORIGINAL");
+      fd.append("pagina", "1");
+      // Las esquinas viajan con la foto. Sin ellas el servidor guarda la
+      // original sin recortar, que es lo correcto: recortar mal es peor.
+      fd.append("esquinas", d.esquinas ? JSON.stringify(d.esquinas) : "");
+      for (const qr of d.qrs) fd.append("qr", qr);
+      if (destino) fd.set("destino", destino);
+      if (conforme !== null) fd.set("conforme", conforme ? "si" : "no");
 
-    // Y la escaneada, si se pudo. **Si falla no pasa nada**: se sube solo la
-    // original y el comprobante entra igual. Vale la regla del modulo — nada
-    // puede impedir que la foto quede.
-    if (recortar && lienzoFoto && esquinasRef.current) {
-      const escaneada = await escanear(lienzoFoto, esquinasRef.current, {
-        giro,
-        alAvanzar: setEscaneando,
-      });
-      if (escaneada) {
-        fd.append("fotos", new File([escaneada], "escaneada.jpg", { type: "image/jpeg" }));
-        fd.append("variante", "ESCANEADA");
-        fd.append("pagina", "1");
+      let r;
+      try {
+        r = await capturarComprobante(fd);
+      } catch {
+        // Con la red caída la promesa se rechaza. Sin esto la pantalla se queda
+        // en el esqueleto para siempre, con la única salida de recargar — que
+        // además borra las fotos.
+        //
+        // Las que ya subieron se sacan de la tanda: reintentar no puede volver a
+        // mandarlas. Las que faltan quedan, y "Guardar" sigue disponible.
+        setTanda((prev) => prev.slice(nuevas.length));
+        setCapturas((prev) => [...nuevas, ...prev]);
+        setError(
+          nuevas.length > 0
+            ? `Se guardaron ${nuevas.length} de ${tanda.length}. Se cortó la conexión: las que faltan siguen acá.`
+            : "No se pudo enviar. Las fotos siguen acá: revisá la señal y tocá Guardar de nuevo.",
+        );
+        setPaso("revision");
+        return;
       }
-    }
 
-    for (const qr of qrRef.current) fd.append("qr", qr);
-    if (destino) fd.set("destino", destino);
-    if (conforme !== null) fd.set("conforme", conforme ? "si" : "no");
+      if (!r.ok) {
+        setTanda((prev) => prev.slice(nuevas.length));
+        setCapturas((prev) => [...nuevas, ...prev]);
+        setError(r.error ?? "No se pudo guardar. Las fotos siguen acá, probá de nuevo.");
+        setPaso("revision");
+        return;
+      }
 
-    let r;
-    try {
-      r = await capturarComprobante(fd);
-    } catch {
-      // Sin esto, con la red caída la promesa se rechaza, no corre ni setError
-      // ni setPaso, y la pantalla queda en el esqueleto para siempre — con la
-      // única salida de recargar, que además borra la foto.
-      setError("No se pudo enviar. La foto sigue acá: revisá la señal y tocá Guardar de nuevo.");
-      setPaso("revision");
-      return;
-    }
-    if (!r.ok) {
-      setError(r.error ?? "No se pudo guardar. La foto sigue acá, probá de nuevo.");
-      setPaso("revision");
-      return;
-    }
-    setAviso(r.aviso ?? null);
-    setCapturas((prev) => [
-      {
+      if (r.aviso) setAviso(r.aviso);
+      nuevas.push({
         id: r.documentId!,
         kind: "FACTURA",
         proveedor: null,
         destino,
         conforme,
-        identificado: qrRef.current.size > 0,
+        identificado: d.qrs.length > 0,
         hora: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
-    setFoto(null);
+      });
+    }
+
+    for (const d of tanda) URL.revokeObjectURL(d.vista);
+    setCapturas((prev) => [...nuevas, ...prev]);
+    setTanda([]);
+    setEscaneando(0);
     setPaso("listo");
+  }
+
+  /** Descarta una foto de la tanda. Sale mal seguido: una queda movida, otra
+   *  salió del mismo comprobante dos veces. */
+  function descartar(clientKey: string) {
+    setTanda((prev) => {
+      const d = prev.find((x) => x.clientKey === clientKey);
+      if (d) URL.revokeObjectURL(d.vista);
+      return prev.filter((x) => x.clientKey !== clientKey);
+    });
   }
 
   // --- Cámara: pantalla completa, controles abajo ---------------------------
@@ -349,19 +393,62 @@ export default function CapturaCliente({
                 ? "Acercate un poco"
                 : "Apuntá al comprobante"}
         </p>
+        {/* Las fotos de la tanda, en una tira sobre los controles. Es lo que
+            dice "van tres" sin contar nada, y lo que permite descartar la que
+            salió movida sin salir de la cámara. */}
+        {tanda.length > 0 && (
+          <div className="cap-tira" role="list" aria-label={`${tanda.length} fotos sacadas`}>
+            {tanda.map((d, i) => (
+              <button
+                key={d.clientKey}
+                type="button"
+                className="cap-mini"
+                role="listitem"
+                onClick={() => descartar(d.clientKey)}
+                aria-label={`Descartar la foto ${i + 1}`}
+                title="Descartar"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={d.vista} alt="" />
+                <span className="cap-mini-x" aria-hidden>×</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="cap-controles">
           <button
             type="button"
             className="cap-cancelar"
             onClick={() => {
               cerrarCamara();
+              for (const d of tanda) URL.revokeObjectURL(d.vista);
+              setTanda([]);
               setPaso("inicio");
             }}
           >
             Cancelar
           </button>
           <button type="button" className="cap-disparo" onClick={disparar} aria-label="Sacar la foto" />
-          <span className="cap-hueco" aria-hidden />
+
+          {/* "Listo" aparece recién cuando hay algo que guardar. Antes ese lugar
+              estaba vacío, y un botón que aparece cuando sirve se encuentra
+              mejor que uno que está siempre y a veces no hace nada. */}
+          {tanda.length > 0 ? (
+            <button
+              type="button"
+              className="cap-listo-btn"
+              onClick={() => {
+                cerrarCamara();
+                setPaso("revision");
+              }}
+            >
+              Listo
+              <span className="cap-cuenta">{tanda.length}</span>
+            </button>
+          ) : (
+            <span className="cap-hueco" aria-hidden />
+          )}
         </div>
       </div>
     );
@@ -383,36 +470,47 @@ export default function CapturaCliente({
         </p>
       )}
 
-      {paso === "revision" && vistaPrevia && (
+      {paso === "revision" && tanda.length > 0 && (
         <section className="cap-revision">
-          {recortar && lienzoFoto ? (
-            <Recorte
-              fuente={lienzoFoto}
-              giro={giro}
-              onGirar={() => setGiro((g) => ((g + 90) % 360) as 0 | 90 | 180 | 270)}
-              onCambio={(e) => {
-                esquinasRef.current = e;
-              }}
-            />
-          ) : (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={vistaPrevia} alt="El comprobante que acabás de fotografiar" className="cap-previa" />
-          )}
+          {/* Las fotos de la tanda, para mirarlas antes de guardar. Ya vienen
+              recortadas por el visor: acá no hay nada que ajustar, solo que
+              mirar y descartar la que salió mal. */}
+          <div className="cap-grilla" role="list">
+            {tanda.map((d, i) => (
+              <div key={d.clientKey} className="cap-grilla-item" role="listitem">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={d.vista} alt={`Comprobante ${i + 1}`} />
+                <button
+                  type="button"
+                  className="cap-quitar"
+                  onClick={() => descartar(d.clientKey)}
+                  aria-label={`Descartar el comprobante ${i + 1}`}
+                >
+                  Quitar
+                </button>
+                {!d.esquinas && (
+                  <span className="cap-sin-recorte-aviso" title="No se encontró el borde del papel">
+                    sin recortar
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
 
-          {/* Siempre visible, siempre disponible: si el recorte no ayuda, se
-              sale de él en un toque y la foto se guarda como está. */}
-          {lienzoFoto && (
-            <button type="button" className="btn ghost cap-sin-recorte" onClick={() => setRecortar((v) => !v)}>
-              {recortar ? "Usar la foto sin recortar" : "Recortar el papel"}
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn ghost cap-sumar"
+            onClick={() => {
+              setPaso("camara");
+              abrirCamara();
+            }}
+          >
+            Sacar otra
+          </button>
 
-          <p className={`cap-lectura${codigoLeido ? " ok" : ""}`}>
-            {codigoLeido
-              ? "Se leyó el código del comprobante."
-              : "No se leyó el código. Se guarda igual y se completa después."}
-          </p>
-
+          {/* **Una vez por tanda, no una por foto.** El destino de un reparto es
+              siempre el mismo, y contestarlo cinco veces era la mitad de los
+              toques. */}
           <fieldset className="cap-grupo">
             <legend>¿A dónde entró?</legend>
             <div className="cap-opciones">
@@ -454,22 +552,12 @@ export default function CapturaCliente({
 
           <div className="cap-cierre">
             <button type="button" className="btn primary cap-guardar" onClick={guardar}>
-              Guardar
-            </button>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => {
-                setFoto(null);
-                abrirCamara();
-              }}
-            >
-              Sacar de nuevo
+              Guardar {tanda.length === 1 ? "el comprobante" : `los ${tanda.length}`}
             </button>
             {/* Las dos preguntas son salteables a propósito: el día que llegan
                 tres proveedores juntos es el día que se abandona una app que
                 obliga a contestarlas. */}
-            <p className="hint">Las dos preguntas se pueden saltear. Lo que importa es que la foto quede.</p>
+            <p className="hint">Las dos preguntas se pueden saltear. Lo que importa es que las fotos queden.</p>
           </div>
         </section>
       )}

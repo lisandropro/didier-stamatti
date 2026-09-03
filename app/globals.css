@@ -1469,3 +1469,59 @@ tbody tr:hover{background:var(--surface-2)}
   position:absolute; inset:0; width:100%; height:100%;
   object-fit:cover; pointer-events:none; z-index:2;
 }
+
+/* ===== Modo lote: la cámara es la pantalla de trabajo ===== */
+
+/* La tira de fotos sacadas, sobre los controles. Dice "van tres" sin contar
+   nada, y deja descartar la que salió movida sin salir de la cámara. */
+.cap-tira{
+  position:absolute; left:0; right:0; bottom:132px; z-index:3;
+  display:flex; gap:8px; padding:8px 14px; overflow-x:auto;
+  scrollbar-width:none; -webkit-overflow-scrolling:touch;
+}
+.cap-tira::-webkit-scrollbar{display:none}
+.cap-mini{
+  position:relative; flex:0 0 auto; width:54px; height:72px; padding:0;
+  border:2px solid rgba(255,255,255,.85); border-radius:6px; overflow:hidden;
+  background:#000; cursor:pointer; touch-action:manipulation;
+}
+.cap-mini img{width:100%; height:100%; object-fit:cover; display:block}
+.cap-mini-x{
+  position:absolute; top:-1px; right:1px; color:#fff; font-size:17px; line-height:1;
+  text-shadow:0 1px 3px rgba(0,0,0,.9);
+}
+
+/* "Listo" ocupa el lugar que antes estaba vacío, y solo cuando hay algo que
+   guardar: un botón que aparece cuando sirve se encuentra mejor que uno que
+   está siempre y a veces no hace nada. */
+.cap-listo-btn{
+  display:inline-flex; align-items:center; gap:8px;
+  min-height:var(--tap); padding:0 18px; border:none; border-radius:var(--r-pill);
+  background:#22c07a; color:#04231a; font-family:var(--font-ui);
+  font-size:var(--t-md); font-weight:700; cursor:pointer; touch-action:manipulation;
+}
+.cap-cuenta{
+  display:grid; place-items:center; min-width:22px; height:22px; padding:0 6px;
+  border-radius:var(--r-pill); background:rgba(0,0,0,.22); font-size:var(--t-sm);
+}
+
+/* La grilla de revisión: las fotos de la tanda antes de guardar. Ya vienen
+   recortadas por el visor, así que acá no hay nada que ajustar — solo mirar. */
+.cap-grilla{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr));
+  gap:var(--sp-3); margin-bottom:var(--sp-4);
+}
+.cap-grilla-item{position:relative; border-radius:var(--r-md); overflow:hidden; background:var(--surface-2)}
+.cap-grilla-item img{width:100%; aspect-ratio:3/4; object-fit:cover; display:block}
+.cap-quitar{
+  position:absolute; top:6px; right:6px; min-height:30px; padding:0 10px;
+  border:none; border-radius:var(--r-pill); background:rgba(0,0,0,.7); color:#fff;
+  font-family:var(--font-ui); font-size:var(--t-xs); font-weight:650; cursor:pointer;
+}
+/* Cuando el detector no encontró el papel, la foto se guarda entera. Decirlo
+   evita la sorpresa de abrirla después y verla con media mesa adentro. */
+.cap-sin-recorte-aviso{
+  position:absolute; left:6px; bottom:6px; padding:2px 7px; border-radius:var(--r-pill);
+  background:rgba(0,0,0,.7); color:var(--warn-ink,#f0cf7a); font-size:var(--t-xs); font-weight:650;
+}
+.cap-sumar{width:100%; min-height:var(--tap); margin-bottom:var(--sp-4)}

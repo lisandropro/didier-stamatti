@@ -53,16 +53,31 @@ export type EstadoDeteccion = {
  * mostrar el consejo de acercarse y para que el disparo sepa dónde está el
  * papel sin volver a calcularlo.
  */
-export function usarDeteccionViva(
+// El nombre arranca con `use` y no con `usar` a propósito: es la marca por la
+// que React y su linter reconocen un hook. Es la única palabra en inglés del
+// módulo, y no es prosa — es una señal para las herramientas.
+export function useDeteccionViva(
   video: React.RefObject<HTMLVideoElement | null>,
   lienzo: React.RefObject<HTMLCanvasElement | null>,
   activo: boolean,
   alCambiar: (e: EstadoDeteccion) => void,
-) {
+): React.RefObject<EstadoDeteccion> {
   // El callback vive en una ref para que cambiarlo no reinicie la detección:
-  // sin esto, cada render volvería a arrancar el bucle.
+  // sin esto, cada render volvería a arrancar el bucle y el marco parpadearía.
+  //
+  // La asignación va en un efecto y no en el cuerpo: escribir una ref durante
+  // el render es lo que React 19 marca como error, y con razón — en modo
+  // concurrente un render puede descartarse, y la escritura quedaría hecha.
   const cb = useRef(alCambiar);
-  cb.current = alCambiar;
+  useEffect(() => {
+    cb.current = alCambiar;
+  });
+
+  // La última lectura, para que el disparo sepa dónde está el papel sin volver
+  // a calcularlo. La ref la crea y la escribe **este** hook: pasarle una de
+  // afuera y escribirla desde el callback hacía que React viera una ref tocada
+  // durante el render.
+  const ultimaLectura = useRef<EstadoDeteccion>({ cuadro: null, lejos: false });
 
   useEffect(() => {
     if (!activo) return;
@@ -144,10 +159,12 @@ export function usarDeteccionViva(
 
       const cuadro = seguidor.observar(lectura);
       pintar();
-      cb.current({
+      const estado: EstadoDeteccion = {
         cuadro,
         lejos: cuadro ? ocupaPoco(cuadro, v.videoWidth, v.videoHeight) : false,
-      });
+      };
+      ultimaLectura.current = estado;
+      cb.current(estado);
     }
 
     cuadroPedido = requestAnimationFrame(mirar);
@@ -156,6 +173,8 @@ export function usarDeteccionViva(
       cancelAnimationFrame(cuadroPedido);
     };
   }, [activo, video, lienzo]);
+
+  return ultimaLectura;
 }
 
 /** Las esquinas detectadas, llevadas a las coordenadas de una foto de otro

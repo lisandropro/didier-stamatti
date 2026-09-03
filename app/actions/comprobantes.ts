@@ -18,6 +18,7 @@ import {
 } from "@/lib/comprobantes/pagos";
 import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
+import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
 import { esParaNosotros } from "@/lib/comprobantes/qr";
 import { aTextoPlano } from "@/lib/money";
 import {
@@ -88,16 +89,37 @@ export async function capturarComprobante(fd: FormData) {
     if (!tipo) {
       return { ok: false, error: `El archivo "${f.name}" no es una foto ni un PDF.` };
     }
+    const pagina = paginaValida(fd.getAll("pagina")[i]);
+
+    // La ORIGINAL va siempre. Es el seguro: lo que se archiva es la escaneada,
+    // pero si el recorte se comió un borde, el papel de verdad sigue estando.
     const { s3Key, sizeBytes } = await subirFoto(bytes, tipo, hoy);
-    adjuntos.push({
-      s3Key,
-      mimeType: tipo,
-      sizeBytes,
-      variante: (String(fd.getAll("variante")[i] ?? "ORIGINAL") === "ESCANEADA"
-        ? "ESCANEADA"
-        : "ORIGINAL") as "ORIGINAL" | "ESCANEADA",
-      pagina: paginaValida(fd.getAll("pagina")[i]),
-    });
+    adjuntos.push({ s3Key, mimeType: tipo, sizeBytes, variante: "ORIGINAL" as const, pagina });
+
+    // **El enderezado se hace ACÁ y no en el teléfono.**
+    //
+    // Medido a la resolución real de captura, en el teléfono tardaba 1,2 s de
+    // media y 1,8 s el peor caso: varios segundos de pantalla congelada por
+    // foto. Con eso, encadenar cinco comprobantes de un reparto es
+    // insoportable — y encadenarlos es justamente lo que hace falta.
+    //
+    // El teléfono manda la foto y las cuatro esquinas que ya venía siguiendo en
+    // el visor; el trabajo pesado pasa a un lugar donde nadie lo mira suceder.
+    if (tipo !== "application/pdf") {
+      // Si no se pudo enderezar —sin esquinas, esquinas imposibles, imagen
+      // ilegible— queda solo la original y el comprobante entra igual.
+      const derecha = await enderezarEnServidor(bytes, fd.getAll("esquinas")[i]);
+      if (derecha) {
+        const sub = await subirFoto(derecha.jpeg, "image/jpeg", hoy);
+        adjuntos.push({
+          s3Key: sub.s3Key,
+          mimeType: "image/jpeg",
+          sizeBytes: sub.sizeBytes,
+          variante: "ESCANEADA" as const,
+          pagina,
+        });
+      }
+    }
   }
 
   const destino = destinoValido(String(fd.get("destino") ?? ""));

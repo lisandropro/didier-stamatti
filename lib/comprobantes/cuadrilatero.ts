@@ -113,7 +113,7 @@ function bordesDelCuadro(ancho: number, alto: number): Recta[] {
 /** La diferencia entre dos ángulos de recta, teniendo en cuenta que θ y θ+180°
  *  son la misma dirección. */
 function anguloEntre(a: number, b: number): number {
-  let d = Math.abs(a - b) % Math.PI;
+  const d = Math.abs(a - b) % Math.PI;
   return d > Math.PI / 2 ? Math.PI - d : d;
 }
 
