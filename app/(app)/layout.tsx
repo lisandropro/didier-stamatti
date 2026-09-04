@@ -5,6 +5,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { PushSubscriptionSync } from "@/components/PushSubscriptionSync";
 import { SuggestionBox } from "@/components/SuggestionBox";
+import { Actualizador } from "@/components/Actualizador";
+import { appVersion } from "@/lib/app-version";
 
 export default async function AppLayout({
   children,
@@ -24,6 +26,10 @@ export default async function AppLayout({
 
   return (
     <div className="app">
+      {/* Se pasa la versión con la que se dibujó esta pantalla: si el servidor
+          pasa a otra, la app se actualiza sola en cuanto nadie esté a mitad de
+          algo. Sin esto, una pestaña vieja falla al guardar y no avisa. */}
+      <Actualizador version={appVersion()} />
       {/* La suscripción push es del teléfono, no de la persona: al abrir la app
           se vuelve a anotar a nombre de quien tiene la sesión ahora. */}
       <PushSubscriptionSync />

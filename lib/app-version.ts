@@ -9,6 +9,9 @@ import pkg from "../package.json" with { type: "json" };
  * entorno al construir. En local no existe y queda solo el número.
  */
 export function appVersion(): string {
-  const commit = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7);
-  return commit ? `${pkg.version}+${commit}` : `${pkg.version} (local)`;
+  // APP_BUILD_ID lo fija next.config al compilar, así que cambia con cada
+  // despliegue y existe también en tiempo de ejecución — la variable de git de
+  // Railway no, y por eso no se usa.
+  const build = process.env.APP_BUILD_ID;
+  return build ? `${pkg.version}+${build}` : `${pkg.version} (sin build)`;
 }
