@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
+import { marcarGuardado, marcarPendiente } from "@/lib/trabajo-pendiente";
 import { computeShortage } from "@/lib/shortage-rule";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditEventModal } from "@/components/EditEventModal";
@@ -81,7 +82,16 @@ export function OrderBuilder({ data }: { data: Data }) {
   // ---- autosave con debounce por producto ----
   function scheduleSave(p: ProductRow) {
     const t = timers.current.get(p.id);
-    if (t) clearTimeout(t);
+    // Cada tecla reinicia la espera. El pendiente que tenía el temporizador
+    // anterior se descuenta acá: si no, tipear "800" dejaría tres pendientes
+    // y uno solo se cerraría, y la app no volvería a actualizarse nunca.
+    if (t) {
+      clearTimeout(t);
+      marcarGuardado();
+    }
+    // Desde que se toca una cantidad hasta que queda guardada, la app no se
+    // actualiza sola: una recarga en ese hueco se comería lo tipeado.
+    marcarPendiente();
     timers.current.set(
       p.id,
       setTimeout(async () => {
@@ -89,6 +99,7 @@ export function OrderBuilder({ data }: { data: Data }) {
         setPending((n) => n + 1);
         const res = await setLine({ eventId: data.event.id, productId: p.id, qty: p.qty, note: p.note });
         setPending((n) => n - 1);
+        marcarGuardado();
         setSavedOnce(true);
         if (!res.ok) setError(res.error ?? "No se pudo guardar. Revisá la conexión.");
         else setError(null);
