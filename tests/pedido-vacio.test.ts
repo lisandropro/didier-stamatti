@@ -82,3 +82,22 @@ test("el texto dice cuándo es, sin obligar a hacer la cuenta", () => {
   assert.match(de("2026-08-22"), /es el .*22/);
   assert.match(de(HOY), /su pedido está vacío/);
 });
+
+test("los servicios de la Villa no avisan aunque estén vacíos", () => {
+  // Se crearon los 83 vacíos a propósito, como molde a completar. Avisar de
+  // cada uno serían ocho avisos por día durante tres semanas.
+  const villa: EventoVacio[] = [
+    { id: "v1", lugar: "Villa — Desayuno", dia: "2026-08-20" },
+    { id: "v2", lugar: "Villa — Cena", dia: "2026-08-22" },
+  ];
+  assert.deepEqual(avisosQueTocan(villa, HOY), []);
+});
+
+test("un evento de salón vacío sigue avisando igual", () => {
+  // Lo que se silencia es la serie de la Villa, no el control entero.
+  const mezcla: EventoVacio[] = [
+    { id: "v1", lugar: "Villa — Almuerzo", dia: "2026-08-20" },
+    { id: "s1", lugar: "LA DELFINA", dia: "2026-08-20" },
+  ];
+  assert.deepEqual(avisosQueTocan(mezcla, HOY).map((a) => a.id), ["s1"]);
+});

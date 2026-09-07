@@ -23,6 +23,24 @@ import { canEditOrders, sortByNotificationPriority } from "@/lib/permissions";
  */
 export const DIAS_DE_AVISO = [1, 3] as const;
 
+/**
+ * Series creadas por adelantado que NO avisan aunque estén vacías.
+ *
+ * Los Juegos Suramericanos dejaron 83 servicios de la Villa creados de una vez
+ * y vacíos a propósito: son el molde que Enrique va completando día por día.
+ * Avisarle de cada uno serían ocho avisos diarios durante tres semanas sobre
+ * algo que ya sabe, y un aviso que se ignora deja de ser un aviso — que es
+ * justamente lo que este módulo trata de evitar.
+ *
+ * Los eventos de salón siguen avisando igual: ahí el pedido vacío sí es una
+ * sorpresa.
+ */
+const SERIES_SIN_AVISO = [/^Villa\s+—/i];
+
+export function avisaAunqueEsteVacio(lugar: string): boolean {
+  return !SERIES_SIN_AVISO.some((r) => r.test(lugar.trim()));
+}
+
 export type EventoVacio = { id: string; lugar: string; dia: string };
 export type AvisoDePedido = { id: string; lugar: string; dia: string; faltan: number; umbral: number };
 
@@ -38,6 +56,7 @@ export function avisosQueTocan(eventos: EventoVacio[], hoyDia: string): AvisoDeP
   const maximo = umbrales[umbrales.length - 1];
   const avisos: AvisoDePedido[] = [];
   for (const e of eventos) {
+    if (!avisaAunqueEsteVacio(e.lugar)) continue;
     const faltan = diasEntre(hoyDia, e.dia);
     if (faltan < 0 || faltan > maximo) continue;
     const umbral = umbrales.find((u) => faltan <= u)!;

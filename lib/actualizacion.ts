@@ -65,3 +65,40 @@ export function esErrorDeVersionVieja(mensaje: unknown): boolean {
   if (typeof mensaje !== "string") return false;
   return /Failed to find Server Action|from an older or newer deployment/i.test(mensaje);
 }
+
+/** El texto de un error lanzado, venga como Error o como cualquier otra cosa. */
+export function textoDelError(e: unknown): string {
+  return e instanceof Error ? e.message : String(e ?? "");
+}
+
+/**
+ * Qué se le dice a la persona cuando guardar falló lanzando.
+ *
+ * Lo importante es que vea algo: el modo en que esto falla —la pantalla vieja
+ * contra un servidor nuevo— no muestra ningún error por su cuenta, y quien está
+ * cargando sigue tipeando cantidades que no se guardan.
+ */
+export function mensajeDeFallo(e: unknown): string {
+  return esErrorDeVersionVieja(textoDelError(e))
+    ? "La app estaba desactualizada y no se guardó. Se actualiza sola en un segundo: revisá esta última cantidad."
+    : "No se pudo guardar. Revisá la conexión.";
+}
+
+/** La marca que evita que dos recargas se pisen. Compartida con el Actualizador. */
+export const CLAVE_ULTIMA_RECARGA = "ultima-recarga-version";
+
+/**
+ * Si el fallo fue por versión vieja, se recarga. No se espera al control
+ * periódico: mientras tanto no se puede guardar nada.
+ */
+export function avisarDeFalloAlGuardar(e: unknown): void {
+  if (!esErrorDeVersionVieja(textoDelError(e))) return;
+  if (typeof window === "undefined") return;
+  try {
+    const previa = Number(sessionStorage.getItem(CLAVE_ULTIMA_RECARGA) ?? 0);
+    if (previa && Date.now() - previa < MINIMO_ENTRE_RECARGAS_MS) return;
+    sessionStorage.setItem(CLAVE_ULTIMA_RECARGA, String(Date.now()));
+  } catch {}
+  // Un respiro para que se alcance a leer el aviso antes de que la pantalla salte.
+  setTimeout(() => window.location.reload(), 1500);
+}

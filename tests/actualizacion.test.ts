@@ -134,3 +134,19 @@ test("un guardado de más no deja el contador en negativo", async () => {
   marcarPendiente();
   assert.equal(estaOcupado(), true);
 });
+
+test("cuando guardar falla por versión vieja, la persona ve un aviso", async () => {
+  // El modo en que esto falla no muestra nada por su cuenta: Enrique tipeó
+  // cantidades dos veces contra un servidor que las rechazaba en silencio.
+  const { mensajeDeFallo } = await import("../lib/actualizacion");
+  const viejo = new Error('Failed to find Server Action "40401a766c2". This request might be from an older deployment.');
+  assert.match(mensajeDeFallo(viejo), /desactualizada|actualiza/i);
+  assert.match(mensajeDeFallo(new Error("fetch failed")), /conexión/i);
+});
+
+test("el texto del error se saca venga como venga", async () => {
+  const { textoDelError } = await import("../lib/actualizacion");
+  assert.equal(textoDelError(new Error("roto")), "roto");
+  assert.equal(textoDelError("roto"), "roto");
+  assert.equal(textoDelError(null), "");
+});
