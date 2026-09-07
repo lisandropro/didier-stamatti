@@ -33,6 +33,8 @@ let shortages: typeof import("../lib/shortages");
 
 before(async () => {
   fs.rmSync(DB, { force: true });
+  // Prisma en Windows necesita que el archivo SQLite exista antes de migrar.
+  fs.writeFileSync(DB, "");
   // Las mismas migraciones que corren en producción, sobre la base descartable.
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     env: { ...process.env, DATABASE_URL: `file:${DB}` },

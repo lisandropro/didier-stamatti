@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PeriodHub } from "@/components/PeriodHub";
 import { fmtEvento, fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
@@ -16,6 +17,7 @@ export default async function Home({
 }) {
   const sp = await searchParams;
   const session = await getSessionUser();
+  if (!session) redirect("/login");
 
   // Lo que está en la papelera no aparece en ningún lado ni suma al stock.
   const periodos = await prisma.operationalPeriod.findMany({

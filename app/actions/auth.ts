@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/email";
 import bcrypt from "bcryptjs";
+import { loginLimiter } from "@/lib/login-limit";
 import { createSession, destroySession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -22,13 +23,16 @@ export async function login(
     return { error: "Completá el email y la contraseña." };
   }
 
+  if (email.length > 254 || password.length > 256) return { error: "Email o contraseña incorrectos." };
+  if (!loginLimiter.take(email)) return { error: "Demasiados intentos. Esperá 15 minutos antes de volver a intentar." };
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
+  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
     return { error: "Email o contraseña incorrectos." };
   }
 
+  loginLimiter.clear(email);
   await createSession(
-    { id: user.id, name: user.name, role: user.role, email: user.email },
+    user,
     remember
   );
   redirect("/");

@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { notifyOrderChange, type OrderChangeInput } from "@/lib/notify";
 import { revalidatePath } from "next/cache";
 import { canEditOrders } from "@/lib/permissions";
+import { validQuantity } from "@/lib/quantity";
 import { esCategoria } from "@/lib/categories";
 
 export type OrderResult = { ok: boolean; error?: string; lineId?: string; count?: number };
@@ -29,43 +30,54 @@ export async function setLine(input: {
   const { user, error: permiso } = await requireEdit();
   if (!user) return { ok: false, error: permiso! };
 
-  const qty = Math.max(0, Math.round(input.qty));
+  if (!validQuantity(input.qty)) return { ok: false, error: "Ingresá una cantidad entera válida." };
+  const event = await prisma.event.findFirst({ where: { id: input.eventId, deletedAt: null, period: { deletedAt: null } }, select: { id: true } });
+  if (!event) return { ok: false, error: "El evento ya no está disponible." };
+  const qty = input.qty;
+  if (input.note != null && (typeof input.note !== "string" || input.note.length > 1000)) return { ok: false, error: "La nota puede tener hasta 1000 caracteres." };
   const note = input.note?.trim() || null;
 
-  const existing = await prisma.orderLine.findFirst({
-    where: { eventId: input.eventId, productId: input.productId },
-  });
-  const producto = await prisma.product.findUnique({
-    where: { id: input.productId },
-    select: { name: true },
-  });
-  const nombre = producto?.name ?? "Producto";
-
-  // Puede cambiar la cantidad Y la nota en el mismo guardado: se registran las
-  // dos cosas, porque la nota es justo lo que le importa al del depósito.
-  const cambios: OrderChangeInput[] = [];
-
-  if (qty === 0) {
-    if (existing) {
-      await prisma.orderLine.delete({ where: { id: existing.id } });
-      cambios.push({ itemName: nombre, kind: "QUITADO", before: String(existing.qty), after: null });
-    }
-  } else if (existing) {
-    if (existing.qty !== qty) {
-      cambios.push({ itemName: nombre, kind: "CANTIDAD", before: String(existing.qty), after: String(qty) });
-    }
-    if ((existing.note ?? null) !== note) {
-      cambios.push({ itemName: nombre, kind: "NOTA", before: existing.note, after: note });
-    }
-    // Si no cambió ni la cantidad ni la nota, se guarda igual pero no se avisa:
-    // abrir un pedido y volver a guardarlo no es una modificación.
-    if (cambios.length > 0) await prisma.orderLine.update({ where: { id: existing.id }, data: { qty, note } });
-  } else {
-    await prisma.orderLine.create({
-      data: { eventId: input.eventId, productId: input.productId, qty, note },
+  const mutation = await prisma.$transaction(async (tx) => {
+    const existing = await tx.orderLine.findFirst({
+      where: { eventId: input.eventId, productId: input.productId },
     });
-    cambios.push({ itemName: nombre, kind: "AGREGADO", before: null, after: String(qty) });
-  }
+    const producto = await tx.product.findUnique({
+      where: { id: input.productId },
+      select: { name: true, active: true },
+    });
+    if (!producto || (!producto.active && !existing)) return { ok: false, error: "El producto ya no está disponible." };
+    const nombre = producto?.name ?? "Producto";
+
+    // Puede cambiar la cantidad Y la nota en el mismo guardado: se registran las
+    // dos cosas, porque la nota es justo lo que le importa al del depósito.
+    const cambios: OrderChangeInput[] = [];
+
+    if (qty === 0) {
+      if (existing) {
+        await tx.orderLine.delete({ where: { id: existing.id } });
+        cambios.push({ itemName: nombre, kind: "QUITADO", before: String(existing.qty), after: null });
+      }
+    } else if (existing) {
+      if (existing.qty !== qty) {
+        cambios.push({ itemName: nombre, kind: "CANTIDAD", before: String(existing.qty), after: String(qty) });
+      }
+      if ((existing.note ?? null) !== note) {
+        cambios.push({ itemName: nombre, kind: "NOTA", before: existing.note, after: note });
+      }
+      // Si no cambió ni la cantidad ni la nota, se guarda igual pero no se avisa:
+      // abrir un pedido y volver a guardarlo no es una modificación.
+      if (cambios.length > 0) await tx.orderLine.update({ where: { id: existing.id }, data: { qty, note } });
+    } else {
+      await tx.orderLine.create({
+        data: { eventId: input.eventId, productId: input.productId, qty, note },
+      });
+      cambios.push({ itemName: nombre, kind: "AGREGADO", before: null, after: String(qty) });
+    }
+
+    return cambios;
+  });
+  if (!Array.isArray(mutation)) return mutation;
+  const cambios = mutation;
 
   if (cambios.length > 0) await notifyOrderChange(user, input.eventId, cambios);
   revalidatePath("/");
@@ -88,7 +100,10 @@ export async function addCustomLine(input: {
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Poné el nombre del ítem." };
   if (!esCategoria(input.category)) return { ok: false, error: "Elegí a qué sector pertenece." };
-  const qty = Math.max(1, Math.round(input.qty || 1));
+  if (!validQuantity(input.qty, 1)) return { ok: false, error: "Ingresá una cantidad entera mayor que cero." };
+  const event = await prisma.event.findFirst({ where: { id: input.eventId, deletedAt: null, period: { deletedAt: null } }, select: { id: true } });
+  if (!event) return { ok: false, error: "El evento ya no está disponible." };
+  const qty = input.qty;
 
   const line = await prisma.orderLine.create({
     data: {
@@ -114,7 +129,8 @@ export async function addCustomLine(input: {
 export async function setCustomQty(lineId: string, qty: number): Promise<OrderResult> {
   const { user, error: permiso } = await requireEdit();
   if (!user) return { ok: false, error: permiso! };
-  const q = Math.max(1, Math.round(qty));
+  if (!validQuantity(qty, 1)) return { ok: false, error: "Ingresá una cantidad entera mayor que cero." };
+  const q = qty;
   const antes = await prisma.orderLine.findUnique({
     where: { id: lineId },
     select: { qty: true, customName: true, product: { select: { name: true } } },
@@ -141,7 +157,7 @@ export async function deleteLine(lineId: string): Promise<OrderResult> {
     where: { id: lineId },
     select: { eventId: true, qty: true, customName: true, product: { select: { name: true } } },
   });
-  await prisma.orderLine.delete({ where: { id: lineId } });
+  await prisma.orderLine.deleteMany({ where: { id: lineId } });
   if (line) {
     await notifyOrderChange(user, line.eventId, {
       itemName: line.customName ?? line.product?.name ?? "Ítem",

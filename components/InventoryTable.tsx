@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { validQuantity, MAX_QUANTITY } from "@/lib/quantity";
 import { updateStock } from "@/app/actions/stock";
 import { NewProductModal } from "@/components/NewProductModal";
 import { ProductAdminModal } from "@/components/ProductAdminModal";
@@ -39,7 +40,7 @@ const IconWarn = (
 );
 
 export function InventoryTable({ products, canEdit }: { products: Product[]; canEdit: boolean }) {
-  const [items, setItems] = useState<Product[]>(products);
+  const items = products;
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState("TODOS");
   const [editing, setEditing] = useState<Product | null>(null);
@@ -56,9 +57,9 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
     });
   }, [items, query, cat]);
 
-  function handleSaved(id: string, newStock: number) {
-    setItems((prev) => prev.map((p) => (p.id === id ? { ...p, stock: newStock } : p)));
+  function handleSaved() {
     setEditing(null);
+    router.refresh();
   }
 
   return (
@@ -93,7 +94,7 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
       </div>
 
       <div className="tablewrap">
-        <table>
+        <table className="inventory-table">
           <thead>
             <tr>
               <th>Producto</th>
@@ -120,12 +121,17 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
                       {nombreDeCategoria(p.category)}{p.rubro ? ` · ${p.rubro}` : ""}
                       {p.description ? ` · ${p.description}` : ""}
                     </div>
+                    <div className="inventory-mobile-meta">
+                      {reutil ? "Reutilizable" : "Consumible"} · {p.unit}
+                      <br />
+                      {!p.active ? "Dado de baja" : !reutil ? "Se compra por evento" : p.stock === null ? "Sin contar" : p.stock === 0 ? "Contado: no hay" : "Contado"}
+                    </div>
                   </td>
                   <td>{reutil ? "Reutilizable" : "Consumible"}</td>
                   <td>{p.unit}</td>
                   <td>
                     {reutil ? (
-                      <span className="stocknum">{p.stock}</span>
+                      <span className="stocknum">{p.stock ?? "—"}</span>
                     ) : (
                       <span className="stocknum dim">—</span>
                     )}
@@ -173,7 +179,7 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
         <EditStockModal
           product={editing}
           onClose={() => setEditing(null)}
-          onSaved={(newStock) => handleSaved(editing.id, newStock)}
+          onSaved={handleSaved}
         />
       )}
       {admin && (
@@ -217,7 +223,7 @@ function EditStockModal({
   onClose: () => void;
   onSaved: (newStock: number) => void;
 }) {
-  const [val, setVal] = useState<string>(String(product.stock));
+  const [val, setVal] = useState<string>(product.stock === null ? "" : String(product.stock));
   const [reason, setReason] = useState("AJUSTE");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -231,8 +237,8 @@ function EditStockModal({
     };
   }, []);
 
-  const parsed = val.trim() === "" ? NaN : Math.round(Number(val));
-  const valid = Number.isFinite(parsed) && parsed >= 0;
+  const parsed = val.trim() === "" ? NaN : Number(val);
+  const valid = validQuantity(parsed);
   // Sin recuento previo se parte de cero para poder escribir el primero.
   const previo = product.stock ?? 0;
   const total = valid ? parsed : previo;
@@ -252,20 +258,25 @@ function EditStockModal({
       setError("Ingresá una cantidad válida.");
       return;
     }
+    if (saving) return;
     setSaving(true);
     setError(null);
+    try {
     const res = await updateStock({
       productId: product.id,
       newStock: total,
+      expectedStock: product.stock,
       reason,
       note,
     });
-    setSaving(false);
     if (res.ok && typeof res.newStock === "number") {
       onSaved(res.newStock);
     } else {
       setError(res.error ?? "No se pudo guardar. Probá de nuevo.");
     }
+    } catch {
+      setError("No se pudo confirmar el guardado. Revisá la conexión y volvé a intentar.");
+    } finally { setSaving(false); }
   }
 
   const unit = product.unit.toLowerCase();
@@ -278,32 +289,35 @@ function EditStockModal({
         : `Restás ${Math.abs(delta)} ${unit}`;
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Editar stock</h2>
+    <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="stock-title" onKeyDown={(e) => { if (e.key === "Escape" && !saving) onClose(); }} onClick={(e) => e.stopPropagation()}>
+        <h2 id="stock-title">Editar stock</h2>
         <div className="msub">
-          {product.name} · stock actual: <span className="stockbig">{product.stock}</span> {unit}
+          {product.name} · stock actual: <span className="stockbig">{product.stock ?? "Sin contar"}</span> {unit}
         </div>
 
         <div className="stepper-row">
-          <button type="button" className="step-btn" onClick={() => step(-1)} aria-label="Restar uno">−</button>
+          <button type="button" className="step-btn" disabled={saving} onClick={() => step(-1)} aria-label="Restar uno">−</button>
           <input
             className="step-input"
             type="number"
             inputMode="numeric"
             min={0}
+            max={MAX_QUANTITY}
+            step={1}
+            disabled={saving}
             value={val}
             onChange={(e) => setVal(e.target.value)}
             aria-label="Cantidad total"
             autoFocus
           />
-          <button type="button" className="step-btn" onClick={() => step(1)} aria-label="Sumar uno">+</button>
+          <button type="button" className="step-btn" disabled={saving} onClick={() => step(1)} aria-label="Sumar uno">+</button>
         </div>
         <div className={`delta-line${delta !== 0 && valid ? " active" : ""}`}>{deltaText}</div>
 
         <div className="field">
           <label>Motivo</label>
-          <select value={reason} onChange={(e) => setReason(e.target.value)}>
+          <select disabled={saving} value={reason} onChange={(e) => setReason(e.target.value)}>
             {REASONS.map((r) => (
               <option key={r.v} value={r.v}>{r.l}</option>
             ))}
@@ -315,12 +329,14 @@ function EditStockModal({
           <input
             type="text"
             placeholder="Aclaración…"
+            maxLength={1000}
+            disabled={saving}
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
         </div>
 
-        {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
+        {error && <div role="alert" className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
 
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>

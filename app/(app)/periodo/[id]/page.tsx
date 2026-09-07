@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fmtEvento, fmtRangoDias } from "@/lib/dates";
-import { nombreDe } from "@/lib/period-fit";
 import { PrintPlainButton } from "@/components/PrintButton";
 import { nombreDeCategoria, ordenDeCategoria } from "@/lib/categories";
 

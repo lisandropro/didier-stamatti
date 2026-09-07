@@ -1,3 +1,4 @@
+import { parsePushSubscription, validPushEndpoint } from "@/lib/push-subscription";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
@@ -7,22 +8,21 @@ export const dynamic = "force-dynamic";
 
 // Guarda (o actualiza) la suscripción push de este dispositivo para el usuario actual.
 export async function POST(req: Request) {
+  const origin = req.headers.get("origin");
+  if (origin && origin !== new URL(req.url).origin) return NextResponse.json({ ok: false }, { status: 403 });
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false, error: "No autorizado." }, { status: 401 });
 
-  let body: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Datos inválidos." }, { status: 400 });
   }
 
-  const endpoint = body.endpoint;
-  const p256dh = body.keys?.p256dh;
-  const auth = body.keys?.auth;
-  if (!endpoint || !p256dh || !auth) {
-    return NextResponse.json({ ok: false, error: "Suscripción incompleta." }, { status: 400 });
-  }
+  const subscription = parsePushSubscription(body);
+  if (!subscription) return NextResponse.json({ ok: false, error: "Suscripción inválida." }, { status: 400 });
+  const { endpoint, p256dh, auth } = subscription;
 
   await prisma.pushSubscription.upsert({
     where: { endpoint },
@@ -35,6 +35,8 @@ export async function POST(req: Request) {
 
 // Quita la suscripción de este dispositivo (al desactivar las notificaciones).
 export async function DELETE(req: Request) {
+  const origin = req.headers.get("origin");
+  if (origin && origin !== new URL(req.url).origin) return NextResponse.json({ ok: false }, { status: 403 });
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
   let body: { endpoint?: string };
@@ -43,7 +45,7 @@ export async function DELETE(req: Request) {
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
-  if (body.endpoint) {
+  if (body && validPushEndpoint(body.endpoint)) {
     await prisma.pushSubscription.deleteMany({ where: { endpoint: body.endpoint, userId: user.id } });
   }
   return NextResponse.json({ ok: true });

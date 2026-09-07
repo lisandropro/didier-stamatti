@@ -32,7 +32,7 @@ export async function changePassword(input: {
   const user = await prisma.user.findUnique({ where: { id: session.id } });
   if (!user) return { ok: false, error: "No se encontró tu usuario." };
 
-  if (!bcrypt.compareSync(input.current, user.passwordHash)) {
+  if (!(await bcrypt.compare(input.current, user.passwordHash))) {
     return { ok: false, error: "La contraseña actual no es correcta." };
   }
 
@@ -49,7 +49,7 @@ export async function changePassword(input: {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: bcrypt.hashSync(next, 10) },
+    data: { passwordHash: await bcrypt.hash(next, 10) },
   });
   return { ok: true };
 }

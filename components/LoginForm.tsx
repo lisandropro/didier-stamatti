@@ -32,14 +32,15 @@ export function LoginForm() {
 
         <form action={action}>
           <div className="field">
-            <label>Email</label>
-            <input name="email" type="email" autoComplete="username" required autoFocus />
+            <label htmlFor="login-email">Email</label>
+            <input id="login-email" name="email" type="email" autoComplete="username" maxLength={254} required autoFocus />
           </div>
           <div className="field">
-            <label>Contraseña</label>
+            <label htmlFor="login-password">Contraseña</label>
             <div className="pass-wrap">
               <input
                 name="password"
+                id="login-password"
                 type={showPass ? "text" : "password"}
                 autoComplete="current-password"
                 required
@@ -60,7 +61,7 @@ export function LoginForm() {
             <input type="checkbox" name="remember" /> Recordarme en este dispositivo
           </label>
 
-          {state?.error && <div className="login-error">{state.error}</div>}
+          {state?.error && <div role="alert" className="login-error">{state.error}</div>}
 
           <button
             className="btn primary"

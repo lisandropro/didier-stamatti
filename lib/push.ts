@@ -1,3 +1,4 @@
+import { validPushEndpoint } from "./push-subscription";
 import webpush from "web-push";
 import { prisma } from "@/lib/db";
 
@@ -39,11 +40,12 @@ export async function sendPushToUser(
     const subs = await prisma.pushSubscription.findMany({ where: { userId } });
     await Promise.all(
       subs.map(async (s) => {
+        if (!validPushEndpoint(s.endpoint)) return;
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
             JSON.stringify(payload),
-            { urgency: options.urgency ?? "normal", TTL: 60 * 60 * 12 }
+            { urgency: options.urgency ?? "normal", TTL: 60 * 60 * 12, timeout: 10_000 }
           );
         } catch (e) {
           const code = (e as { statusCode?: number })?.statusCode;

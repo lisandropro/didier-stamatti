@@ -128,5 +128,5 @@ export default async function EventoPage({
     );
   }
 
-  return <OrderBuilder data={data} />;
+  return <OrderBuilder key={ev.id} data={data} />;
 }

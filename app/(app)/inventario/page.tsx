@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { InventoryTable } from "@/components/InventoryTable";
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function InventarioPage() {
   const session = await getSessionUser();
+  if (!session) redirect("/login");
   const canEdit = session?.role === "ADMIN"; // solo la administradora edita stock
 
   const products = await prisma.product.findMany({

@@ -20,6 +20,10 @@ export function EnableNotifications() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
+    const update = (value: State) => { if (active) setState(value); };
+    async function check() {
+    await Promise.resolve();
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
@@ -28,21 +32,24 @@ export function EnableNotifications() {
 
     if (!supported) {
       // En iPhone, sin instalar a la pantalla de inicio, no hay push posible.
-      setState(isIOS && !standalone ? "ios-install" : "unsupported");
+      update(isIOS && !standalone ? "ios-install" : "unsupported");
       return;
     }
 
     navigator.serviceWorker
       .register("/sw.js")
       .then(async (reg) => {
-        if (Notification.permission === "denied") return setState("denied");
+        if (Notification.permission === "denied") return update("denied");
         const sub = await reg.pushManager.getSubscription();
-        if (Notification.permission === "granted" && sub) return setState("enabled");
+        if (Notification.permission === "granted" && sub) return update("enabled");
         // iPhone: aunque "soporte", si no está instalada conviene avisar.
-        if (isIOS && !standalone) return setState("ios-install");
-        setState("prompt");
+        if (isIOS && !standalone) return update("ios-install");
+        update("prompt");
       })
-      .catch(() => setState("unsupported"));
+      .catch(() => update("unsupported"));
+    }
+    void check();
+    return () => { active = false; };
   }, []);
 
   async function enable() {
@@ -83,11 +90,12 @@ export function EnableNotifications() {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await fetch("/api/notifications/subscribe", {
+        const response = await fetch("/api/notifications/subscribe", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
+        if (!response.ok) throw new Error("No se pudo desactivar.");
         await sub.unsubscribe();
       }
       setState("prompt");

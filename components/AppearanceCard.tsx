@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 type Theme = "auto" | "light" | "dark";
 type TextSize = "normal" | "grande" | "xl";
@@ -27,34 +27,39 @@ function applyText(s: TextSize) {
   else el.setAttribute("data-text", s);
 }
 
-export function AppearanceCard() {
-  const [theme, setTheme] = useState<Theme>("auto");
-  const [size, setSize] = useState<TextSize>("normal");
-  const [ready, setReady] = useState(false);
+function stored(key: string) { try { return localStorage.getItem(key) ?? ""; } catch { return ""; } }
+function subscribeAppearance(listener: () => void) {
+  const sync = () => {
+    const t = stored("didier-theme");
+    const size = stored("didier-text");
+    applyTheme(t === "light" || t === "dark" ? t : "auto");
+    applyText(size === "grande" || size === "xl" ? size : "normal");
+    listener();
+  };
+  window.addEventListener("storage", sync);
+  window.addEventListener("didier-appearance", sync);
+  return () => { window.removeEventListener("storage", sync); window.removeEventListener("didier-appearance", sync); };
+}
 
-  // Se leen después de montar para no chocar con el HTML del servidor.
-  useEffect(() => {
-    try {
-      const t = localStorage.getItem("didier-theme") as Theme | null;
-      if (t === "light" || t === "dark") setTheme(t);
-      const s = localStorage.getItem("didier-text") as TextSize | null;
-      if (s === "grande" || s === "xl") setSize(s);
-    } catch {}
-    setReady(true);
-  }, []);
+export function AppearanceCard() {
+  const themeValue = useSyncExternalStore(subscribeAppearance, () => stored("didier-theme"), () => null);
+  const sizeValue = useSyncExternalStore(subscribeAppearance, () => stored("didier-text"), () => null);
+  const ready = themeValue !== null;
+  const theme: Theme = themeValue === "light" || themeValue === "dark" ? themeValue : "auto";
+  const size: TextSize = sizeValue === "grande" || sizeValue === "xl" ? sizeValue : "normal";
 
   function pickTheme(t: Theme) {
-    setTheme(t);
     applyTheme(t);
     try {
       localStorage.setItem("didier-theme", t);
+      window.dispatchEvent(new Event("didier-appearance"));
     } catch {}
   }
   function pickSize(s: TextSize) {
-    setSize(s);
     applyText(s);
     try {
       localStorage.setItem("didier-text", s);
+      window.dispatchEvent(new Event("didier-appearance"));
     } catch {}
   }
 

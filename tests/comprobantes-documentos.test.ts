@@ -25,6 +25,8 @@ const foto = (s3Key: string) => [{ s3Key, mimeType: "image/jpeg", sizeBytes: 900
 
 before(async () => {
   fs.rmSync(DB, { force: true });
+  // Prisma en Windows necesita que el archivo SQLite exista antes de migrar.
+  fs.writeFileSync(DB, "");
   process.env.COMPROBANTES_DATABASE_URL = `file:${DB}`;
   execFileSync("npx", ["prisma", "migrate", "deploy", "--config", "./prisma-comprobantes.config.ts"], {
     env: { ...process.env, COMPROBANTES_DATABASE_URL: `file:${DB}` },

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AutosaveQueue } from "@/lib/autosave";
+import { avisarDeFalloAlGuardar, mensajeDeFallo } from "@/lib/actualizacion";
+import { validQuantity, MAX_QUANTITY } from "@/lib/quantity";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
 import { marcarGuardado, marcarPendiente } from "@/lib/trabajo-pendiente";
-import { avisarDeFalloAlGuardar, mensajeDeFallo } from "@/lib/actualizacion";
 import { computeShortage } from "@/lib/shortage-rule";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditEventModal } from "@/components/EditEventModal";
@@ -28,6 +30,8 @@ type ProductRow = {
   /** Dado de baja del catálogo. Solo llega si este pedido ya lo tiene cargado. */
   deBaja?: boolean;
 };
+type OrderSave = { kind: "product"; row: ProductRow } | { kind: "custom"; id: string; qty: number };
+
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
 type SourceEvent = { id: string; lugar: string; dateLabel: string; periodLabel: string; lineCount: number };
 type Data = {
@@ -71,75 +75,55 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [tab, setTab] = useState<string>("ENSERES");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState(data.event.status);
-  const [pending, setPending] = useState(0);
-  const [savedOnce, setSavedOnce] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [queue] = useState(() => new AutosaveQueue<OrderSave>((value) => value.kind === "product"
+    ? setLine({ eventId: data.event.id, productId: value.row.id, qty: value.row.qty, note: value.row.note })
+    : setCustomQty(value.id, value.qty), 700, marcarPendiente, marcarGuardado));
+  const saveStatus = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
+  const pending = saveStatus.pending;
+  const savedOnce = saveStatus.saved;
+  const currentItems = useRef(items);
   const [error, setError] = useState<string | null>(null);
   const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});
   const [showCopy, setShowCopy] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showShortages, setShowShortages] = useState(false);
-  const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
-  // ---- autosave con debounce por producto ----
-  function scheduleSave(p: ProductRow) {
-    const t = timers.current.get(p.id);
-    // Cada tecla reinicia la espera. El pendiente que tenía el temporizador
-    // anterior se descuenta acá: si no, tipear "800" dejaría tres pendientes
-    // y uno solo se cerraría, y la app no volvería a actualizarse nunca.
-    if (t) {
-      clearTimeout(t);
-      marcarGuardado();
+  useEffect(() => {
+    function leaving(event: BeforeUnloadEvent) {
+      if (queue.getSnapshot().pending) { event.preventDefault(); event.returnValue = ""; }
     }
-    // Desde que se toca una cantidad hasta que queda guardada, la app no se
-    // actualiza sola: una recarga en ese hueco se comería lo tipeado.
-    marcarPendiente();
-    timers.current.set(
-      p.id,
-      setTimeout(async () => {
-        timers.current.delete(p.id);
-        setPending((n) => n + 1);
-        try {
-          const res = await setLine({ eventId: data.event.id, productId: p.id, qty: p.qty, note: p.note });
-          if (!res.ok) setError(res.error ?? "No se pudo guardar. Revisá la conexión.");
-          else setError(null);
-        } catch (e) {
-          // Guardar puede fallar lanzando, no devolviendo: es lo que pasa cuando
-          // la pantalla quedó en una versión vieja y el servidor ya no reconoce
-          // sus botones. Sin este catch la persona no ve nada y sigue tipeando
-          // cantidades que no se guardan — le pasó a Enrique dos veces.
-          setError(mensajeDeFallo(e));
-          avisarDeFalloAlGuardar(e);
-        } finally {
-          // Siempre, aunque haya explotado: si el pendiente no se cierra, la app
-          // se cree ocupada para siempre y no vuelve a actualizarse sola.
-          setPending((n) => n - 1);
-          marcarGuardado();
-          setSavedOnce(true);
-        }
-      }, 700)
-    );
-  }
+    async function navigate(event: MouseEvent) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !queue.getSnapshot().pending) return;
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!(link instanceof HTMLAnchorElement) || link.target || link.hasAttribute("download")) return;
+      const url = new URL(link.href);
+      if (url.origin !== location.origin) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (await queue.flush()) router.push(url.pathname + url.search + url.hash);
+    }
+    window.addEventListener("beforeunload", leaving);
+    document.addEventListener("click", navigate, true);
+    return () => {
+      window.removeEventListener("beforeunload", leaving);
+      document.removeEventListener("click", navigate, true);
+      void queue.close();
+    };
+  }, [queue, router]);
 
   function updateItem(id: string, patch: Partial<ProductRow>) {
-    setItems((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const next = { ...p, ...patch };
-        scheduleSave(next);
-        return next;
-      })
-    );
+    const previous = currentItems.current.find((p) => p.id === id);
+    if (!previous) return;
+    const next = { ...previous, ...patch };
+    if (!validQuantity(next.qty)) return;
+    currentItems.current = currentItems.current.map((p) => p.id === id ? next : p);
+    setItems(currentItems.current);
+    queue.schedule(id, { kind: "product", row: next });
   }
 
-  function stepQty(id: string, d: number) {
-    setItems((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const next = { ...p, qty: Math.max(0, p.qty + d) };
-        scheduleSave(next);
-        return next;
-      })
-    );
+  function stepQty(id: string, delta: number) {
+    const previous = currentItems.current.find((p) => p.id === id);
+    if (previous) updateItem(id, { qty: Math.max(0, Math.min(MAX_QUANTITY, previous.qty + delta)) });
   }
 
   // ---- aviso del finde en vivo (este evento + lo reservado por los otros) ----
@@ -175,10 +159,16 @@ export function OrderBuilder({ data }: { data: Data }) {
   const inOrderCount = items.filter((p) => p.qty > 0).length + customs.length;
 
   async function toggleStatus() {
+    if (statusSaving || !(await queue.flush())) return;
     const next = status === "LISTO" ? "NO_LISTO" : "LISTO";
-    setStatus(next);
-    const res = await setEventStatus(data.event.id, next as "LISTO" | "NO_LISTO");
-    if (!res.ok) setStatus(status);
+    setStatusSaving(true);
+    setError(null);
+    try {
+      const result = await setEventStatus(data.event.id, next);
+      if (result.ok) setStatus(next);
+      else setError(result.error ?? "No se pudo cambiar el estado.");
+    } catch { setError("No se pudo cambiar el estado. Revisá la conexión."); }
+    finally { setStatusSaving(false); }
   }
 
   return (
@@ -189,7 +179,7 @@ export function OrderBuilder({ data }: { data: Data }) {
           <div className="sub">
             {data.event.subLabel} · {inOrderCount} producto{inOrderCount === 1 ? "" : "s"} en el pedido
             <span className="save-ind">
-              {pending > 0 ? " · Guardando…" : savedOnce ? " · Guardado ✓" : " · Se guarda solo mientras cargás"}
+              {saveStatus.error ? " · Sin guardar" : pending > 0 ? " · Guardando…" : savedOnce ? " · Guardado ✓" : " · Se guarda solo mientras cargás"}
             </span>
           </div>
         </div>
@@ -202,21 +192,23 @@ export function OrderBuilder({ data }: { data: Data }) {
           </button>
         )}
         <button className="btn ghost" onClick={() => setShowEdit(true)}>{IconEdit} Editar evento</button>
-        <button className="btn ghost" onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
+        <button className="btn ghost" disabled={pending > 0} onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
         <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
           </svg>
           PDF del pedido
         </Link>
-        <button className={`btn${status === "LISTO" ? "" : " primary"}`} onClick={toggleStatus}>
+        <button className={`btn${status === "LISTO" ? "" : " primary"}`} disabled={pending > 0 || statusSaving} onClick={toggleStatus}>
           {status === "LISTO" ? "✓ Listo — volver a borrador" : "Marcar como listo"}
         </button>
       </div>
 
       <div className="content">
-        {error && (
-          <div className="banner crit">{IconWarn}<div><b>{error}</b></div></div>
+        {(error || saveStatus.error) && (
+          <div role="alert" className="banner crit">{IconWarn}<div><b>{error || saveStatus.error}</b>
+            {saveStatus.error && <button className="btn ghost" onClick={() => { void queue.flush(); }}>Reintentar guardado</button>}
+          </div></div>
         )}
 
         <div className="ro-resp">
@@ -253,6 +245,8 @@ export function OrderBuilder({ data }: { data: Data }) {
             customs={customs}
             setCustoms={setCustoms}
             onRefresh={() => router.refresh()}
+            queue={queue}
+            onError={setError}
           />
         ) : (
           <div className="olist">
@@ -411,15 +405,8 @@ function CopyOrderModal({
     if (!selected) return;
     setSaving(true);
     setError(null);
-    let res;
     try {
-      res = await copyOrderFromEvent(targetEventId, selected.id);
-    } catch (e) {
-      setSaving(false);
-      setError(mensajeDeFallo(e));
-      avisarDeFalloAlGuardar(e);
-      return;
-    }
+    const res = await copyOrderFromEvent(targetEventId, selected.id);
     if (res.ok) {
       // Recarga completa: el armador siembra su estado desde el servidor al montar,
       // así el pedido copiado se ve reflejado de forma confiable.
@@ -428,6 +415,8 @@ function CopyOrderModal({
       setSaving(false);
       setError(res.error ?? "No se pudo copiar.");
     }
+    } catch (error) { setError(mensajeDeFallo(error)); avisarDeFalloAlGuardar(error); }
+    finally { setSaving(false); }
   }
 
   const q = norm(query.trim());
@@ -495,35 +484,31 @@ function ExtrasPanel({
   customs,
   setCustoms,
   onRefresh,
+  queue,
+  onError,
 }: {
   eventId: string;
   customs: CustomLine[];
   setCustoms: React.Dispatch<React.SetStateAction<CustomLine[]>>;
   onRefresh: () => void;
+  queue: AutosaveQueue<OrderSave>;
+  onError: (error: string | null) => void;
 }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [unit, setUnit] = useState("");
   const [qty, setQty] = useState("1");
   const [saving, setSaving] = useState(false);
-  const [fallo, setFallo] = useState<string | null>(null);
-  const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
 
   async function add() {
-    if (!name.trim() || !category) return;
+    if (!name.trim() || !category || saving) return;
+    if (!validQuantity(Number(qty), 1)) { onError("Ingresá una cantidad entera mayor que cero."); return; }
     setSaving(true);
-    setFallo(null);
-    let res;
+    onError(null);
+    marcarPendiente();
     try {
-      res = await addCustomLine({ eventId, name, category, unit, qty: Number(qty) || 1 });
-    } catch (e) {
-      setSaving(false);
-      setFallo(mensajeDeFallo(e));
-      avisarDeFalloAlGuardar(e);
-      return;
-    }
-    setSaving(false);
-    if (!res.ok) setFallo(res.error ?? "No se pudo agregar el ítem.");
+    const res = await addCustomLine({ eventId, name, category, unit, qty: Number(qty) || 1 });
     if (res.ok && res.lineId) {
       setCustoms((prev) => [
         ...prev,
@@ -541,49 +526,35 @@ function ExtrasPanel({
       setUnit("");
       setQty("1");
       onRefresh();
-    }
+    } else { onError(res.error ?? "No se pudo agregar el ítem."); }
+    } catch (error) { onError(mensajeDeFallo(error)); avisarDeFalloAlGuardar(error); }
+    finally { setSaving(false); marcarGuardado(); }
   }
 
   function changeQty(id: string, next: number) {
     const q = Math.max(1, next);
+    if (saving || !validQuantity(q, 1)) return;
     setCustoms((prev) => prev.map((c) => (c.id === id ? { ...c, qty: q } : c)));
-    const t = timers.current.get(id);
-    if (t) clearTimeout(t);
-    timers.current.set(
-      id,
-      setTimeout(async () => {
-        timers.current.delete(id);
-        try {
-          const res = await setCustomQty(id, q);
-          if (!res.ok) setFallo(res.error ?? "No se pudo guardar la cantidad.");
-          else setFallo(null);
-        } catch (e) {
-          setFallo(mensajeDeFallo(e));
-          avisarDeFalloAlGuardar(e);
-        }
-      }, 600)
-    );
+    if (validQuantity(q, 1)) queue.schedule("custom:" + id, { kind: "custom", id, qty: q });
   }
 
   async function remove(id: string) {
-    const antes = customs;
-    setCustoms((prev) => prev.filter((c) => c.id !== id));
+    if (saving) return;
+    setSaving(true);
+    onError(null);
+    marcarPendiente();
     try {
-      await deleteLine(id);
-    } catch (e) {
-      // Si el borrado no llegó al servidor, el ítem tiene que volver a verse:
-      // desaparecido de la pantalla y presente en el pedido es lo peor de todo.
-      setCustoms(antes);
-      setFallo(mensajeDeFallo(e));
-      avisarDeFalloAlGuardar(e);
-      return;
-    }
-    onRefresh();
+      await queue.cancel("custom:" + id);
+      const result = await deleteLine(id);
+      if (!result.ok) { onError(result.error ?? "No se pudo quitar el ítem."); return; }
+      setCustoms((prev) => prev.filter((c) => c.id !== id));
+      onRefresh();
+    } catch (error) { onError(mensajeDeFallo(error)); avisarDeFalloAlGuardar(error); }
+    finally { setSaving(false); marcarGuardado(); }
   }
 
   return (
     <>
-      {fallo && <div className="banner crit">{IconWarn}<div><b>{fallo}</b></div></div>}
       <div className="extras-form">
         <div className="field" style={{ flex: 2, marginBottom: 0 }}>
           <label>Ítem fuera de catálogo</label>

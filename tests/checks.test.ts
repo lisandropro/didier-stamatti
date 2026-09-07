@@ -25,6 +25,8 @@ let ids: { periodo: string; evento: string; activo: string; deBaja: string };
 
 before(async () => {
   fs.rmSync(DB, { force: true });
+  // Prisma en Windows necesita que el archivo SQLite exista antes de migrar.
+  fs.writeFileSync(DB, "");
   process.env.DATABASE_URL = `file:${DB}`;
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     env: { ...process.env, DATABASE_URL: `file:${DB}` },

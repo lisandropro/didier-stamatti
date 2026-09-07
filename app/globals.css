@@ -204,6 +204,18 @@ tbody tr:hover{background:var(--surface-2)}
 .prod{font-weight:600}
 .rubro{color:var(--muted); font-size:var(--t-sm); margin-top:2px}
 .stocknum{font-variant-numeric:tabular-nums; font-weight:700; font-size:var(--t-lg)}
+.inventory-mobile-meta{display:none}
+@media screen and (max-width:600px){
+  .inventory-table{min-width:0; table-layout:fixed}
+  .inventory-table th,.inventory-table td{padding:12px 10px}
+  .inventory-table th:nth-child(2),.inventory-table td:nth-child(2),
+  .inventory-table th:nth-child(3),.inventory-table td:nth-child(3),
+  .inventory-table th:nth-child(5),.inventory-table td:nth-child(5){display:none}
+  .inventory-table th:nth-child(4),.inventory-table td:nth-child(4){width:76px; text-align:right; overflow-wrap:anywhere}
+  .inventory-table th:nth-child(6),.inventory-table td:nth-child(6){width:48px; padding-left:0; padding-right:4px}
+  .inventory-table .prod,.inventory-table .rubro{overflow-wrap:anywhere}
+  .inventory-mobile-meta{display:block; margin-top:5px; color:var(--muted); font-size:var(--t-xs); line-height:1.5}
+}
 .miniedit{
   font-size:var(--t-sm); color:var(--ink); font-weight:600; cursor:pointer;
   border:1px solid var(--hair); background:var(--surface);

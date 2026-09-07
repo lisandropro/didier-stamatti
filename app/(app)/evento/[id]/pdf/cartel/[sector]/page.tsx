@@ -6,7 +6,7 @@ import Link from "next/link";
 import { fmtEventDate } from "@/lib/format";
 import { PrintPlainButton } from "@/components/PrintButton";
 import { Cartel } from "@/components/Cartel";
-import { CATEGORIES as SECTORS, esCategoria, nombreDeCategoria } from "@/lib/categories";
+import { esCategoria, nombreDeCategoria } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
