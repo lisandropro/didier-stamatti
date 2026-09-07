@@ -83,9 +83,29 @@ export function proponerVencimiento(
 
 /** Cuánto se le debe a cada proveedor, y en cuántos comprobantes. Es la
  *  pantalla desde la que se transfiere. */
-export async function porProveedor(): Promise<DeudaProveedor[]> {
+/**
+ * El filtro por entidad, en un solo lugar.
+ *
+ * `undefined` = todas las entidades. `null` = **solo las que no tienen entidad
+ * asignada**, que es una pregunta legítima y distinta de "todas": son las que
+ * hay que ir a resolver.
+ *
+ * Existe como función porque el mismo filtro va en cuatro consultas y
+ * escribirlo cuatro veces es cómo una termina sin él — y una pantalla de plata
+ * que se olvida de filtrar suma dos contribuyentes en el mismo total.
+ */
+function filtroDeEntidad(entidadId?: string | null) {
+  return entidadId === undefined ? {} : { entidadId };
+}
+
+export async function porProveedor(entidadId?: string | null): Promise<DeudaProveedor[]> {
   const docs = await db.document.findMany({
-    where: { deletedAt: null, pagadoAt: null, kind: { notIn: [...NO_SE_PAGAN] } },
+    where: {
+      deletedAt: null,
+      pagadoAt: null,
+      kind: { notIn: [...NO_SE_PAGAN] },
+      ...filtroDeEntidad(entidadId),
+    },
     include: { supplier: true },
   });
 
@@ -116,7 +136,11 @@ export async function porProveedor(): Promise<DeudaProveedor[]> {
 }
 
 /** Qué vence entre dos días, de lo que todavía no se pagó. */
-export async function queVence(desde: string, hasta: string): Promise<DocumentoAPagar[]> {
+export async function queVence(
+  desde: string,
+  hasta: string,
+  entidadId?: string | null,
+): Promise<DocumentoAPagar[]> {
   if (!DIA.test(desde) || !DIA.test(hasta)) throw new Error("Las fechas van en AAAA-MM-DD.");
 
   const docs = await db.document.findMany({
@@ -125,6 +149,7 @@ export async function queVence(desde: string, hasta: string): Promise<DocumentoA
       pagadoAt: null,
       kind: { notIn: [...NO_SE_PAGAN] },
       vencimiento: { gte: desde, lte: hasta },
+      ...filtroDeEntidad(entidadId),
     },
     include: { supplier: true },
     orderBy: { vencimiento: "asc" },

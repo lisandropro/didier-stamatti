@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sesionVigente } from "@/lib/auth";
-import { canCapturarComprobantes, canPagar } from "@/lib/permissions";
+import { canCapturarComprobantes, canPagar, canAdministrarComprobantes } from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
 import { completarCabecera } from "@/lib/comprobantes/completar";
 import { leerComprobante } from "@/lib/comprobantes/leer-documento";
@@ -20,7 +20,12 @@ import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
 import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
 import { quienRecibe } from "@/lib/comprobantes/qr";
-import { activas as entidadesActivas } from "@/lib/comprobantes/entidades";
+import {
+  activas as entidadesActivas,
+  todas as todasLasEntidades,
+  crear as crearEnt,
+  editar as editarEnt,
+} from "@/lib/comprobantes/entidades";
 import { aTextoPlano } from "@/lib/money";
 import {
   puedeResponderImportes,
@@ -184,21 +189,23 @@ export async function capturarComprobante(fd: FormData) {
   };
 }
 
-export async function deudaPorProveedor() {
+// `entidadId` sin pasar = todas. `null` = solo las que quedaron sin entidad,
+// que es una pregunta distinta y es la que destraba esa bandeja.
+export async function deudaPorProveedor(entidadId?: string | null) {
   const sesion = await sesionVigente();
   if (!puedeResponderImportes(sesion)) {
     // Se corta ANTES de consultar la base: el importe no se lee siquiera.
     return { ok: false, error: "No tenés permiso para ver importes." };
   }
-  return { ok: true, filas: (await porProveedor()).map(aFilaDeuda) };
+  return { ok: true, filas: (await porProveedor(entidadId)).map(aFilaDeuda) };
 }
 
-export async function vencimientosEntre(desde: string, hasta: string) {
+export async function vencimientosEntre(desde: string, hasta: string, entidadId?: string | null) {
   const sesion = await sesionVigente();
   if (!puedeResponderImportes(sesion)) {
     return { ok: false, error: "No tenés permiso para ver importes." };
   }
-  const docs = await queVence(desde, hasta);
+  const docs = await queVence(desde, hasta, entidadId);
   return {
     ok: true,
     filas: docs.map((d) => ({
@@ -255,6 +262,61 @@ export async function cargarVencimiento(id: string, vencimiento: string) {
   }
   revalidatePath("/pagos");
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Entidades
+// ---------------------------------------------------------------------------
+//
+// A nombre de quién está cada factura. Administrarlas es de ADMIN: dar de alta
+// una entidad con el CUIT mal escrito no rompe nada visible — hace que las
+// facturas de esa entidad nunca la encuentren y queden sueltas para siempre.
+
+export async function listarEntidades() {
+  const sesion = await sesionVigente();
+  if (!sesion || !canAdministrarComprobantes(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para ver las entidades." };
+  }
+  return { ok: true as const, filas: await todasLasEntidades() };
+}
+
+export async function crearEntidad(nombre: string, cuit: string) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canAdministrarComprobantes(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para dar de alta entidades." };
+  }
+  const r = await crearEnt(String(nombre ?? ""), String(cuit ?? ""));
+  if (r.ok) {
+    revalidatePath("/entidades");
+    revalidatePath("/pagos");
+  }
+  return r;
+}
+
+export async function editarEntidad(
+  id: string,
+  cambios: { nombre?: string; cuit?: string; activa?: boolean },
+) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canAdministrarComprobantes(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para editar entidades." };
+  }
+  const r = await editarEnt(String(id ?? ""), cambios);
+  if (r.ok) {
+    revalidatePath("/entidades");
+    revalidatePath("/pagos");
+  }
+  return r;
+}
+
+/** Las que se pueden elegir al capturar. No lleva importes ni nada sensible:
+ *  quien saca la foto tiene que poder decir a nombre de quién viene el papel. */
+export async function entidadesParaElegir() {
+  const sesion = await sesionVigente();
+  if (!sesion || !canCapturarComprobantes(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso." };
+  }
+  return { ok: true as const, filas: await entidadesActivas() };
 }
 
 /** Lo que falta resolver. Lleva importes en la respuesta, así que pide el mismo
