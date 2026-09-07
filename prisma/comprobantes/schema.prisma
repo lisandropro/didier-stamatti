@@ -18,6 +18,33 @@ datasource db {
   provider = "sqlite"
 }
 
+/// A nombre de QUIÉN está la factura.
+///
+/// **Por qué existe.** El módulo nació asumiendo una sola empresa, con el CUIT
+/// escrito en el código. Después apareció la UTE de los Juegos Suramericanos
+/// —Soluciones para Eventos + Transfluvial—, que es **otro contribuyente**: su
+/// propio CUIT, su propia clave fiscal y su propio libro de IVA.
+///
+/// Sin esto las facturas de las dos entidades comparten la deuda por proveedor
+/// y la pantalla de pagos. No es un problema de prolijidad: es un total que
+/// suma dos contribuyentes y que no le sirve a ninguno de los dos.
+///
+/// Se dan de alta desde la app y no desde el código, para que sumar una tercera
+/// o corregir un dígito no dependa de un despliegue.
+model Entidad {
+  id     String @id @default(cuid())
+  nombre String
+  /// La identidad real. Es contra esto que se compara el `nroDocRec` del QR de
+  /// AFIP para saber de quién es la factura sin que nadie elija nada.
+  cuit   String @unique
+
+  activa    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  documents Document[]
+}
+
 // Un proveedor. El CUIT es la identidad real; el nombre en el papel varía
 // ("DON ANGEL", "Don Angel SRL", "DONANGEL") y no sirve para identificar.
 model Supplier {
@@ -74,6 +101,15 @@ model Document {
   supplierId String?
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
+  // A nombre de quién está: Soluciones para Eventos, la UTE, o la que venga.
+  //
+  // NULL = no se sabe de quién es. Es distinto de asumir la de siempre, y por
+  // eso la columna es opcional: un comprobante sin QR, cargado a las apuradas,
+  // puede quedar sin entidad hasta que alguien la ponga. La pantalla lo muestra
+  // como lo que es en vez de esconderlo adentro de un total.
+  entidadId String?
+  entidad   Entidad? @relation(fields: [entidadId], references: [id])
+
   // A dónde entró la mercadería. La factura NO pertenece a una fiesta.
   destino     String? // COCINA | DEPOSITO | OTRO
   destinoNota String?
@@ -114,7 +150,11 @@ model Document {
   // argentina. Es lo que impide cargar dos veces la misma, venga por foto o
   // por ARCA. Los remitos y tickets van en NULL y no deduplican, que es lo
   // correcto: no tienen identidad única.
+  // La identidad fiscal NO lleva la entidad adentro: una factura electrónica
+  // argentina es única por emisor + tipo + punto de venta + número en todo el
+  // país. Dos contribuyentes no pueden recibir la misma.
   @@unique([cuitEmisor, tipoCbte, puntoVenta, numero])
+  @@index([entidadId, pagadoAt])
   @@index([supplierId, pagadoAt])
   @@index([pagoLoteId])
   @@index([vencimiento, pagadoAt])

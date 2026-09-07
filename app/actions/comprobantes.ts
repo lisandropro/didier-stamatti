@@ -19,7 +19,8 @@ import {
 import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
 import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
-import { esParaNosotros } from "@/lib/comprobantes/qr";
+import { quienRecibe } from "@/lib/comprobantes/qr";
+import { activas as entidadesActivas } from "@/lib/comprobantes/entidades";
 import { aTextoPlano } from "@/lib/money";
 import {
   puedeResponderImportes,
@@ -125,12 +126,32 @@ export async function capturarComprobante(fd: FormData) {
   const destino = destinoValido(String(fd.get("destino") ?? ""));
   const conformeCrudo = fd.get("conforme");
 
+  // A nombre de quién está.
+  //
+  // El QR trae `nroDocRec`, que es el CUIT de quien recibe, así que la entidad
+  // se resuelve SOLA en las facturas que lo traen. Cuando no hay QR —12 de 18
+  // en la medición sobre fotos reales— vale lo que eligió el teléfono.
+  //
+  // Si no hay ni una cosa ni la otra queda en NULL, que significa "no se sabe
+  // de quién es". Es a propósito: asumir la de siempre es cómo una factura de
+  // la UTE termina sumando en la deuda de Soluciones sin que nadie se entere.
+  const nuestras = await entidadesActivas();
+  const quien = quienRecibe(cabecera, nuestras);
+  const elegida = String(fd.get("entidadId") ?? "") || undefined;
+  const entidadId =
+    quien.estado === "una-nuestra"
+      ? quien.entidadId
+      : nuestras.some((e) => e.id === elegida)
+        ? elegida
+        : undefined;
+
   let r;
   try {
     r = await guardarCaptura({
       clientKey,
       kind: kindDelComprobante(cabecera.tipoCbte, String(fd.get("kind") ?? "")),
       cabecera,
+      entidadId,
       destino,
       destinoNota: destino === "OTRO" ? String(fd.get("destinoNota") ?? "") || undefined : undefined,
       // Sin respuesta queda NULL, que significa "nadie revisó" — distinto de
@@ -155,9 +176,11 @@ export async function capturarComprobante(fd: FormData) {
         ? "Atención: este comprobante figura anulado. La foto quedó guardada igual."
         : r.fusionado
           ? "Esta factura ya la había cargado otra persona. Se agregó tu foto."
-          : esParaNosotros(cabecera) === false
-            ? "Atención: esta factura no está a nombre de la empresa."
-            : undefined,
+          : quien.estado === "ajena"
+            ? "Atención: esta factura no está a nombre de ninguna de tus entidades."
+            : entidadId === undefined
+              ? "Quedó sin entidad asignada. Ponésela desde la lista de pagos."
+              : undefined,
   };
 }
 

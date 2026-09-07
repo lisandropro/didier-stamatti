@@ -18,6 +18,10 @@ export type EntradaCaptura = {
   clientKey: string;
   kind: Kind;
   cabecera: Cabecera;
+  /** A nombre de qué entidad está. Sale del CUIT del receptor que trae el QR, o
+   *  de lo que eligió el teléfono cuando no hay QR. `undefined` = no se sabe, y
+   *  se guarda como tal en vez de asumir la de siempre. */
+  entidadId?: string;
   destino?: Destino;
   destinoNota?: string;
   conforme?: boolean;
@@ -114,6 +118,7 @@ export async function guardarCaptura(input: EntradaCaptura): Promise<ResultadoCa
         cae: c.cae ?? null,
         caeVence: c.caeVence ?? null,
         supplierId,
+        entidadId: input.entidadId ?? null,
         destino: input.destino ?? null,
         destinoNota: input.destinoNota ?? null,
         // `undefined` deja el campo en NULL, que significa "nadie revisó".

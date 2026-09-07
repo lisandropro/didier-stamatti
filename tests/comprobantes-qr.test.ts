@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { leerQr, elegirQrDeFactura, esParaNosotros } from "../lib/comprobantes/qr";
+import { leerQr, elegirQrDeFactura, quienRecibe } from "../lib/comprobantes/qr";
 import { QR_MUESTRAS, QR_QUE_NO_SON_FACTURA } from "./fixtures/qr-muestras";
 
 /**
@@ -73,11 +73,16 @@ test("no acepta cualquier cosa que traiga la cámara", () => {
   for (const otro of QR_QUE_NO_SON_FACTURA) assert.equal(leerQr(otro), null);
 });
 
-test("avisa cuando la factura no está a nombre de la empresa", () => {
-  // Los cinco QR reales traen nroDocRec con el CUIT propio. Es un control
-  // gratis contra fotografiar la factura de otro.
-  assert.equal(esParaNosotros(leerQr(porNombre("sano"))!), true);
-  assert.equal(esParaNosotros({ fuente: "QR", cuitReceptor: "20111111112" }), false);
-  // Sin dato no se afirma nada: null no es false.
-  assert.equal(esParaNosotros({ fuente: "MANUAL" }), null);
+test("un QR real se asigna solo a la entidad que lo recibió", () => {
+  // Los cinco QR reales traen `nroDocRec` con el CUIT de quien recibe. Es lo
+  // que permite asignar la entidad SIN que nadie elija nada, y avisar cuando
+  // alguien fotografió la factura de un tercero.
+  const nuestras = [{ id: "e1", cuit: "30717737489" }];
+  const r = quienRecibe(leerQr(porNombre("sano"))!, nuestras);
+  assert.equal(r.estado, "una-nuestra");
+  assert.equal(r.estado === "una-nuestra" && r.entidadId, "e1");
+
+  assert.equal(quienRecibe({ fuente: "QR", cuitReceptor: "20111111112" }, nuestras).estado, "ajena");
+  // Sin dato no se afirma nada: "no dice" no es "es de otro".
+  assert.equal(quienRecibe({ fuente: "MANUAL" }, nuestras).estado, "no-dice");
 });

@@ -13,9 +13,42 @@ import type { Cabecera } from "./tipos";
 // Los casos están en `tests/fixtures/qr-muestras.ts`, anonimizados pero con las
 // patologías exactas.
 
-/** El CUIT de la empresa. Aparece como `nroDocRec` en todas las facturas que le
- *  emiten, y con eso se puede avisar si alguien fotografió la de otro. */
-export const CUIT_PROPIO = "30717737489";
+/**
+ * De quién es la factura, según el CUIT del receptor que trae el QR.
+ *
+ * **Antes acá había una constante con el CUIT de la empresa.** Alcanzaba
+ * mientras hubiera una sola. Con la UTE de los Juegos Suramericanos hay dos
+ * contribuyentes, y una constante habría marcado como ajena cada factura de la
+ * UTE — un aviso que sale siempre es un aviso que en dos días nadie lee,
+ * incluida la vez que tiene razón.
+ *
+ * Los tres estados son distintos y se tratan distinto:
+ *
+ *   `no-dice`      el comprobante no trae receptor. No se afirma nada.
+ *   `una-nuestra`  es de una de nuestras entidades, y se sabe de cuál.
+ *   `ajena`        lo dice, y no coincide con ninguna. Acá sí hay que mirar.
+ */
+export type QuienRecibe =
+  | { estado: "no-dice" }
+  | { estado: "una-nuestra"; entidadId: string }
+  | { estado: "ajena"; cuit: string };
+
+/** Lo mínimo que hace falta saber de una entidad para reconocerla. */
+export type EntidadConocida = { id: string; cuit: string };
+
+/**
+ * Contra qué entidad nuestra cae este comprobante.
+ *
+ * Es una función pura: recibe las entidades en vez de consultarlas. Así se
+ * prueba sin base de datos, y quien la llama decide si mira las activas o
+ * todas.
+ */
+export function quienRecibe(c: Cabecera, entidades: EntidadConocida[]): QuienRecibe {
+  const cuit = c.cuitReceptor;
+  if (!cuit) return { estado: "no-dice" };
+  const nuestra = entidades.find((e) => e.cuit === cuit);
+  return nuestra ? { estado: "una-nuestra", entidadId: nuestra.id } : { estado: "ajena", cuit };
+}
 
 const TIPOS: Record<number, string> = {
   1: "A",
@@ -88,13 +121,6 @@ export function leerQr(texto: string): Cabecera | null {
   };
 }
 
-/** `true` si la factura está a nombre de la empresa, `false` si es de otra,
- *  `null` si el comprobante no lo dice. Null no es false: no saber y saber que
- *  no, son cosas distintas. */
-export function esParaNosotros(c: Cabecera): boolean | null {
-  if (!c.cuitReceptor) return null;
-  return c.cuitReceptor === CUIT_PROPIO;
-}
 
 // --- ayudas privadas -------------------------------------------------------
 
