@@ -1,3 +1,6 @@
+import { notFound } from "next/navigation";
+import { getSessionUser } from "@/lib/auth";
+import { canVerStock } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { Historial } from "@/components/Historial";
 import { fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
@@ -6,6 +9,13 @@ import { nombreDe } from "@/lib/period-fit";
 export const dynamic = "force-dynamic";
 
 export default async function HistorialPage() {
+  // Estas pantallas son del stock. La sesion ya la exige el layout, pero el rol
+  // no lo comprobaba nadie: quien recibe mercaderia o quien paga podia escribir
+  // la direccion a mano y entrar. No es informacion sensible, pero la regla del
+  // proyecto es que cada pantalla comprueba su propio permiso — apoyarse en que
+  // "no hay un enlace" es apoyarse en la navegacion, y la navegacion cambia.
+  const sesion = await getSessionUser();
+  if (!sesion || !canVerStock(sesion.role)) notFound();
   const today = hoy();
 
   const periodosPasados = await prisma.operationalPeriod.findMany({

@@ -1,3 +1,5 @@
+import { getSessionUser } from "@/lib/auth";
+import { canVerStock } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -26,6 +28,13 @@ export default async function EventoPdfPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Estas pantallas son del stock. La sesion ya la exige el layout, pero el rol
+  // no lo comprobaba nadie: quien recibe mercaderia o quien paga podia escribir
+  // la direccion a mano y entrar. No es informacion sensible, pero la regla del
+  // proyecto es que cada pantalla comprueba su propio permiso — apoyarse en que
+  // "no hay un enlace" es apoyarse en la navegacion, y la navegacion cambia.
+  const sesion = await getSessionUser();
+  if (!sesion || !canVerStock(sesion.role)) notFound();
   const { id } = await params;
   const ev = await prisma.event.findUnique({ where: { id } });
   if (!ev || ev.deletedAt) notFound();

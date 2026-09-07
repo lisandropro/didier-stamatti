@@ -48,6 +48,31 @@ const MATRIZ = {
     canManageUsers: false,
     canSetResponsable: true,
   },
+  // Los dos roles del módulo de comprobantes no tocan NADA de la app de stock:
+  // quien recibe mercadería fotografía papeles y quien paga mira deuda; ninguno
+  // arma pedidos ni ajusta inventario.
+  //
+  // `canView` sí queda en true, por la regla que ya rige acá: la app de stock no
+  // tiene datos reservados por persona. Lo reservado vive del otro lado, en
+  // `canVerImportes`, y esa comprobación es del servidor.
+  RECEPCION: {
+    canView: true,
+    canEditOrders: false,
+    canManagePeriods: false,
+    canEditStock: false,
+    canManageCatalog: false,
+    canManageUsers: false,
+    canSetResponsable: false,
+  },
+  PAGOS: {
+    canView: true,
+    canEditOrders: false,
+    canManagePeriods: false,
+    canEditStock: false,
+    canManageCatalog: false,
+    canManageUsers: false,
+    canSetResponsable: false,
+  },
 } as const;
 
 const FN = {

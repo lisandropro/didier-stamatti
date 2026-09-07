@@ -53,7 +53,7 @@ import { ROLES, canManagePeriods } from "../lib/permissions";
 // Permisos: la matriz completa, sin base
 // ---------------------------------------------------------------------------
 
-const PUEDE_GESTIONAR_PERIODOS = { ADMIN: true, ARMADOR: true, LOGISTICA: false } as const;
+const PUEDE_GESTIONAR_PERIODOS = { ADMIN: true, ARMADOR: true, LOGISTICA: false, RECEPCION: false, PAGOS: false } as const; // los roles de comprobantes no gestionan eventos ni períodos
 
 for (const rol of Object.keys(PUEDE_GESTIONAR_PERIODOS) as (keyof typeof PUEDE_GESTIONAR_PERIODOS)[]) {
   test(`${rol}: puede crear, editar y borrar períodos = ${PUEDE_GESTIONAR_PERIODOS[rol]}`, () => {
@@ -70,7 +70,13 @@ test("a LOGISTICA no se le abrió ningún permiso nuevo: sigue teniendo exactame
   // alguien agrega un permiso nuevo y se lo concede al encargado de logística
   // "para que pueda ayudar", esta prueba lo dice. Él mira todo, manda
   // sugerencias y cambia el responsable de la fiesta. Nada más.
-  const CONCEDIDOS = ["canSetResponsable", "canView", "canSendSuggestions"];
+  // `canVerStock` se agregó al armar la navegación por permisos. NO es un
+  // permiso nuevo sobre datos: es exactamente lo que `canView` ya significaba
+  // para las pantallas de stock, separado para poder decir que recepción y
+  // pagos no las usan. Está acá porque el encargado de logística sí las mira —
+  // de hecho, usar `canEditOrders` para la nav lo dejó sin ninguna pantalla, y
+  // esta prueba es la que obliga a decidirlo en voz alta en vez de deslizarlo.
+  const CONCEDIDOS = ["canSetResponsable", "canView", "canVerStock", "canSendSuggestions"];
   const capacidades = Object.keys(permisos)
     .filter((k) => k.startsWith("can") && typeof (permisos as Record<string, unknown>)[k] === "function")
     .sort();
