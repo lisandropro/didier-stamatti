@@ -1,6 +1,10 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { prismaComprobantes as comprobantesDb } from "@/lib/db-comprobantes";
+import { leerCsvDeArca } from "@/lib/comprobantes/arca-csv";
+import { importar as importarArcaFilas } from "@/lib/comprobantes/arca";
 import { sesionVigente } from "@/lib/auth";
 import { canCapturarComprobantes, canPagar, canAdministrarComprobantes } from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
@@ -331,6 +335,113 @@ export async function asignarEntidad(documentId: string, entidadId: string) {
   });
   if (r.ok) revalidatePath("/pagos");
   return r;
+}
+
+// ---------------------------------------------------------------------------
+// Importación de ARCA
+// ---------------------------------------------------------------------------
+
+/** Lo que las dos acciones necesitan comprobar antes de tocar el archivo. */
+async function contextoDeImportacion(fd: FormData) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canAdministrarComprobantes(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para importar comprobantes." };
+  }
+  const archivo = fd.get("archivo");
+  if (!(archivo instanceof File) || archivo.size === 0) {
+    return { ok: false as const, error: "Elegí el archivo CSV que bajaste de ARCA." };
+  }
+  // 8 MB: un mes de comprobantes son unos cientos de kilobytes. Un archivo
+  // mucho más grande es otra cosa, y leerlo entero en memoria no es gratis.
+  if (archivo.size > 8 * 1024 * 1024) {
+    return { ok: false as const, error: "El archivo es demasiado grande para ser un CSV de ARCA." };
+  }
+
+  const entidadId = String(fd.get("entidadId") ?? "");
+  const entidades = await entidadesActivas();
+  const entidad = entidades.find((e) => e.id === entidadId) ?? entidades[0];
+  if (!entidad) {
+    return { ok: false as const, error: "Primero cargá una entidad en la pantalla de Entidades." };
+  }
+
+  // El CSV de ARCA no es UTF-8: viene en la codificación de Windows para
+  // castellano. Leerlo como UTF-8 rompe las eñes y los acentos de la
+  // denominación del emisor, y ahí los proveedores nacen con el nombre mal.
+  const texto = new TextDecoder("windows-1252").decode(await archivo.arrayBuffer());
+  return { ok: true as const, sesion, entidad, texto, nombre: archivo.name };
+}
+
+/**
+ * Qué pasaría si se importa este archivo. **No escribe nada.**
+ *
+ * Sale del mismo código que la importación de verdad, así que no puede decir
+ * una cosa y hacer otra.
+ */
+export async function previsualizarArca(fd: FormData) {
+  const ctx = await contextoDeImportacion(fd);
+  if (!ctx.ok) return { ok: false as const, error: ctx.error };
+
+  try {
+    const filas = leerCsvDeArca(ctx.texto);
+    const previa = await importarArcaFilas(
+      filas,
+      { entidadId: ctx.entidad.id, actor: { id: ctx.sesion.id, name: ctx.sesion.name } },
+      { aplicar: false },
+    );
+    return { ok: true as const, previa, entidad: ctx.entidad.nombre };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Importa de verdad. Se llama con el mismo archivo, después de mirar la previa. */
+export async function importarArca(fd: FormData) {
+  const ctx = await contextoDeImportacion(fd);
+  if (!ctx.ok) return { ok: false as const, error: ctx.error };
+
+  const hashArchivo = createHash("sha256").update(ctx.texto).digest("hex");
+  const yaImportado = await comprobantesDb.arcaImport.findFirst({
+    where: { hashArchivo },
+    select: { createdAt: true, actorName: true },
+  });
+  if (yaImportado) {
+    // No es un error de datos —reimportar es inofensivo, la clave fiscal lo
+    // hace idempotente— pero decirlo evita el susto de ver "0 nuevas" sin
+    // entender por qué.
+    return {
+      ok: false as const,
+      error: `Este mismo archivo ya lo importó ${yaImportado.actorName}. Reimportarlo no agregaría nada.`,
+    };
+  }
+
+  try {
+    const filas = leerCsvDeArca(ctx.texto);
+    const r = await importarArcaFilas(filas, {
+      entidadId: ctx.entidad.id,
+      actor: { id: ctx.sesion.id, name: ctx.sesion.name },
+    });
+    await comprobantesDb.arcaImport.create({
+      data: {
+        entidadId: ctx.entidad.id,
+        archivo: ctx.nombre,
+        hashArchivo,
+        filasLeidas: r.filasLeidas,
+        completadas: r.completadas,
+        creadas: r.creadas,
+        sinRespaldo: r.sinRespaldo,
+        discrepancias: r.discrepancias.length,
+        desde: r.desde,
+        hasta: r.hasta,
+        actorId: ctx.sesion.id,
+        actorName: ctx.sesion.name,
+      },
+    });
+    revalidatePath("/pagos");
+    revalidatePath("/importar");
+    return { ok: true as const, resultado: r };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Las que se pueden elegir al capturar. No lleva importes ni nada sensible:

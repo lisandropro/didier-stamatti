@@ -241,3 +241,57 @@ test("un archivo vacío no rompe ni marca nada", async () => {
   // Y sobre todo: no marcó como ausente a todo lo que hay.
   assert.equal((await prisma.document.findUnique({ where: { id: previo.id } }))?.enArca, null);
 });
+
+// ---------------------------------------------------------------------------
+// La vista previa
+// ---------------------------------------------------------------------------
+//
+// Sale del MISMO codigo que la aplicacion, a proposito: una previa calculada
+// aparte se desincroniza de lo que despues pasa de verdad, y ahi es peor que no
+// tenerla — te deja confiar en un numero equivocado.
+//
+// Lo que se prueba es que cuente lo mismo y no escriba nada.
+
+test("la vista previa NO escribe: ni comprobantes ni proveedores", async () => {
+  const previa = await arca.importar([fila()], { entidadId, actor: ACTOR }, { aplicar: false });
+  assert.equal(previa.creadas, 1, "no conto la que iba a crear");
+  assert.equal(await prisma.document.count(), 0, "la previa creo un comprobante");
+  // El proveedor tampoco: uno dado de alta por una previa cancelada queda ahi
+  // para siempre, sin una sola factura.
+  assert.equal(await prisma.supplier.count(), 0, "la previa creo un proveedor");
+});
+
+test("la previa cuenta lo mismo que despues hace la aplicacion", async () => {
+  // Si estos dos numeros pudieran diferir, la previa no serviria para decidir.
+  const doc = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "LECTURA", entidadId, fechaEmision: "2026-09-03",
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 57875,
+      importeTotal: 1n,
+    },
+  });
+  const filas = [fila(), fila({ numero: 57876, importeTotal: 500n })];
+
+  const previa = await arca.importar(filas, { entidadId, actor: ACTOR }, { aplicar: false });
+  const real = await arca.importar(filas, { entidadId, actor: ACTOR });
+
+  assert.equal(previa.creadas, real.creadas);
+  assert.equal(previa.completadas, real.completadas);
+  assert.equal(previa.discrepancias.length, real.discrepancias.length);
+  assert.equal(previa.desde, real.desde);
+  assert.equal(previa.hasta, real.hasta);
+  // Y la aplicacion si escribio.
+  assert.equal((await prisma.document.findUnique({ where: { id: doc.id } }))?.importeTotal, 76410711n);
+});
+
+test("la previa no marca enArca en lo que ya estaba", async () => {
+  const doc = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", entidadId, fechaEmision: "2026-09-03",
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 57875,
+      importeTotal: 76410711n,
+    },
+  });
+  await arca.importar([fila()], { entidadId, actor: ACTOR }, { aplicar: false });
+  assert.equal((await prisma.document.findUnique({ where: { id: doc.id } }))?.enArca, null);
+});

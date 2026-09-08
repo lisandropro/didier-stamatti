@@ -123,7 +123,13 @@ const texto = (v: unknown): string | null =>
 export async function importar(
   filas: FilaArca[],
   ctx: { entidadId: string; actor: { id: string; name: string } },
+  // `aplicar: false` hace exactamente lo mismo pero **sin escribir**: es la
+  // vista previa. Sale del mismo código a propósito — una previa calculada
+  // aparte se desincroniza de lo que después pasa de verdad, y entonces es peor
+  // que no tenerla: te deja confiar en un número equivocado.
+  opciones: { aplicar?: boolean } = {},
 ): Promise<ResultadoImportacion> {
+  const aplicar = opciones.aplicar !== false;
   const res: ResultadoImportacion = {
     filasLeidas: filas.length,
     completadas: 0,
@@ -155,6 +161,12 @@ export async function importar(
     });
 
     if (!existente) {
+      res.creadas += 1;
+      // En la vista previa no se crea el proveedor tampoco: mirar no puede
+      // dejar rastro. Un proveedor dado de alta por una previa que despues se
+      // cancela queda ahi para siempre, sin una sola factura.
+      if (!aplicar) continue;
+
       const supplierId = await resolverProveedor(fila.cuitEmisor, fila.denominacion);
       const creado = await db.document.create({
         data: {
@@ -177,7 +189,6 @@ export async function importar(
         select: { id: true },
       });
       vistos.push(creado.id);
-      res.creadas += 1;
       continue;
     }
 
@@ -210,8 +221,10 @@ export async function importar(
 
     // `enArca` se marca aunque no cambie ningún otro campo: saber que el fisco
     // la conoce ES el resultado de la importación.
+    if (cambios.length > 0) res.completadas += 1;
+
     const yaEstaba = existente.enArca === true;
-    if (Object.keys(data).length > 0 || !yaEstaba) {
+    if (aplicar && (Object.keys(data).length > 0 || !yaEstaba)) {
       await db.$transaction([
         db.document.update({
           where: { id: existente.id },
@@ -230,7 +243,6 @@ export async function importar(
             ]
           : []),
       ]);
-      if (cambios.length > 0) res.completadas += 1;
     }
   }
 
@@ -240,17 +252,16 @@ export async function importar(
   // como "no está en ARCA" a todas las facturas de julio, que simplemente no
   // venían en ese archivo. Sería una alarma masiva y falsa.
   if (res.desde && res.hasta) {
-    const marcados = await db.document.updateMany({
-      where: {
-        deletedAt: null,
-        entidadId: ctx.entidadId,
-        kind: { in: [...FISCALES] },
-        fechaEmision: { gte: res.desde, lte: res.hasta },
-        id: { notIn: vistos },
-      },
-      data: { enArca: false },
-    });
-    res.sinRespaldo = marcados.count;
+    const alcance = {
+      deletedAt: null,
+      entidadId: ctx.entidadId,
+      kind: { in: [...FISCALES] },
+      fechaEmision: { gte: res.desde, lte: res.hasta },
+      id: { notIn: vistos },
+    };
+    res.sinRespaldo = aplicar
+      ? (await db.document.updateMany({ where: alcance, data: { enArca: false } })).count
+      : await db.document.count({ where: alcance });
   }
 
   return res;

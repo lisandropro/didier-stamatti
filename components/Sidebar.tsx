@@ -72,6 +72,7 @@ const NAV_AVISOS = [{ href: "/notificaciones", label: "Avisos", icon: ICONS.avis
  *  botón de mandarlas y nada más: para ellos es un buzón, no una sección. */
 const ADMIN_NAV = [
   { href: "/sugerencias", label: "Sugerencias", icon: IconSuggest },
+  { href: "/importar", label: "Importar de ARCA", icon: ICONS.historial },
   { href: "/entidades", label: "Entidades", icon: ICONS.usuarios },
   { href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios },
 ];
