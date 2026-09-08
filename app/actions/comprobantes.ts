@@ -25,6 +25,7 @@ import {
   todas as todasLasEntidades,
   crear as crearEnt,
   editar as editarEnt,
+  sinEntidad as sinEntidadCount,
 } from "@/lib/comprobantes/entidades";
 import { aTextoPlano } from "@/lib/money";
 import {
@@ -326,14 +327,18 @@ export async function pendientes() {
   if (!puedeResponderImportes(sesion)) {
     return { ok: false, error: "No tenés permiso para ver los pendientes." };
   }
-  const [b, duplicados, faltantes] = await Promise.all([
+  const [b, duplicados, faltantes, huerfanos] = await Promise.all([
     bandejas(),
     posiblesDuplicados(),
     incompletos(),
+    // Los que quedaron sin entidad. Va acá y no en `bandejas()` porque las de
+    // ahí son de la base del stock; ésta es de la financiera.
+    sinEntidadCount(),
   ]);
   return {
     ok: true,
     bandejas: b,
+    sinEntidad: huerfanos,
     duplicados: duplicados.map((d) => ({
       supplierId: d.supplierId,
       nombre: d.nombre,

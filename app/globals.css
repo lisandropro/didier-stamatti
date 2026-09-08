@@ -1144,6 +1144,11 @@ tbody tr:hover{background:var(--surface-2)}
   font-size:var(--t-sm); font-weight:650; color:var(--muted);
   padding:0; margin-bottom:var(--sp-2);
 }
+/* La aclaración chica debajo de un grupo de opciones: explica por qué la
+   respuesta puede no importar, sin competir con los botones. */
+.cap-nota{
+  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted); line-height:1.4;
+}
 .cap-opciones{display:flex; gap:var(--sp-3)}
 .cap-opcion{
   flex:1; min-height:60px; cursor:pointer;
@@ -1220,6 +1225,24 @@ tbody tr:hover{background:var(--surface-2)}
    hace es peor que uno que no está. Para cambiar de proveedor: "Deshacer". */
 .pg-otra td{opacity:.55}
 .pg-otra input{cursor:not-allowed}
+
+/* El filtro por entidad. Va arriba de todo y a la vista: un total de plata sin
+   saber de qué contribuyente es, es un total que no significa nada. */
+.pg-entidades{
+  display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-bottom:var(--sp-4);
+}
+.pg-ent{
+  padding:var(--sp-2) var(--sp-4); border-radius:var(--r-pill);
+  background:var(--surface-2); border:1px solid transparent;
+  font-size:var(--t-sm); font-weight:650; color:var(--muted); text-decoration:none;
+  transition:background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.pg-ent:hover{color:var(--ink)}
+.pg-ent.elegida{background:var(--surface); border-color:var(--hair); color:var(--ink)}
+/* Lo que falta resolver. Se distingue porque no es una entidad más: es trabajo
+   pendiente, y un contador es lo que hace que ese trabajo se termine. */
+.pg-ent.aviso{color:var(--warn)}
+.pg-ent.aviso.elegida{background:var(--warn-soft); border-color:var(--hair)}
 
 .pg-alerta{
   background:var(--warn-soft); border:1px solid var(--hair); border-radius:var(--r-md);

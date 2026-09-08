@@ -46,6 +46,8 @@ beforeEach(async () => {
   await prisma.documentLine.deleteMany();
   await prisma.document.deleteMany();
   await prisma.supplier.deleteMany();
+  // Despues de los documentos: son ellos los que la referencian.
+  await prisma.entidad.deleteMany();
 
   const s = await prisma.supplier.create({ data: { name: "DON ANGEL", cuit: "20135041379" } });
   donAngel = s.id;
@@ -372,4 +374,105 @@ test("dos remitos del mismo importe no son un pago doble", async () => {
   await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-01" } });
   await prisma.document.create({ data: { ...base, fechaEmision: "2026-09-03" } });
   assert.deepEqual(await pagos.posiblesDuplicados(), []);
+});
+
+// ---------------------------------------------------------------------------
+// El filtro por entidad
+// ---------------------------------------------------------------------------
+//
+// La empresa y la UTE de los Juegos Suramericanos son dos contribuyentes. Sin
+// filtro, la deuda de las dos se sumaba en el mismo total — un número que no le
+// sirve a ninguna de las dos y que **no se ve mal**: es plausible, solo que es
+// de otra cosa.
+//
+// Los tres estados del filtro son tres preguntas distintas, y confundir dos de
+// ellas es cómo se llega a una pantalla que miente sin dar un error.
+
+test("la deuda de cada entidad no se mezcla con la de la otra", async () => {
+  const soluciones = await prisma.entidad.create({
+    data: { nombre: "Soluciones", cuit: "30717737489" },
+  });
+  const ute = await prisma.entidad.create({ data: { nombre: "UTE", cuit: "30718888887" } });
+
+  await prisma.document.deleteMany();
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100_00n,
+      entidadId: soluciones.id, cuitEmisor: "20135041379", tipoCbte: "A",
+      puntoVenta: 6, numero: 1,
+    },
+  });
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 300_00n,
+      entidadId: ute.id, cuitEmisor: "20135041379", tipoCbte: "A",
+      puntoVenta: 6, numero: 2,
+    },
+  });
+
+  const deSoluciones = await pagos.porProveedor(soluciones.id);
+  assert.equal(deSoluciones[0].total, 100_00n, "la deuda de Soluciones se contaminó con la de la UTE");
+
+  const deUte = await pagos.porProveedor(ute.id);
+  assert.equal(deUte[0].total, 300_00n);
+
+  // Sin filtro sí se suman, y está bien: es la vista de "todas".
+  const todas = await pagos.porProveedor();
+  assert.equal(todas[0].total, 400_00n);
+});
+
+test("'sin entidad' NO es un subconjunto de 'todas': es su propia pregunta", async () => {
+  // Éste es el error que el diseño evita. Si `null` se tratara como "sin
+  // filtro", los comprobantes huérfanos quedarían escondidos adentro del total
+  // general y nadie iría nunca a resolverlos.
+  const ent = await prisma.entidad.create({ data: { nombre: "Soluciones", cuit: "30717737489" } });
+
+  await prisma.document.deleteMany();
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100_00n,
+      entidadId: ent.id, cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 1,
+    },
+  });
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "MANUAL", supplierId: donAngel, importeTotal: 700_00n,
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 2,
+    },
+  });
+
+  const huerfanas = await pagos.porProveedor(null);
+  assert.equal(huerfanas[0].total, 700_00n, "el filtro de huérfanas trajo las que sí tienen entidad");
+
+  const conEntidad = await pagos.porProveedor(ent.id);
+  assert.equal(conEntidad[0].total, 100_00n);
+});
+
+test("los vencimientos también respetan la entidad", async () => {
+  // La deuda y los vencimientos son dos consultas distintas. Filtrar una y
+  // olvidarse de la otra deja la pantalla diciendo dos cosas a la vez.
+  const ute = await prisma.entidad.create({ data: { nombre: "UTE", cuit: "30718888887" } });
+
+  await prisma.document.deleteMany();
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 500_00n,
+      entidadId: ute.id, vencimiento: "2026-09-11", cuitEmisor: "20135041379",
+      tipoCbte: "A", puntoVenta: 6, numero: 3,
+    },
+  });
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 900_00n,
+      vencimiento: "2026-09-11", cuitEmisor: "20135041379",
+      tipoCbte: "A", puntoVenta: 6, numero: 4,
+    },
+  });
+
+  const deUte = await pagos.queVence("2026-09-01", "2026-09-30", ute.id);
+  assert.equal(deUte.length, 1);
+  assert.equal(deUte[0].importeTotal, 500_00n);
+
+  const todas = await pagos.queVence("2026-09-01", "2026-09-30");
+  assert.equal(todas.length, 2);
 });

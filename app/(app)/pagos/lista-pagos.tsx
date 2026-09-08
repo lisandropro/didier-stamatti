@@ -34,6 +34,9 @@ export default function ListaPagos({
   bandejas,
   duplicados,
   incompletos,
+  entidades,
+  entidadElegida,
+  sinEntidad,
 }: {
   hoy: string;
   deuda: { supplierId: string | null; nombre: string; total: string; cantidad: number; sinImporte: number }[];
@@ -41,6 +44,12 @@ export default function ListaPagos({
   bandejas: { sinProveedor: number; sinRevisar: number; sinVencimiento: number };
   duplicados: Duplicado[];
   incompletos: Incompleto[];
+  /** A nombre de quién puede estar la factura. Vacío = todavía no se dio de alta ninguna. */
+  entidades: { id: string; nombre: string }[];
+  /** El filtro puesto: un id, `"sin"`, o `""` para todas. */
+  entidadElegida: string;
+  /** Cuántos comprobantes quedaron sin entidad asignada. */
+  sinEntidad: number;
 }) {
   const router = useRouter();
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
@@ -151,6 +160,49 @@ export default function ListaPagos({
         <h1>Pagos</h1>
       </header>
       <div className="content">
+
+      {/* El filtro por entidad.
+          Aparece solo si hay más de una: con una sola, todo lo que se ve es de
+          ella y un filtro que no filtra nada es ruido.
+
+          "Sin asignar" no es un subconjunto de "Todas": es la pregunta de qué
+          hay que ir a resolver. Por eso es un botón propio y muestra cuántos
+          son — un contador es lo que hace que ese trabajo se termine. */}
+      {entidades.length > 1 && (
+        <nav className="pg-entidades" aria-label="Filtrar por entidad">
+          <Link href="/pagos" className={`pg-ent${entidadElegida === "" ? " elegida" : ""}`}>
+            Todas
+          </Link>
+          {entidades.map((e) => (
+            <Link
+              key={e.id}
+              href={`/pagos?entidad=${e.id}`}
+              className={`pg-ent${entidadElegida === e.id ? " elegida" : ""}`}
+            >
+              {e.nombre}
+            </Link>
+          ))}
+          {sinEntidad > 0 && (
+            <Link
+              href="/pagos?entidad=sin"
+              className={`pg-ent aviso${entidadElegida === "sin" ? " elegida" : ""}`}
+            >
+              Sin asignar ({sinEntidad})
+            </Link>
+          )}
+        </nav>
+      )}
+
+      {/* Cuando el filtro está puesto, los totales de abajo son de UNA entidad.
+          Decirlo es la diferencia entre un número y un número que significa
+          algo. */}
+      {entidadElegida !== "" && (
+        <p className="msub">
+          {entidadElegida === "sin"
+            ? "Mostrando solo los comprobantes que quedaron sin entidad asignada."
+            : `Mostrando solo ${entidades.find((e) => e.id === entidadElegida)?.nombre ?? "una entidad"}. Los totales son de esa entidad.`}
+        </p>
+      )}
 
       {duplicados.length > 0 && (
         <section className="pg-alerta" role="alert">

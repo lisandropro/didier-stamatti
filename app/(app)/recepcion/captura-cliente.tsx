@@ -68,6 +68,11 @@ type Destino = "COCINA" | "DEPOSITO";
  * este módulo vino a evitar.
  */
 const MAX_LADO = 3000;
+
+/** Dónde queda la última entidad elegida. Es una comodidad por teléfono, no un
+ *  dato: si el navegador la perdió, se vuelve a elegir y no pasa nada. */
+const ULTIMA_ENTIDAD = "recepcion-ultima-entidad";
+
 // El límite de tres segundos para buscar el código se quitó con el modo lote:
 // la cámara ahora queda abierta mientras dura el reparto, y **cada foto necesita
 // su propia lectura**. Dejar de buscar a los tres segundos habría leído el QR de
@@ -78,8 +83,12 @@ const MAX_LADO = 3000;
 
 export default function CapturaCliente({
   capturasIniciales,
+  entidades,
 }: {
   capturasIniciales: CapturaDelDia[];
+  /** A nombre de quién puede venir el papel. Viene del servidor porque la lista
+   *  cambia cuando se da de alta una entidad, no cuando se compila la app. */
+  entidades: { id: string; nombre: string }[];
 }) {
   const [paso, setPaso] = useState<Paso>("inicio");
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +117,38 @@ export default function CapturaCliente({
   const [destino, setDestino] = useState<Destino | null>(null);
   const [conforme, setConforme] = useState<boolean | null>(null);
   const [codigoLeido, setCodigoLeido] = useState(false);
+
+  // A nombre de quién viene el papel.
+  //
+  // **Solo importa cuando el comprobante no trae QR**, que son 12 de cada 18
+  // según la medición sobre fotos reales. Cuando sí lo trae, el servidor lee el
+  // CUIT del receptor y decide él: lo que se elija acá no se usa. Por eso esto
+  // no es obligatorio ni bloquea el guardado.
+  //
+  // Arranca en la última usada porque un reparto entero suele ser de la misma
+  // entidad, y volver a elegirla en cada tanda es la clase de toque que hizo
+  // que la pantalla anterior fuera insoportable.
+  // Se lee UNA vez, al construir el estado, y no dentro de un efecto. Poner el
+  // valor con `setState` desde un efecto es lo que marca React 19 —y con razón:
+  // pinta una vez con un valor y otra vez con el otro.
+  //
+  // En el servidor devuelve vacío y en el cliente el guardado. No hay riesgo de
+  // desajuste al hidratar porque estos botones viven en el paso de confirmar, y
+  // la pantalla arranca en "inicio": no existen en el primer pintado.
+  const [elegida, setElegida] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return localStorage.getItem(ULTIMA_ENTIDAD) ?? "";
+    } catch {
+      // Modo privado, o almacenamiento bloqueado. Se elige a mano y listo.
+      return "";
+    }
+  });
+
+  // La que vale: lo elegido si sigue existiendo, y si no la primera. Se DERIVA
+  // en vez de guardarse, así una entidad que se desactivó no deja el selector
+  // apuntando a algo que ya no está en la lista.
+  const entidadId = entidades.some((e) => e.id === elegida) ? elegida : (entidades[0]?.id ?? "");
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -312,6 +353,9 @@ export default function CapturaCliente({
       const fd = new FormData();
       fd.set("clientKey", d.clientKey);
       fd.set("kind", "FACTURA");
+      // Vale solo si el comprobante no trae QR: cuando lo trae, el servidor lee
+      // el CUIT del receptor y esto lo ignora.
+      if (entidadId) fd.set("entidadId", entidadId);
       fd.append("fotos", new File([d.blob], "comprobante.jpg", { type: "image/jpeg" }));
       fd.append("variante", "ORIGINAL");
       fd.append("pagina", "1");
@@ -513,6 +557,38 @@ export default function CapturaCliente({
           >
             Sacar otra
           </button>
+
+          {/* Solo si hay más de una entidad. Con una sola la pregunta no tiene
+              respuesta posible distinta, y una pregunta que siempre se contesta
+              igual es un toque de más en una pantalla que vive de no tenerlos. */}
+          {entidades.length > 1 && (
+            <fieldset className="cap-grupo">
+              <legend>¿A nombre de quién?</legend>
+              <div className="cap-opciones">
+                {entidades.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    className={`cap-opcion${entidadId === e.id ? " elegida" : ""}`}
+                    aria-pressed={entidadId === e.id}
+                    onClick={() => {
+                      setElegida(e.id);
+                      try {
+                        localStorage.setItem(ULTIMA_ENTIDAD, e.id);
+                      } catch {
+                        // Sin almacenamiento se elige cada vez. No es un error.
+                      }
+                    }}
+                  >
+                    {e.nombre}
+                  </button>
+                ))}
+              </div>
+              <p className="cap-nota">
+                Si la factura trae código QR, esto se corrige solo con el CUIT que trae el papel.
+              </p>
+            </fieldset>
+          )}
 
           {/* **Una vez por tanda, no una por foto.** El destino de un reparto es
               siempre el mismo, y contestarlo cinco veces era la mitad de los
