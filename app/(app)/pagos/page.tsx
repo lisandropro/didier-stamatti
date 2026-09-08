@@ -65,6 +65,7 @@ export default async function PagosPage({
       entidades={entidades.map((e) => ({ id: e.id, nombre: e.nombre }))}
       entidadElegida={pedida === "sin" ? "sin" : (entidadId ?? "")}
       sinEntidad={pend.sinEntidad ?? 0}
+      huerfanos={pend.huerfanos ?? []}
     />
   );
 }

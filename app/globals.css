@@ -1244,6 +1244,20 @@ tbody tr:hover{background:var(--surface-2)}
 .pg-ent.aviso{color:var(--warn)}
 .pg-ent.aviso.elegida{background:var(--warn-soft); border-color:var(--hair)}
 
+/* La bandeja de comprobantes sin entidad, con su lista y su selector. Es
+   trabajo de ordenar, no una alarma: por eso no lleva el fondo de aviso. */
+.pg-huerfanos{margin-bottom:var(--sp-5)}
+.pg-huerfanos-lista{list-style:none; margin:var(--sp-3) 0 0; padding:0}
+.pg-huerfanos-lista li{
+  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4);
+  padding:var(--sp-3) 0; border-bottom:1px solid var(--hair);
+}
+.pg-huerfanos-lista li:last-child{border-bottom:none}
+.pg-huerfano-info{display:flex; flex-direction:column; gap:2px; min-width:0}
+.pg-huerfano-info strong{font-size:var(--t-md); color:var(--ink)}
+/* El selector se toca con el pulgar: esta pantalla también se usa por teléfono. */
+.pg-huerfanos-lista select{min-height:var(--tap); max-width:45%}
+
 .pg-alerta{
   background:var(--warn-soft); border:1px solid var(--hair); border-radius:var(--r-md);
   padding:var(--sp-4); margin-bottom:var(--sp-5); font-size:var(--t-sm); color:var(--warn);

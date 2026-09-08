@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { pagar } from "@/app/actions/comprobantes";
+import { pagar, asignarEntidad } from "@/app/actions/comprobantes";
 import { formatear } from "@/lib/money";
 import { diasEntre } from "@/lib/dates";
 
@@ -37,6 +37,7 @@ export default function ListaPagos({
   entidades,
   entidadElegida,
   sinEntidad,
+  huerfanos,
 }: {
   hoy: string;
   deuda: { supplierId: string | null; nombre: string; total: string; cantidad: number; sinImporte: number }[];
@@ -50,6 +51,14 @@ export default function ListaPagos({
   entidadElegida: string;
   /** Cuántos comprobantes quedaron sin entidad asignada. */
   sinEntidad: number;
+  /** Y cuáles son. Sin esto la bandeja sería un número que nadie puede bajar. */
+  huerfanos: {
+    id: string;
+    nombre: string;
+    kind: string;
+    fechaEmision: string | null;
+    importeTotal: string | null;
+  }[];
 }) {
   const router = useRouter();
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
@@ -60,6 +69,30 @@ export default function ListaPagos({
   const [diaPago, setDiaPago] = useState(hoy);
   const [copiado, setCopiado] = useState(false);
   const [aviso, setAviso] = useState<{ tono: "bien" | "ojo" | "mal"; texto: string } | null>(null);
+  /** Qué huérfano se está guardando. Por id y no un booleano: se pueden asignar
+   *  varios seguidos y el que espera tiene que ser el que se toca. */
+  const [asignando, setAsignando] = useState<string | null>(null);
+
+  /**
+   * Le pone entidad a un comprobante huérfano.
+   *
+   * El resultado se MIRA. Descartarlo dejaría la fila igual que si hubiera
+   * andado, y quien está ordenando se iría convencido de haber asignado algo
+   * que sigue suelto — que es la misma clase de silencio que ya mordió en esta
+   * pantalla con los pagos.
+   */
+  async function asignar(documentId: string, entidadId: string) {
+    if (!entidadId || asignando) return;
+    setAsignando(documentId);
+    setAviso(null);
+    const r = await asignarEntidad(documentId, entidadId);
+    setAsignando(null);
+    if (!r.ok) {
+      setAviso({ tono: "mal", texto: r.error });
+      return;
+    }
+    router.refresh();
+  }
 
   const porId = useMemo(() => new Map(vencen.map((f) => [f.id, f])), [vencen]);
 
@@ -202,6 +235,53 @@ export default function ListaPagos({
             ? "Mostrando solo los comprobantes que quedaron sin entidad asignada."
             : `Mostrando solo ${entidades.find((e) => e.id === entidadElegida)?.nombre ?? "una entidad"}. Los totales son de esa entidad.`}
         </p>
+      )}
+
+      {/* La bandeja de huérfanos, ABIERTA.
+          Solo se muestra cuando el filtro está en "sin": es trabajo de ordenar,
+          no algo que tenga que estorbar cuando se está por pagar. */}
+      {entidadElegida === "sin" && (
+        <section className="pg-huerfanos">
+          {huerfanos.length === 0 ? (
+            <p className="msub">Todos los comprobantes tienen entidad. No queda nada por asignar.</p>
+          ) : (
+            <>
+              <p className="msub">
+                Estos comprobantes no tienen entidad. Elegí de quién es cada uno: hasta entonces no
+                suman en la deuda de ninguna.
+              </p>
+              <ul className="pg-huerfanos-lista">
+                {huerfanos.map((h) => (
+                  <li key={h.id}>
+                    <div className="pg-huerfano-info">
+                      <strong>{h.nombre}</strong>
+                      <span className="msub">
+                        {h.kind === "FACTURA" ? "Factura" : h.kind.toLowerCase()}
+                        {h.fechaEmision ? ` · ${h.fechaEmision}` : ""}
+                        {h.importeTotal ? ` · ${formatear(BigInt(h.importeTotal))}` : " · sin importe"}
+                      </span>
+                    </div>
+                    <select
+                      aria-label={`Entidad de ${h.nombre}`}
+                      defaultValue=""
+                      disabled={asignando === h.id}
+                      onChange={(ev) => void asignar(h.id, ev.target.value)}
+                    >
+                      <option value="" disabled>
+                        {asignando === h.id ? "Guardando…" : "Elegir…"}
+                      </option>
+                      {entidades.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
       )}
 
       {duplicados.length > 0 && (

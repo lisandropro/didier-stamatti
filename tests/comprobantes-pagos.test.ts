@@ -476,3 +476,78 @@ test("los vencimientos también respetan la entidad", async () => {
   const todas = await pagos.queVence("2026-09-01", "2026-09-30");
   assert.equal(todas.length, 2);
 });
+
+// ---------------------------------------------------------------------------
+// Cerrar la bandeja de huérfanos
+// ---------------------------------------------------------------------------
+//
+// El contador sin lista era una bandeja que no se podía abrir: decía cuánto
+// trabajo había y no dejaba hacerlo. Acá se prueba que se pueda, y que asignar
+// tenga las dos consecuencias que importan — la plata se mueve de libro, y
+// queda escrito quién la movió.
+
+test("un huérfano aparece en la lista aunque no tenga vencimiento ni importe", async () => {
+  // Sin esto sería invisible: las demás consultas de la pantalla piden
+  // vencimiento en rango o importe, y un comprobante recién sacado no tiene ni
+  // uno ni otro.
+  const ents = await import("../lib/comprobantes/entidades");
+  await prisma.document.deleteMany();
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "MANUAL", supplierId: donAngel,
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 91,
+    },
+  });
+
+  const lista = await ents.huerfanos();
+  assert.equal(lista.length, 1);
+  assert.equal(lista[0].importeTotal, null, "sin importe tiene que seguir siendo null, no cero");
+});
+
+test("asignar mueve la deuda de una entidad a la otra y deja rastro", async () => {
+  const ents = await import("../lib/comprobantes/entidades");
+  const ute = await prisma.entidad.create({ data: { nombre: "UTE", cuit: "30718888887" } });
+
+  await prisma.document.deleteMany();
+  const doc = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "MANUAL", supplierId: donAngel, importeTotal: 250_00n,
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 92,
+    },
+  });
+
+  // Antes: no suma para la UTE, sí aparece entre los huérfanos.
+  assert.equal((await pagos.porProveedor(ute.id)).length, 0);
+  assert.equal((await ents.huerfanos()).length, 1);
+
+  const r = await ents.asignar(doc.id, ute.id, { id: "u1", name: "Aldana" });
+  assert.equal(r.ok, true);
+
+  // Después: la plata está en el libro de la UTE y la bandeja quedó vacía.
+  assert.equal((await pagos.porProveedor(ute.id))[0].total, 250_00n);
+  assert.equal((await ents.huerfanos()).length, 0);
+
+  // Y quedó escrito quién lo movió: cambiar de entidad mueve plata de un libro
+  // a otro, y un cambio así sin rastro es lo que la auditoría vino a arreglar.
+  const cambios = await prisma.documentChange.findMany({ where: { documentId: doc.id } });
+  assert.equal(cambios.length, 1);
+  assert.equal(cambios[0].field, "entidadId");
+  assert.equal(cambios[0].before, null);
+  assert.equal(cambios[0].after, ute.id);
+  assert.equal(cambios[0].actorName, "Aldana");
+});
+
+test("no se puede asignar a una entidad que no existe", async () => {
+  const ents = await import("../lib/comprobantes/entidades");
+  await prisma.document.deleteMany();
+  const doc = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "MANUAL", supplierId: donAngel, importeTotal: 100_00n,
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 93,
+    },
+  });
+  const r = await ents.asignar(doc.id, "no-existe", { id: "u1", name: "Aldana" });
+  assert.equal(r.ok, false);
+  // Y NO deja un cambio registrado de algo que no pasó.
+  assert.equal(await prisma.documentChange.count({ where: { documentId: doc.id } }), 0);
+});

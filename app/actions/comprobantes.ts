@@ -26,6 +26,8 @@ import {
   crear as crearEnt,
   editar as editarEnt,
   sinEntidad as sinEntidadCount,
+  huerfanos as sinEntidadDocs,
+  asignar as asignarEnt,
 } from "@/lib/comprobantes/entidades";
 import { aTextoPlano } from "@/lib/money";
 import {
@@ -310,6 +312,27 @@ export async function editarEntidad(
   return r;
 }
 
+/**
+ * Le pone entidad a un comprobante huérfano.
+ *
+ * Pide `canPagar` y no `canAdministrarComprobantes`: quien decide qué se paga es
+ * quien sabe de qué entidad es la factura, y es quien está mirando la bandeja.
+ * Pedir ADMIN acá dejaría el trabajo visible para alguien que no puede hacerlo,
+ * que es justo el problema que esta pantalla viene a cerrar.
+ */
+export async function asignarEntidad(documentId: string, entidadId: string) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canPagar(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para cambiar la entidad." };
+  }
+  const r = await asignarEnt(String(documentId ?? ""), String(entidadId ?? ""), {
+    id: sesion.id,
+    name: sesion.name,
+  });
+  if (r.ok) revalidatePath("/pagos");
+  return r;
+}
+
 /** Las que se pueden elegir al capturar. No lleva importes ni nada sensible:
  *  quien saca la foto tiene que poder decir a nombre de quién viene el papel. */
 export async function entidadesParaElegir() {
@@ -327,18 +350,30 @@ export async function pendientes() {
   if (!puedeResponderImportes(sesion)) {
     return { ok: false, error: "No tenés permiso para ver los pendientes." };
   }
-  const [b, duplicados, faltantes, huerfanos] = await Promise.all([
+  const [b, duplicados, faltantes, cuantosHuerfanos, losHuerfanos] = await Promise.all([
     bandejas(),
     posiblesDuplicados(),
     incompletos(),
-    // Los que quedaron sin entidad. Va acá y no en `bandejas()` porque las de
+    // Los que quedaron sin entidad. Van acá y no en `bandejas()` porque las de
     // ahí son de la base del stock; ésta es de la financiera.
     sinEntidadCount(),
+    // Las filas, no solo el número: un contador sin lista es una bandeja que no
+    // se puede abrir, y el número sube sin que nadie pueda bajarlo.
+    sinEntidadDocs(),
   ]);
   return {
     ok: true,
     bandejas: b,
-    sinEntidad: huerfanos,
+    sinEntidad: cuantosHuerfanos,
+    huerfanos: losHuerfanos.map((d) => ({
+      id: d.id,
+      nombre: d.nombre,
+      kind: d.kind,
+      fechaEmision: d.fechaEmision,
+      // BigInt no cruza como JSON: va en texto, como el resto de la pantalla.
+      // El NULL se conserva: "sin importe" es un dato, no un cero.
+      importeTotal: d.importeTotal == null ? null : aTextoPlano(d.importeTotal),
+    })),
     duplicados: duplicados.map((d) => ({
       supplierId: d.supplierId,
       nombre: d.nombre,

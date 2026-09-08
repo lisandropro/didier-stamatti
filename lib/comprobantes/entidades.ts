@@ -146,3 +146,80 @@ export async function editar(
 export async function sinEntidad(): Promise<number> {
   return db.document.count({ where: { entidadId: null, deletedAt: null } });
 }
+
+/** Un comprobante huérfano, como lo ve la bandeja. */
+export type Huerfano = {
+  id: string;
+  nombre: string;
+  kind: string;
+  fechaEmision: string | null;
+  importeTotal: bigint | null;
+};
+
+/**
+ * Las filas de verdad, no solo el contador.
+ *
+ * **Un contador sin lista es una bandeja que no se puede abrir**: dice cuánto
+ * trabajo hay y no deja hacerlo, así que el número sube y nadie lo baja nunca.
+ * Es el mismo criterio que ya se había aplicado a `incompletos()`.
+ *
+ * Incluye los pagados y los que no tienen vencimiento, a diferencia de las
+ * demás consultas de la pantalla de pagos: **a quién pertenece una factura no
+ * deja de importar porque ya se pagó** —el libro de IVA la necesita igual— y un
+ * huérfano sin vencimiento no aparecería en ninguna otra lista.
+ */
+export async function huerfanos(): Promise<Huerfano[]> {
+  const docs = await db.document.findMany({
+    where: { entidadId: null, deletedAt: null },
+    include: { supplier: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  return docs.map((d) => ({
+    id: d.id,
+    nombre: d.supplier?.name ?? "Sin proveedor",
+    kind: d.kind,
+    fechaEmision: d.fechaEmision,
+    importeTotal: d.importeTotal,
+  }));
+}
+
+/**
+ * Le pone entidad a un comprobante que no la tenía, o se la cambia.
+ *
+ * Va en una transacción con su registro en el historial, como toda escritura de
+ * este módulo: **cambiar de entidad mueve plata de un libro a otro**, y un
+ * cambio así sin rastro es exactamente lo que la auditoría vino a arreglar.
+ */
+export async function asignar(
+  documentId: string,
+  entidadId: string,
+  actor: { id: string; name: string },
+): Promise<ResultadoEntidad> {
+  const [doc, ent] = await Promise.all([
+    db.document.findFirst({
+      where: { id: documentId, deletedAt: null },
+      select: { id: true, entidadId: true },
+    }),
+    db.entidad.findFirst({ where: { id: entidadId, deletedAt: null }, select: { id: true } }),
+  ]);
+  if (!doc) return { ok: false, error: "Ese comprobante no existe." };
+  if (!ent) return { ok: false, error: "Esa entidad no existe." };
+  if (doc.entidadId === entidadId) return { ok: true, id: documentId };
+
+  await db.$transaction([
+    db.document.update({ where: { id: documentId }, data: { entidadId } }),
+    db.documentChange.create({
+      data: {
+        documentId,
+        actorId: actor.id,
+        actorName: actor.name,
+        field: "entidadId",
+        before: doc.entidadId,
+        after: entidadId,
+      },
+    }),
+  ]);
+
+  return { ok: true, id: documentId };
+}
