@@ -206,8 +206,25 @@ Extraé los campos del comprobante de la imagen. Reglas:
 export const MODELO = "claude-opus-5";
 
 /** Un minuto. Una foto de factura se lee en segundos; más que esto es que algo
- *  se colgó, y una acción de servidor colgada se lleva puesta la pantalla. */
+ *  se colgó, y una acción de servidor colgada se lleva puesta la pantalla.
+ *
+ *  El SDK de TypeScript cuenta el tiempo en MILISEGUNDOS, a diferencia del de
+ *  Python, que usa segundos. Confundirlos da un minuto o dieciséis horas. */
 const TIMEOUT_MS = 60_000;
+
+/**
+ * El tope de tokens de la respuesta.
+ *
+ * **Estaba en 4096 y era poco.** En este modelo el pensamiento está activo por
+ * omisión y **cuenta contra este mismo tope**: una factura con muchos renglones
+ * podía gastar el presupuesto razonando y devolver el JSON cortado a la mitad.
+ * Eso fallaba justo en las facturas que más renglones tienen, que son las que
+ * más caro sale cargar a mano.
+ *
+ * 16.000 es lo que recomienda la referencia del SDK para un pedido sin
+ * streaming: deja aire de sobra y sigue por debajo del tiempo de espera HTTP.
+ */
+const MAX_TOKENS = 16_000;
 
 export async function leerFoto(bytes: Buffer, mimeType: string, kind: Kind): Promise<Lectura> {
   // Falla con una frase entendible en vez del error del SDK. Sin la clave esto
@@ -242,7 +259,7 @@ export async function leerFoto(bytes: Buffer, mimeType: string, kind: Kind): Pro
 
   const respuesta = await client.messages.create({
     model: MODELO,
-    max_tokens: 4096,
+    max_tokens: MAX_TOKENS,
     thinking: { type: "adaptive" },
     system: INSTRUCCIONES,
     output_config: { format: { type: "json_schema", schema: esquemaDe(kind) } },
@@ -250,6 +267,22 @@ export async function leerFoto(bytes: Buffer, mimeType: string, kind: Kind): Pro
       { role: "user", content: [contenido, { type: "text", text: "Extraé los campos de este comprobante." }] },
     ],
   });
+
+  // **Por qué se mira `stop_reason` antes que el contenido.**
+  //
+  // Una respuesta cortada trae JSON a medias, y `JSON.parse` falla igual que si
+  // el modelo no hubiera leído nada. Sin esta comprobación los dos casos caen en
+  // el mismo camino silencioso, y quedan indistinguibles: uno se arregla
+  // subiendo el tope y el otro no se arregla con nada.
+  if (respuesta.stop_reason === "max_tokens") {
+    throw new Error(
+      "La lectura se cortó por longitud: el comprobante es más largo de lo que entra. " +
+        "Cargalo a mano y avisá, que el tope se sube.",
+    );
+  }
+  if (respuesta.stop_reason === "refusal") {
+    throw new Error("El modelo no quiso leer esta imagen. Cargá el comprobante a mano.");
+  }
 
   const bloque = respuesta.content.find((b) => b.type === "text");
   if (!bloque || bloque.type !== "text") return { campos: {}, controles: revisar({}) };
