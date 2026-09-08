@@ -1,6 +1,9 @@
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
+// La misma lista que usa el respaldo. Vigilar y respaldar tienen que mirar los
+// mismos conjuntos, o se respalda algo que nadie controla.
+import { CONJUNTOS } from "@/lib/backup";
 
 /** Cada cuántos días se puede repetir un aviso idéntico. Evita que el mismo
  *  problema moleste todos los días: si no cambió nada, se calla. */
@@ -22,30 +25,64 @@ function s3() {
   });
 }
 
-/** ¿Se hizo un respaldo hace poco? Es la revisión más importante: sin respaldo
- *  fresco, un problema de datos no tendría vuelta atrás. */
-async function checkBackup(): Promise<HealthProblem | null> {
+/**
+ * ¿Se hizo un respaldo hace poco? Es la revisión más importante: sin respaldo
+ * fresco, un problema de datos no tendría vuelta atrás.
+ *
+ * **Se revisan LOS DOS conjuntos, y esa es la corrección.** Antes miraba solo
+ * `backups/`, el prefijo del stock. Los comprobantes se respaldan aparte en
+ * `backups-comprobantes/` —con retención distinta, porque una factura hay que
+ * guardarla años— y no los miraba nadie: si ese respaldo empezaba a fallar, la
+ * revisión seguía diciendo que todo estaba en orden.
+ *
+ * Es el mismo error que ya se había encontrado y arreglado en `runBackup` el
+ * 03/09. El arreglo no había llegado hasta acá, que es donde importa: de nada
+ * sirve respaldar las dos bases si solo se vigila una.
+ *
+ * Los conjuntos salen de `CONJUNTOS`, que es la lista que usa el respaldo. Si
+ * mañana aparece una tercera base, se vigila sola.
+ */
+async function checkBackup(): Promise<HealthProblem[]> {
   const client = s3();
   const bucket = process.env.BACKUP_S3_BUCKET;
-  if (!client || !bucket) return null; // sin configurar (desarrollo local): no es un problema
+  if (!client || !bucket) return []; // sin configurar (desarrollo local): no es un problema
 
-  try {
-    const list = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: "backups/" }));
-    const newest = (list.Contents ?? [])
-      .map((o) => o.LastModified?.getTime() ?? 0)
-      .reduce((a, b) => Math.max(a, b), 0);
+  const problemas: HealthProblem[] = [];
 
-    if (newest === 0) return { code: "backup-none", message: "no hay ningún respaldo guardado" };
+  for (const conjunto of CONJUNTOS) {
+    try {
+      const list = await client.send(
+        new ListObjectsV2Command({ Bucket: bucket, Prefix: conjunto.prefijo }),
+      );
+      const newest = (list.Contents ?? [])
+        .map((o) => o.LastModified?.getTime() ?? 0)
+        .reduce((a, b) => Math.max(a, b), 0);
 
-    const hours = Math.floor((Date.now() - newest) / (60 * 60 * 1000));
-    if (hours > BACKUP_MAX_AGE_HOURS) {
-      const dias = Math.floor(hours / 24);
-      return { code: "backup-old", message: `el último respaldo es de hace ${dias > 0 ? `${dias} día${dias === 1 ? "" : "s"}` : `${hours} horas`}` };
+      if (newest === 0) {
+        problemas.push({
+          code: `backup-none-${conjunto.etiqueta}`,
+          message: `no hay ningún respaldo guardado de ${conjunto.etiqueta}`,
+        });
+        continue;
+      }
+
+      const hours = Math.floor((Date.now() - newest) / (60 * 60 * 1000));
+      if (hours > BACKUP_MAX_AGE_HOURS) {
+        const dias = Math.floor(hours / 24);
+        problemas.push({
+          code: `backup-old-${conjunto.etiqueta}`,
+          message: `el último respaldo de ${conjunto.etiqueta} es de hace ${dias > 0 ? `${dias} día${dias === 1 ? "" : "s"}` : `${hours} horas`}`,
+        });
+      }
+    } catch {
+      problemas.push({
+        code: `backup-unreachable-${conjunto.etiqueta}`,
+        message: `no se pudo verificar el respaldo de ${conjunto.etiqueta}`,
+      });
     }
-    return null;
-  } catch {
-    return { code: "backup-unreachable", message: "no se pudo verificar el respaldo" };
   }
+
+  return problemas;
 }
 
 /** Productos que deberían llevar control de stock pero están en cero: para
@@ -63,8 +100,10 @@ async function checkStockLoaded(): Promise<HealthProblem | null> {
 }
 
 export async function collectProblems(): Promise<HealthProblem[]> {
-  const results = await Promise.all([checkBackup(), checkStockLoaded()]);
-  const base = results.filter((r): r is HealthProblem => r !== null);
+  // `checkBackup` devuelve una lista —uno por conjunto de respaldo— y
+  // `checkStockLoaded` uno solo o nada. Se aplanan juntos.
+  const [respaldos, stock] = await Promise.all([checkBackup(), checkStockLoaded()]);
+  const base = [...respaldos, ...(stock ? [stock] : [])];
 
   // Los controles de datos y de avisos. Van acá y no aparte para heredar lo que
   // esta revisión ya resuelve bien: avisa solo a las administradoras, no repite
