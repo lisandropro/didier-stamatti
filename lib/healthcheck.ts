@@ -12,7 +12,23 @@ const REPEAT_DAYS = 7;
 /** Un respaldo se hace por día; se avisa recién pasado este margen. */
 const BACKUP_MAX_AGE_HOURS = 30;
 
-export type HealthProblem = { code: string; message: string };
+/**
+ * Un problema de la revision diaria.
+ *
+ * **`gravedad` decide quien te interrumpe.** Solo las `alta` mandan un push;
+ * las demas quedan en /notificaciones, que es donde vive el trabajo pendiente.
+ *
+ * La razon es concreta: la revision reportaba siete cosas por dia, seis de
+ * ellas trabajo que hoy no hay tiempo de hacer. Un aviso que pide horas que no
+ * existen se ignora igual que uno falso — y al ignorarse entrena a ignorar
+ * TODOS, incluido el dia que falle el respaldo o se este por pagar dos veces.
+ *
+ * El campo no es nuevo: `checks.ts` ya lo asignaba hallazgo por hallazgo y solo
+ * lo usaba para ordenar. Acá pasa a significar algo.
+ */
+export type HealthProblem = { code: string; message: string; gravedad: Gravedad };
+
+export type Gravedad = "alta" | "media" | "baja";
 
 function s3() {
   const endpoint = process.env.BACKUP_S3_ENDPOINT;
@@ -62,6 +78,7 @@ async function checkBackup(): Promise<HealthProblem[]> {
       if (newest === 0) {
         problemas.push({
           code: `backup-none-${conjunto.etiqueta}`,
+          gravedad: "alta",
           message: `no hay ningún respaldo guardado de ${conjunto.etiqueta}`,
         });
         continue;
@@ -72,12 +89,14 @@ async function checkBackup(): Promise<HealthProblem[]> {
         const dias = Math.floor(hours / 24);
         problemas.push({
           code: `backup-old-${conjunto.etiqueta}`,
+          gravedad: "alta",
           message: `el último respaldo de ${conjunto.etiqueta} es de hace ${dias > 0 ? `${dias} día${dias === 1 ? "" : "s"}` : `${hours} horas`}`,
         });
       }
     } catch {
       problemas.push({
         code: `backup-unreachable-${conjunto.etiqueta}`,
+        gravedad: "alta",
         message: `no se pudo verificar el respaldo de ${conjunto.etiqueta}`,
       });
     }
@@ -96,11 +115,23 @@ async function checkStockLoaded(): Promise<HealthProblem | null> {
   if (sinContar === 0) return null;
   return {
     code: "stock-empty",
+    // MEDIA: contar el stock son horas de trabajo, no minutos. Es real y hay
+    // que hacerlo, pero interrumpir todos los días por algo que no se puede
+    // resolver hoy es cómo se enseña a ignorar los avisos.
+    gravedad: "media",
     message: `${sinContar} producto${sinContar === 1 ? "" : "s"} sin contar (hasta contarlos no se puede avisar si faltan)`,
   };
 }
 
-export async function collectProblems(): Promise<HealthProblem[]> {
+/**
+ * Todos los problemas del sistema, no solo los que interrumpen.
+ *
+ * `verificarRestauracion: false` saltea la bajada del respaldo. Lo usa la
+ * pantalla: mostrar el estado no puede costar decenas de megas por visita.
+ */
+export async function collectProblems(
+  opciones: { verificarRestauracion?: boolean } = {},
+): Promise<HealthProblem[]> {
   // `checkBackup` devuelve una lista —uno por conjunto de respaldo— y
   // `checkStockLoaded` uno solo o nada. Se aplanan juntos.
   //
@@ -110,10 +141,19 @@ export async function collectProblems(): Promise<HealthProblem[]> {
   // hay que espaciarla, conviene que esté separada.
   const [respaldos, restaurables, stock] = await Promise.all([
     checkBackup(),
-    verificarRespaldos(),
+    // La verificación de restauración BAJA decenas de megas. Va en la revisión
+    // diaria y no cuando alguien abre una pantalla: es la diferencia entre
+    // costar una vez por día y costar una vez por visita.
+    opciones.verificarRestauracion === false ? Promise.resolve([]) : verificarRespaldos(),
     checkStockLoaded(),
   ]);
-  const base = [...respaldos, ...restaurables, ...(stock ? [stock] : [])];
+  // Todo lo del respaldo es ALTA: son minutos de trabajo y no hacerlos cuesta
+  // la base entera. Es la unica familia de problemas que justifica interrumpir.
+  const base: HealthProblem[] = [
+    ...respaldos,
+    ...restaurables.map((r) => ({ ...r, gravedad: "alta" as const })),
+    ...(stock ? [stock] : []),
+  ];
 
   // Los controles de datos y de avisos. Van acá y no aparte para heredar lo que
   // esta revisión ya resuelve bien: avisa solo a las administradoras, no repite
@@ -123,14 +163,18 @@ export async function collectProblems(): Promise<HealthProblem[]> {
   try {
     const { revisarTodo } = await import("@/lib/checks");
     const hallazgos = await revisarTodo();
-    const porCodigo = new Map<string, string[]>();
+    // La gravedad viaja con el hallazgo en vez de perderse acá. Antes se
+    // aplanaba a nada y todo terminaba pesando lo mismo en el aviso.
+    const porCodigo = new Map<string, { mensajes: string[]; gravedad: Gravedad }>();
     for (const h of hallazgos) {
-      if (!porCodigo.has(h.code)) porCodigo.set(h.code, []);
-      porCodigo.get(h.code)!.push(h.message);
+      const previo = porCodigo.get(h.code);
+      if (previo) previo.mensajes.push(h.message);
+      else porCodigo.set(h.code, { mensajes: [h.message], gravedad: h.gravedad });
     }
-    for (const [code, mensajes] of porCodigo) {
+    for (const [code, { mensajes, gravedad }] of porCodigo) {
       base.push({
         code,
+        gravedad,
         message: mensajes.length === 1 ? mensajes[0] : `${mensajes.length} avisos: ${mensajes[0]} (y ${mensajes.length - 1} más)`,
       });
     }
@@ -140,6 +184,39 @@ export async function collectProblems(): Promise<HealthProblem[]> {
   return base;
 }
 
+/**
+ * Qué push corresponde mandar, si es que corresponde alguno.
+ *
+ * **Solo lo urgente interrumpe.** El resto queda en `/notificaciones`, que es
+ * donde vive el trabajo pendiente y donde se mira cuando hay tiempo.
+ *
+ * Antes iban los siete juntos en una sola frase, y el costo que importa no era
+ * el largo: el urgente quedaba enterrado en el medio de la oración y el aviso
+ * entero se volvía ignorable. Con lo cual el día que falle el respaldo, ese
+ * aviso llega por un canal ya desacreditado.
+ *
+ * **La firma se arma SOLO con los urgentes**, y ése es el otro arreglo. Antes
+ * era el conjunto de TODOS los códigos: cargar un producto sin contar cambiaba
+ * la firma y volvía a avisar de todo, y al revés, un respaldo roto que persistía
+ * quedaba callado siete días porque el conjunto no había cambiado. Ahora lo
+ * pendiente no puede ni disparar ni tapar.
+ *
+ * Vive separado y es puro para poder probarlo: es una decisión sobre a quién se
+ * interrumpe, y ésas se prueban.
+ */
+export function avisoDe(
+  problems: HealthProblem[],
+): { message: string; signature: string } | null {
+  const urgentes = problems.filter((p) => p.gravedad === "alta");
+  if (urgentes.length === 0) return null;
+  return {
+    message: `Revisión del sistema: ${urgentes.map((p) => p.message).join(" · ")}`,
+    // Se agrupa por TIPO y no por el texto: mientras se va resolviendo, el
+    // número puede cambiar sin que el aviso se repita todos los días.
+    signature: `SISTEMA:${urgentes.map((p) => p.code).sort().join(",")}`,
+  };
+}
+
 /** Revisión diaria. Sólo avisa a los administradores si hay algo mal, y no
  *  repite un aviso idéntico antes de REPEAT_DAYS. Nunca lanza error. */
 export async function runHealthCheck(): Promise<{ problems: HealthProblem[]; notified: boolean }> {
@@ -147,11 +224,9 @@ export async function runHealthCheck(): Promise<{ problems: HealthProblem[]; not
     const problems = await collectProblems();
     if (problems.length === 0) return { problems: [], notified: false };
 
-    const message = `Revisión del sistema: ${problems.map((p) => p.message).join(" · ")}`;
-    // Se agrupa por TIPO de problema, no por el texto: así, mientras va cargando
-    // stock, el número puede cambiar sin que el aviso se repita todos los días.
-    // Un problema nuevo sí cambia la firma y vuelve a avisar.
-    const signature = `SISTEMA:${problems.map((p) => p.code).sort().join(",")}`;
+    const av = avisoDe(problems);
+    if (!av) return { problems, notified: false };
+    const { message, signature } = av;
     const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
     const cutoff = new Date(Date.now() - REPEAT_DAYS * 24 * 60 * 60 * 1000);
 
