@@ -52,3 +52,6 @@ next-env.d.ts
 # configuración local del servidor de desarrollo
 /.claude
 dev-local.log
+
+# Diagnosticos sueltos: scripts de una sola vez que no son del proyecto.
+diag.mjs
