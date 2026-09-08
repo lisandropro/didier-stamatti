@@ -18,8 +18,24 @@ const PREFIX = "backups/";
  * todo estaba en orden porque miraba solo el prefijo del stock.
  */
 const CONJUNTOS = [
-  { etiqueta: "stock", prefijo: PREFIX, retencionDias: RETENTION_DAYS },
-  { etiqueta: "comprobantes", prefijo: "backups-comprobantes/", retencionDias: null },
+  {
+    etiqueta: "stock",
+    prefijo: PREFIX,
+    retencionDias: RETENTION_DAYS,
+    // La tabla testigo: si la copia abre pero ESTA tabla no existe o vino
+    // vacía, no es un respaldo — es un archivo con la extensión correcta.
+    // `User` porque siempre tiene filas: sin usuarios nadie entraría a la app.
+    tablaTestigo: "User",
+  },
+  {
+    etiqueta: "comprobantes",
+    prefijo: "backups-comprobantes/",
+    retencionDias: null,
+    // `Entidad` y no `Document`: los comprobantes pueden ser cero un lunes a la
+    // mañana, y eso es legítimo. La entidad la crea la migración, así que si
+    // falta, la copia está mal.
+    tablaTestigo: "Entidad",
+  },
 ] as const;
 
 export { CONJUNTOS };

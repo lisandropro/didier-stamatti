@@ -4,6 +4,7 @@ import { sendPushToUser } from "@/lib/push";
 // La misma lista que usa el respaldo. Vigilar y respaldar tienen que mirar los
 // mismos conjuntos, o se respalda algo que nadie controla.
 import { CONJUNTOS } from "@/lib/backup";
+import { verificarRespaldos } from "@/lib/verificar-respaldo";
 
 /** Cada cuántos días se puede repetir un aviso idéntico. Evita que el mismo
  *  problema moleste todos los días: si no cambió nada, se calla. */
@@ -102,8 +103,17 @@ async function checkStockLoaded(): Promise<HealthProblem | null> {
 export async function collectProblems(): Promise<HealthProblem[]> {
   // `checkBackup` devuelve una lista —uno por conjunto de respaldo— y
   // `checkStockLoaded` uno solo o nada. Se aplanan juntos.
-  const [respaldos, stock] = await Promise.all([checkBackup(), checkStockLoaded()]);
-  const base = [...respaldos, ...(stock ? [stock] : [])];
+  //
+  // La verificación de restauración va acá y no adentro de `checkBackup` porque
+  // son dos preguntas distintas: una es "¿hay copia reciente?" y la otra
+  // "¿esa copia sirve?". La segunda baja decenas de megas, así que si algún día
+  // hay que espaciarla, conviene que esté separada.
+  const [respaldos, restaurables, stock] = await Promise.all([
+    checkBackup(),
+    verificarRespaldos(),
+    checkStockLoaded(),
+  ]);
+  const base = [...respaldos, ...restaurables, ...(stock ? [stock] : [])];
 
   // Los controles de datos y de avisos. Van acá y no aparte para heredar lo que
   // esta revisión ya resuelve bien: avisa solo a las administradoras, no repite
