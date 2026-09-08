@@ -236,6 +236,48 @@ model DocumentLine {
   @@index([descripcion])
 }
 
+/**
+ * Una importación del CSV de ARCA (*Mis Comprobantes → Recibidos*).
+ *
+ * Guarda el hash del archivo para detectar que se subió el mismo dos veces
+ * antes de parsearlo. **No es lo que da la idempotencia** —eso lo da la clave
+ * fiscal de cuatro campos de `Document`, que hace que reimportar un período
+ * solapado sea inofensivo— pero ahorra el trabajo y evita el susto de ver
+ * "0 nuevos" sin entender por qué.
+ *
+ * Los contadores se guardan porque son la única forma de contestar después
+ * "¿cuántas facturas aparecieron que nadie había traído?", que es la pregunta
+ * que motivó todo esto.
+ */
+model ArcaImport {
+  id        String  @id @default(cuid())
+  entidadId String
+  archivo   String
+  /** Hash del contenido: el mismo archivo dos veces se detecta antes de parsear. */
+  hashArchivo String
+
+  filasLeidas   Int
+  /** Ya estaban cargadas y se completaron con el dato del fisco. */
+  completadas   Int
+  /** ARCA las conoce y nadie había traído el papel. */
+  creadas       Int
+  /** Tenemos el papel y ARCA no las conoce, dentro del período importado. */
+  sinRespaldo   Int
+  /** Campos donde ARCA difiere de algo que una persona había corregido a mano.
+   *  No se pisan: se cuentan y quedan en el historial. */
+  discrepancias Int
+
+  /** El período que cubre, derivado de las filas y no de lo que diga nadie. */
+  desde String?
+  hasta String?
+
+  actorId   String?
+  actorName String
+  createdAt DateTime @default(now())
+
+  @@index([entidadId, createdAt])
+}
+
 // Historial campo por campo. Mismo patrón que ProductChange en la otra base.
 model DocumentChange {
   id         String   @id @default(cuid())
