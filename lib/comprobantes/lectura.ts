@@ -205,6 +205,33 @@ Extraé los campos del comprobante de la imagen. Reglas:
 /** El modelo. Se cambia acá cuando salga uno mejor. */
 export const MODELO = "claude-opus-5";
 
+/**
+ * Precio del modelo, en dólares por millón de tokens.
+ *
+ * **Está acá y no en una variable de entorno a propósito**: es un dato del
+ * modelo, no de esta instalación. Si se cambia `MODELO`, esto se cambia al lado
+ * o el costo que se registra pasa a ser mentira — y una cifra de plata
+ * equivocada es peor que no tener ninguna.
+ */
+export const PRECIO_POR_MILLON = { entrada: 5, salida: 25 } as const;
+
+/**
+ * Lo que costó una lectura, en dólares.
+ *
+ * **Por qué se registra.** Antes de encender esto, lo único que había era una
+ * estimación entre 4 y 9 centavos por factura, sacada del tamaño de la imagen y
+ * de la lista de precios. En este proyecto se venía midiendo en vez de suponer
+ * —los QR, el detector, los tiempos del visor— y dejar el costo en una cuenta
+ * hecha a ojo desentonaba.
+ *
+ * El razonamiento adaptativo cuenta como salida, que es la parte cara, y es
+ * justamente la más difícil de estimar de antemano: depende de cuántos
+ * renglones tenga la factura. Por eso se mide en vez de calcularse.
+ */
+export function costoDeLectura(entrada: number, salida: number): number {
+  return (entrada * PRECIO_POR_MILLON.entrada + salida * PRECIO_POR_MILLON.salida) / 1_000_000;
+}
+
 /** Un minuto. Una foto de factura se lee en segundos; más que esto es que algo
  *  se colgó, y una acción de servidor colgada se lleva puesta la pantalla.
  *
@@ -257,6 +284,7 @@ export async function leerFoto(bytes: Buffer, mimeType: string, kind: Kind): Pro
           },
         } as const);
 
+  const arranque = Date.now();
   const respuesta = await client.messages.create({
     model: MODELO,
     max_tokens: MAX_TOKENS,
@@ -267,6 +295,24 @@ export async function leerFoto(bytes: Buffer, mimeType: string, kind: Kind): Pro
       { role: "user", content: [contenido, { type: "text", text: "Extraé los campos de este comprobante." }] },
     ],
   });
+
+  // El consumo real de esta lectura.
+  //
+  // Va ANTES de las comprobaciones de abajo a propósito: una lectura que se
+  // cortó por longitud igual se cobra, y esconderla del registro haría que el
+  // costo medido salga más barato de lo que es — justo en el caso caro.
+  //
+  // Sale al log y no a una tabla: con esto alcanza para contestar "cuánto sale
+  // de verdad una factura" mirando unas veinte, y no obliga a migrar la base de
+  // producción para hacer una medición.
+  const uso = respuesta.usage;
+  const entrada = (uso?.input_tokens ?? 0) + (uso?.cache_read_input_tokens ?? 0);
+  const salida = uso?.output_tokens ?? 0;
+  console.log(
+    `[lectura] ${kind} · ${entrada} entrada + ${salida} salida · ` +
+      `US$${costoDeLectura(entrada, salida).toFixed(4)} · ${Date.now() - arranque} ms` +
+      (respuesta.stop_reason !== "end_turn" ? ` · CORTADA (${respuesta.stop_reason})` : ""),
+  );
 
   // **Por qué se mira `stop_reason` antes que el contenido.**
   //

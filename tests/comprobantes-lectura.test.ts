@@ -249,3 +249,39 @@ test("y un precio de tres decimales mal leído igual se detecta", () => {
   });
   assert.equal(c.cierranLosRenglones, false);
 });
+
+// ---------------------------------------------------------------------------
+// Lo que cuesta una lectura
+// ---------------------------------------------------------------------------
+//
+// Antes de encender esto lo unico que habia era una estimacion entre 4 y 9
+// centavos por factura, sacada del tamaño de la imagen y de la lista de
+// precios. En este proyecto se venia midiendo en vez de suponer, asi que el
+// costo se registra de verdad.
+//
+// Estas pruebas fijan los precios: si alguien cambia el modelo y se olvida de
+// cambiarlos al lado, la cifra que se registra pasa a ser mentira — y un numero
+// de plata equivocado es peor que no tener ninguno.
+
+test("el costo sale de los precios del modelo, no de una estimacion", async () => {
+  const { costoDeLectura, PRECIO_POR_MILLON, MODELO } = await import("../lib/comprobantes/lectura");
+
+  // Los precios de claude-opus-5 al 08/09/2026. Si el modelo cambia, esto
+  // tiene que cambiar con el.
+  assert.equal(MODELO, "claude-opus-5");
+  assert.equal(PRECIO_POR_MILLON.entrada, 5);
+  assert.equal(PRECIO_POR_MILLON.salida, 25);
+
+  // Un millon de cada uno: 5 + 25.
+  assert.equal(costoDeLectura(1_000_000, 1_000_000), 30);
+  // Una factura tipica segun la estimacion previa: 3.000 entrada, 2.000 salida.
+  assert.ok(Math.abs(costoDeLectura(3_000, 2_000) - 0.065) < 0.0001);
+  assert.equal(costoDeLectura(0, 0), 0);
+});
+
+test("la salida pesa cinco veces mas que la entrada", async () => {
+  // Es lo que hace que el razonamiento adaptativo sea la parte cara y la mas
+  // dificil de estimar: depende de cuantos renglones tenga la factura.
+  const { costoDeLectura } = await import("../lib/comprobantes/lectura");
+  assert.equal(costoDeLectura(0, 1000) / costoDeLectura(1000, 0), 5);
+});
