@@ -1657,6 +1657,30 @@ tbody tr:hover{background:var(--surface-2)}
 /* Gris sobre un fondo de color se ve lavado: se apaga con el mismo tono, no con --muted. */
 .imp-linea{opacity:.75}
 
+/* El corte de fecha. Angosto a propósito: es una fecha, no un párrafo, y un
+   campo del ancho del formulario invita a creer que es obligatorio. */
+.imp-desde{margin-bottom:var(--sp-4)}
+.imp-desde input{max-width:220px}
+.imp-ayuda{
+  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted);
+  line-height:1.45; max-width:62ch;
+}
+
+/* Las que venían en otra moneda. Superficie propia y no color de advertencia:
+   no salió nada mal, pero el importe lo calculó la máquina y hay que poder
+   mirarlo. Se muestra la cuenta entera, no solo el resultado. */
+.imp-convertidas{
+  background:var(--surface-2); border-radius:var(--r-md);
+  padding:var(--sp-4); font-size:var(--t-sm); color:var(--ink);
+}
+.imp-convertidas ul{
+  list-style:none; margin:var(--sp-3) 0 0; padding:0;
+  display:flex; flex-direction:column; gap:var(--sp-3);
+}
+.imp-convertidas li{display:flex; flex-direction:column; gap:2px}
+.imp-conv-quien{color:var(--muted)}
+.imp-conv-cuenta{font-variant-numeric:tabular-nums; word-break:break-word}
+
 .imp-acciones{display:flex; gap:var(--sp-3)}
 .imp-hecho{line-height:1.45}
 

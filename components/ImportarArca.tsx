@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { previsualizarArca, importarArca } from "@/app/actions/comprobantes";
 import type { ResultadoImportacion } from "@/lib/comprobantes/arca";
 import type { Salteada } from "@/lib/comprobantes/arca-csv";
+import type { ConvertidaVisible } from "@/lib/comprobantes/politica";
 
 // Importar el CSV de *Mis Comprobantes → Recibidos*.
 //
@@ -39,6 +40,13 @@ export function ImportarArca({
    *  cargar a mano. Si se borraran junto con la previa, el archivo real habría
    *  entrado con tres facturas menos y nadie se enteraba. */
   const [salteadas, setSalteadas] = useState<Salteada[]>([]);
+  /** Las que venían en otra moneda y se pasaron a pesos. Se muestran por la
+   *  misma razón que las salteadas, y una más: **es el único importe del
+   *  sistema que no está impreso en ningún papel.** */
+  const [convertidas, setConvertidas] = useState<ConvertidaVisible[]>([]);
+  /** Cuántas quedaron fuera por el corte de fecha. Sin este número, un corte
+   *  mal puesto se ve igual que un archivo corto. */
+  const [omitidas, setOmitidas] = useState(0);
 
   async function mirar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -48,6 +56,8 @@ export function ImportarArca({
     setHecho(null);
     setPrevia(null);
     setSalteadas([]);
+    setConvertidas([]);
+    setOmitidas(0);
     const r = await previsualizarArca(new FormData(e.currentTarget));
     setOcupado(false);
     if (!r.ok) {
@@ -57,6 +67,8 @@ export function ImportarArca({
     setPrevia(r.previa);
     setEntidadPrevia(r.entidad);
     setSalteadas(r.salteadas);
+    setConvertidas(r.convertidas);
+    setOmitidas(r.omitidasPorFecha);
   }
 
   async function aplicar() {
@@ -76,6 +88,8 @@ export function ImportarArca({
     setPrevia(null);
     setHecho(r.resultado);
     setSalteadas(r.salteadas);
+    setConvertidas(r.convertidas);
+    setOmitidas(r.omitidasPorFecha);
     form.reset();
     setElegido(null);
     router.refresh();
@@ -119,6 +133,19 @@ export function ImportarArca({
           </span>
         </div>
 
+        {/* **El corte de fecha, y por qué está acá.** ARCA no dice si una
+            factura ya se pagó. Traer nueve meses hace que la pantalla de pagos
+            cuente como deuda pendiente lo que hace rato se pagó — y un total
+            que miente en ese orden de magnitud es peor que no tenerlo. */}
+        <div className="field imp-desde">
+          <label htmlFor="imp-desde">Importar solo desde (opcional)</label>
+          <input id="imp-desde" name="desde" type="date" />
+          <p className="imp-ayuda">
+            Vacío entra el archivo entero. ARCA no trae si una factura ya se pagó, así que traer
+            meses viejos hace que <strong>Total pendiente</strong> cuente deuda que ya no existe.
+          </p>
+        </div>
+
         <button className="btn primary" disabled={ocupado || !elegido}>
           {ocupado ? "Leyendo…" : "Ver qué va a pasar"}
         </button>
@@ -136,6 +163,9 @@ export function ImportarArca({
           <p className="msub">
             {previa.filasLeidas} fila{previa.filasLeidas === 1 ? "" : "s"} en el archivo
             {previa.desde ? `, del ${previa.desde} al ${previa.hasta}` : ""}
+            {omitidas > 0
+              ? ` · ${omitidas} más quedaron fuera por la fecha de corte`
+              : ""}
             {entidades.length > 1 ? ` · ${entidadPrevia}` : ""}. Todavía no se guardó nada.
           </p>
 
@@ -187,6 +217,7 @@ export function ImportarArca({
             </div>
           )}
 
+          <Convertidas filas={convertidas} />
           <Salteadas filas={salteadas} />
 
           <div className="imp-acciones">
@@ -208,10 +239,50 @@ export function ImportarArca({
           {hecho.completadas === 1 ? "" : "s"}
           {hecho.sinRespaldo > 0 ? `, ${hecho.sinRespaldo} marcada${hecho.sinRespaldo === 1 ? "" : "s"} como no encontrada${hecho.sinRespaldo === 1 ? "" : "s"} en ARCA` : ""}.
           {hecho.creadas > 0 && " Las nuevas no tienen vencimiento cargado: ARCA no lo trae."}
+          {/* Después de importar, ésta es la única línea que queda diciendo que
+              el archivo tenía más filas de las que entraron. */}
+          {omitidas > 0 &&
+            ` Quedaron fuera ${omitidas} filas anteriores a la fecha de corte; el archivo sigue teniéndolas.`}
         </section>
       )}
 
+      {hecho && <Convertidas filas={convertidas} />}
       {hecho && <Salteadas filas={salteadas} />}
+    </div>
+  );
+}
+
+/**
+ * Las que venían en otra moneda.
+ *
+ * **Este importe no está impreso en ningún papel**: lo calculó la máquina
+ * multiplicando por la cotización de la fila. Por eso se muestra la cuenta
+ * entera —original, cotización y resultado— y no solo el resultado: quien mira
+ * tiene que poder decir "ese número está mal" sin abrir el CSV.
+ *
+ * También queda anotado en el historial de cada comprobante, así que se puede
+ * encontrar y deshacer más adelante.
+ */
+function Convertidas({ filas }: { filas: ConvertidaVisible[] }) {
+  if (filas.length === 0) return null;
+  return (
+    <div className="imp-convertidas">
+      <strong>
+        {filas.length} comprobante{filas.length === 1 ? "" : "s"} en otra moneda, pasado
+        {filas.length === 1 ? "" : "s"} a pesos con la cotización del archivo.
+      </strong>
+      <ul>
+        {filas.map((f) => (
+          <li key={f.linea}>
+            <span className="imp-conv-quien">
+              {f.emisor} · {f.fecha}
+            </span>
+            <span className="imp-conv-cuenta">
+              {f.original} × {f.cotizacion} = <strong>{f.resultado}</strong>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -230,18 +301,14 @@ function Salteadas({ filas }: { filas: Salteada[] }) {
         {filas.length} comprobante{filas.length === 1 ? "" : "s"} que no{" "}
         {filas.length === 1 ? "entra" : "entran"}, y hay que cargar a mano.
       </strong>
-      {/* El párrafo explica el ÚNICO motivo que existe hoy: la moneda. Si algún
-          día `Salteada.motivo` trae un segundo motivo, esto empieza a mentir —
-          hay que pasar a mostrar `f.motivo` por fila. */}
       <p>
-        Están en otra moneda. El archivo se llama &ldquo;montos expresados en pesos&rdquo;, pero la
-        fila trae la cotización del dólar: no se sabe si el importe ya está convertido, y entre las
-        dos lecturas hay una diferencia de más de mil veces. Convertirlo sería inventar el número.
+        No se pudieron convertir a pesos, y multiplicar por uno sería inventar el importe. Hay que
+        cargarlas a mano.
       </p>
       <ul>
         {filas.map((f) => (
           <li key={f.linea}>
-            {f.detalle} <span className="imp-linea">(línea {f.linea} del archivo)</span>
+            {f.detalle} <span className="imp-linea">({f.motivo}, línea {f.linea})</span>
           </li>
         ))}
       </ul>

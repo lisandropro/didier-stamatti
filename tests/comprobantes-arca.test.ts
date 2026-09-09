@@ -248,6 +248,31 @@ test("un remito no se marca como ausente de ARCA", async () => {
   assert.equal((await prisma.document.findUnique({ where: { id: remito.id } }))?.enArca, null);
 });
 
+test("un importe convertido de otra moneda queda anotado, con el original", async () => {
+  // **Es el único importe del sistema que no está impreso en ningún papel**:
+  // lo calculó la máquina multiplicando por la cotización de la fila. Sin este
+  // rastro, si mañana resulta que el archivo ya venía en pesos, no hay forma de
+  // encontrar cuáles fueron ni de deshacerlo.
+  await arca.importar([fila({ convertidaDe: "USD 1210,00 × 1444,50", importeTotal: 174784500n })], {
+    entidadId,
+    actor: ACTOR,
+  });
+  const doc = await prisma.document.findFirst({ where: { numero: 57875 } });
+  assert.ok(doc, "no se creó el comprobante");
+  const cambio = await prisma.documentChange.findFirst({ where: { documentId: doc.id } });
+  assert.equal(cambio?.field, "importeTotal");
+  assert.equal(cambio?.before, "USD 1210,00 × 1444,50");
+  assert.equal(cambio?.after, "174784500");
+  assert.equal(cambio?.actorName, "Aldana", "tiene que decir quién lo importó");
+});
+
+test("una factura normal NO deja rastro de conversión", async () => {
+  // Si lo dejara, `corregidosAMano` daría por corregido a mano el importe de
+  // todas las facturas importadas, y ARCA no podría corregir ninguna nunca más.
+  await arca.importar([fila()], { entidadId, actor: ACTOR });
+  assert.equal(await prisma.documentChange.count(), 0);
+});
+
 test("una nota de crédito entra con el kind que le corresponde", async () => {
   // Restan en la deuda: entrar como FACTURA las sumaría.
   await arca.importar([fila({ tipoCbte: "NOTA_CREDITO_A", numero: 900 })], { entidadId, actor: ACTOR });

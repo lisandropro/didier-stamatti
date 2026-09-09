@@ -48,6 +48,15 @@ export type FilaArca = {
   percepciones?: bigint;
   moneda?: string;
   cae?: string;
+  /**
+   * Si este importe NO venía en pesos, qué decía el archivo antes de convertir.
+   *
+   * Texto para leer, no para calcular: `"USD 7.150,00 × 1.444,50"`. Existe para
+   * que la conversión deje rastro en el historial del comprobante — un importe
+   * que el sistema calculó y nadie puede reconstruir después es exactamente el
+   * tipo de número que este proyecto no quiere.
+   */
+  convertidaDe?: string;
 };
 
 export type ResultadoImportacion = {
@@ -200,6 +209,30 @@ export async function importar(
         },
         select: { id: true },
       });
+      // **El importe convertido queda anotado, con el original al lado.**
+      //
+      // Es el único importe del sistema que no está impreso en ningún papel:
+      // lo calculó la máquina multiplicando por la cotización de la fila. Si
+      // mañana resulta que el archivo ya venía en pesos, esto es lo que
+      // permite encontrar las tres facturas afectadas y deshacerlo.
+      //
+      // Efecto de borde buscado: `corregidosAMano` lee esta tabla, así que el
+      // importe de una convertida queda protegido de que un ARCA futuro lo
+      // pise. Reimportar el mismo archivo recalcula el mismo número y no
+      // genera diferencia; lo que sí aparecería como diferencia —en vez de
+      // cambiar solo— es un cambio en la regla de conversión.
+      if (fila.convertidaDe) {
+        await db.documentChange.create({
+          data: {
+            documentId: creado.id,
+            actorId: ctx.actor.id,
+            actorName: ctx.actor.name,
+            field: "importeTotal",
+            before: fila.convertidaDe,
+            after: fila.importeTotal.toString(),
+          },
+        });
+      }
       vistos.push(creado.id);
       continue;
     }

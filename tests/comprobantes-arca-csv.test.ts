@@ -129,18 +129,83 @@ test("los tipos 63 y 81 entran, no abortan el archivo", () => {
   assert.equal(filas[1].tipoCbte, "TIQUE_A");
 });
 
-test("una factura en dólares se saltea y se informa; las de pesos entran igual", () => {
-  // El archivo real trae tres. No se convierten: el nombre del archivo dice
-  // "montos expresados en pesos" y la fila trae Tipo Cambio 1444,50, así que
-  // entre las dos lecturas hay un factor de 1444. Meterla como pesos la deja
-  // 1444 veces más chica y nadie lo nota.
+test("una factura en dólares se pasa a pesos con la cotización de su fila", () => {
+  // El archivo real trae tres. **Lo decidió el usuario**, sabiendo que el dato
+  // es ambiguo: el nombre del archivo dice "montos expresados en pesos" y la
+  // fila trae Tipo Cambio 1444,50.
+  //
+  // Lo que se prueba acá es que la cuenta esté bien y que la conversión NO sea
+  // silenciosa: este importe no está impreso en ningún papel.
   const usd = '"2026-05-20";"1";"3";"991";"30716481168";"PROVEEDOR SA";"1444,50";"USD";"1000,00";"210,00";"1210,00";"9"';
-  const { filas, salteadas } = leerCsvDeArca(`${ENCABEZADO}\n${FILA}\n${usd}`);
+  const { filas, salteadas, convertidas } = leerCsvDeArca(`${ENCABEZADO}\n${FILA}\n${usd}`);
+  assert.equal(salteadas.length, 0);
+  assert.equal(filas.length, 2, "entran las dos");
+
+  const c = filas[1];
+  // 1210,00 × 1444,50 = 1.747.845,00
+  assert.equal(c.importeTotal, 174784500n);
+  // El desglose también, o la cuenta del comprobante deja de cerrar.
+  assert.equal(c.neto, 144450000n, "1000,00 × 1444,50");
+  assert.equal(c.iva, 30334500n, "210,00 × 1444,50");
+  assert.equal(c.moneda, "PES", "el número ya está en pesos: decir USD sería mentir");
+  assert.equal(c.convertidaDe, "USD 1210,00 × 1444,50", "sin el original no se puede deshacer");
+
+  assert.equal(convertidas.length, 1, "convertir en silencio es lo único que no se puede hacer");
+  assert.equal(convertidas[0].linea, 3);
+  assert.equal(convertidas[0].emisor, "PROVEEDOR SA");
+  assert.equal(convertidas[0].resultado, 174784500n);
+});
+
+test("una fila en otra moneda SIN cotización se saltea, no se toma como 1", () => {
+  // Multiplicar por uno sería inventar el importe, y quedaría 1444 veces más
+  // chico sin que nadie lo note: el número se ve plausible.
+  const usd = '"2026-05-20";"1";"3";"991";"30716481168";"PROVEEDOR SA";"";"USD";"1000,00";"210,00";"1210,00";"9"';
+  const { filas, salteadas, convertidas } = leerCsvDeArca(`${ENCABEZADO}\n${FILA}\n${usd}`);
   assert.equal(filas.length, 1, "la de pesos tiene que entrar igual");
+  assert.equal(convertidas.length, 0);
   assert.equal(salteadas.length, 1);
   assert.equal(salteadas[0].linea, 3, "sin el número de línea no se puede ir a buscarla");
-  assert.match(salteadas[0].motivo, /USD/);
+  assert.match(salteadas[0].motivo, /sin cotización/);
   assert.match(salteadas[0].detalle, /PROVEEDOR SA/, "hay que poder cargarla a mano después");
+});
+
+test("el corte de fecha deja fuera lo anterior, y dice cuántas", () => {
+  // ARCA no trae si una factura ya se pagó. Traer nueve meses hace que la
+  // pantalla de pagos cuente como deuda pendiente lo que hace rato se pagó.
+  const vieja = '"2026-01-15";"1";"6";"100";"20135041379";"VIEJA SRL";"1,00";"$";"100,00";"21,00";"121,00";"1"';
+  const { filas, omitidasPorFecha } = leerCsvDeArca(`${ENCABEZADO}\n${vieja}\n${FILA}`, {
+    desde: "2026-08-01",
+  });
+  assert.equal(filas.length, 1, "solo la del 03/09");
+  assert.equal(filas[0].numero, 57875);
+  assert.equal(omitidasPorFecha, 1, "sin este número, un corte mal puesto se ve como un archivo corto");
+});
+
+test("el corte incluye el día exacto, no lo deja afuera por uno", () => {
+  // Un `>` en vez de un `>=` pierde un día entero de facturas y no se nota.
+  const { filas } = leerCsvDeArca(`${ENCABEZADO}\n${FILA}`, { desde: "2026-09-03" });
+  assert.equal(filas.length, 1);
+});
+
+test("sin corte de fecha entra el archivo entero", () => {
+  const vieja = '"2026-01-15";"1";"6";"100";"20135041379";"VIEJA SRL";"1,00";"$";"100,00";"21,00";"121,00";"1"';
+  const { filas, omitidasPorFecha } = leerCsvDeArca(`${ENCABEZADO}\n${vieja}\n${FILA}`);
+  assert.equal(filas.length, 2);
+  assert.equal(omitidasPorFecha, 0);
+});
+
+test("una fila anterior al corte NO se cuenta como convertida ni como salteada", () => {
+  // No se importó: no hay nada que contar sobre ella. Si apareciera igual, la
+  // pantalla pediría cargar a mano una factura de enero que nadie quiso traer.
+  const usdVieja = '"2026-01-15";"1";"3";"991";"30716481168";"PROVEEDOR SA";"1444,50";"USD";"1000,00";"210,00";"1210,00";"9"';
+  const { filas, salteadas, convertidas, omitidasPorFecha } = leerCsvDeArca(
+    `${ENCABEZADO}\n${usdVieja}\n${FILA}`,
+    { desde: "2026-08-01" },
+  );
+  assert.equal(filas.length, 1);
+  assert.equal(convertidas.length, 0);
+  assert.equal(salteadas.length, 0);
+  assert.equal(omitidasPorFecha, 1);
 });
 
 test("la moneda guardada es siempre PES, venga como venga en el archivo", () => {

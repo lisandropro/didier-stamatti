@@ -6,6 +6,7 @@ import { prismaComprobantes as comprobantesDb } from "@/lib/db-comprobantes";
 import { leerCsvDeArca } from "@/lib/comprobantes/arca-csv";
 import { importar as importarArcaFilas } from "@/lib/comprobantes/arca";
 import { sesionVigente } from "@/lib/auth";
+import { esDia } from "@/lib/dates";
 import { canCapturarComprobantes, canPagar, canAdministrarComprobantes } from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
 import { completarCabecera } from "@/lib/comprobantes/completar";
@@ -42,6 +43,7 @@ import {
   kindDelComprobante,
   paginaValida,
   fechaDePago,
+  aConvertidaVisible,
   MAX_FOTOS,
 } from "@/lib/comprobantes/politica";
 
@@ -369,7 +371,21 @@ async function contextoDeImportacion(fd: FormData) {
   // se convertía en "Fecha de EmisiÃ³n" y no coincidía con nada. Los bytes lo
   // dicen sin ambigüedad: la `ó` viene como C3 B3.
   const texto = new TextDecoder("utf-8").decode(await archivo.arrayBuffer());
-  return { ok: true as const, sesion, entidad, texto, nombre: archivo.name };
+
+  // El corte de fecha es opcional: vacío entra todo el archivo.
+  const desde = String(fd.get("desde") ?? "").trim();
+  if (desde && !esDia(desde)) {
+    return { ok: false as const, error: "La fecha desde la que importar tiene que ser un día real." };
+  }
+
+  return {
+    ok: true as const,
+    sesion,
+    entidad,
+    texto,
+    desde: desde || null,
+    nombre: archivo.name,
+  };
 }
 
 /**
@@ -383,13 +399,22 @@ export async function previsualizarArca(fd: FormData) {
   if (!ctx.ok) return { ok: false as const, error: ctx.error };
 
   try {
-    const { filas, salteadas } = leerCsvDeArca(ctx.texto);
+    const { filas, salteadas, convertidas, omitidasPorFecha } = leerCsvDeArca(ctx.texto, {
+      desde: ctx.desde,
+    });
     const previa = await importarArcaFilas(
       filas,
       { entidadId: ctx.entidad.id, actor: { id: ctx.sesion.id, name: ctx.sesion.name } },
       { aplicar: false },
     );
-    return { ok: true as const, previa, salteadas, entidad: ctx.entidad.nombre };
+    return {
+      ok: true as const,
+      previa,
+      salteadas,
+      convertidas: convertidas.map(aConvertidaVisible),
+      omitidasPorFecha,
+      entidad: ctx.entidad.nombre,
+    };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
   }
@@ -400,7 +425,14 @@ export async function importarArca(fd: FormData) {
   const ctx = await contextoDeImportacion(fd);
   if (!ctx.ok) return { ok: false as const, error: ctx.error };
 
-  const hashArchivo = createHash("sha256").update(ctx.texto).digest("hex");
+  // **El corte entra en el hash.** Sin eso, importar el archivo desde agosto y
+  // querer traer después el histórico del mismo archivo se rechazaba como
+  // duplicado — y ése es justamente el camino elegido: primero lo reciente,
+  // el resto cuando se decida qué hacer con él.
+  const hashArchivo = createHash("sha256")
+    .update(`${ctx.desde ?? ""}
+${ctx.texto}`)
+    .digest("hex");
   const yaImportado = await comprobantesDb.arcaImport.findFirst({
     where: { hashArchivo },
     select: { createdAt: true, actorName: true },
@@ -416,7 +448,9 @@ export async function importarArca(fd: FormData) {
   }
 
   try {
-    const { filas, salteadas } = leerCsvDeArca(ctx.texto);
+    const { filas, salteadas, convertidas, omitidasPorFecha } = leerCsvDeArca(ctx.texto, {
+      desde: ctx.desde,
+    });
     const r = await importarArcaFilas(filas, {
       entidadId: ctx.entidad.id,
       actor: { id: ctx.sesion.id, name: ctx.sesion.name },
@@ -439,7 +473,13 @@ export async function importarArca(fd: FormData) {
     });
     revalidatePath("/pagos");
     revalidatePath("/importar");
-    return { ok: true as const, resultado: r, salteadas };
+    return {
+      ok: true as const,
+      resultado: r,
+      salteadas,
+      convertidas: convertidas.map(aConvertidaVisible),
+      omitidasPorFecha,
+    };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
   }

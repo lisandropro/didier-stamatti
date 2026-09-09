@@ -1,4 +1,4 @@
-import { aCentavos } from "@/lib/money";
+import { aCentavos, aEscala } from "@/lib/money";
 import type { FilaArca } from "./arca";
 
 // Leer el CSV de *Mis Comprobantes → Recibidos*.
@@ -46,6 +46,9 @@ const COLUMNAS = {
   moneda: "Moneda",
   cae: "Cód. Autorización",
   otrosTributos: "Otros Tributos",
+  /** La cotización de la fila. Vale 1,00 en las de pesos y es lo único con lo
+   *  que se puede convertir una que no lo esté. */
+  tipoCambio: "Tipo Cambio",
 } as const;
 
 /** Las que no pueden faltar: sin una de éstas, la fila no identifica un
@@ -99,7 +102,27 @@ export class ErrorDeCsv extends Error {}
 /** Una fila que se entiende pero que NO entra, con el motivo. */
 export type Salteada = { linea: number; motivo: string; detalle: string };
 
-export type LecturaDeCsv = { filas: FilaArca[]; salteadas: Salteada[] };
+/** Una fila que venía en otra moneda y se pasó a pesos con la cotización que
+ *  trae el propio archivo. Se informa entera: es el único importe del sistema
+ *  que no está impreso en ningún papel. */
+export type Convertida = {
+  linea: number;
+  emisor: string;
+  fecha: string;
+  original: string;
+  cotizacion: string;
+  /** Ya en centavos de peso. */
+  resultado: bigint;
+};
+
+export type LecturaDeCsv = {
+  filas: FilaArca[];
+  salteadas: Salteada[];
+  convertidas: Convertida[];
+  /** Cuántas filas quedaron fuera por el corte de fecha. Se informa: si no, un
+   *  corte mal puesto se ve igual que un archivo corto. */
+  omitidasPorFecha: number;
+};
 
 /**
  * Convierte el texto del CSV en filas.
@@ -113,7 +136,18 @@ export type LecturaDeCsv = { filas: FilaArca[]; salteadas: Salteada[] };
  * que el sistema no acepta —una factura en dólares— es otra cosa: se saltea,
  * se informa, y las demás entran.
  */
-export function leerCsvDeArca(texto: string): LecturaDeCsv {
+export function leerCsvDeArca(
+  texto: string,
+  // **El corte de fecha existe por una razón concreta.** ARCA no dice si una
+  // factura ya se pagó, así que traer nueve meses hace que la pantalla de
+  // pagos cuente como deuda pendiente lo que hace rato se pagó. Cortar por
+  // fecha de emisión deja entrar lo que de verdad está en juego.
+  //
+  // Se filtra ACÁ y no después a propósito: una fila anterior al corte no
+  // tiene que aparecer tampoco como salteada ni como convertida — no se
+  // importó, no hay nada que contar sobre ella.
+  opciones: { desde?: string | null } = {},
+): LecturaDeCsv {
   // El BOM que mete Excel se cuela en el nombre de la primera columna y la hace
   // no coincidir nunca, sin que se vea en pantalla.
   const limpio = texto.replace(/^﻿/, "");
@@ -139,8 +173,11 @@ export function leerCsvDeArca(texto: string): LecturaDeCsv {
     return i === undefined ? "" : (celdas[i] ?? "").trim();
   };
 
+  const desde = opciones.desde || null;
   const filas: FilaArca[] = [];
   const salteadas: Salteada[] = [];
+  const convertidas: Convertida[] = [];
+  let omitidasPorFecha = 0;
   for (let n = 1; n < lineas.length; n++) {
     // El número que se muestra es el de la línea del archivo, contando el
     // encabezado: es lo que se ve al abrirlo en el Bloc de notas.
@@ -164,31 +201,66 @@ export function leerCsvDeArca(texto: string): LecturaDeCsv {
     const fechaEmision = aFechaIso(dato(celdas, "fecha"));
     if (!fechaEmision) throw mal(`la fecha no se entiende ("${dato(celdas, "fecha")}")`);
 
+    // Las dos fechas son "AAAA-MM-DD", así que comparar como texto es comparar
+    // como fecha. No hay `Date` de por medio y por lo tanto no hay zona horaria
+    // que corra un comprobante un día.
+    if (desde && fechaEmision < desde) {
+      omitidasPorFecha += 1;
+      continue;
+    }
+
     // `aCentavos` resuelve el separador decimal y rechaza los negativos. Un
     // importe que no se entiende corta el archivo: es el dato por el que existe
     // todo esto.
     const importeTotal = aCentavos(dato(celdas, "importeTotal"));
     if (importeTotal == null) throw mal(`el importe total no se entiende ("${dato(celdas, "importeTotal")}")`);
 
-    // **Una factura en otra moneda NO se convierte.**
+    let neto = aCentavos(dato(celdas, "neto")) ?? undefined;
+    let iva = aCentavos(dato(celdas, "iva")) ?? undefined;
+    let total = importeTotal;
+    let convertidaDe: string | undefined;
+
+    // **Una factura en otra moneda se pasa a pesos con la cotización de su
+    // propia fila, y se informa.**
     //
-    // El archivo real trae tres en dólares, con `Tipo Cambio` 1444,50 mientras
-    // las de pesos traen 1,00. El nombre del archivo dice "montos expresados en
-    // pesos" y las filas dicen lo contrario, así que no está claro si ese
-    // importe ya está convertido — y entre las dos lecturas hay un factor de
-    // 1444.
+    // El archivo real trae tres en dólares con `Tipo Cambio` 1444,50, mientras
+    // las de pesos traen 1,00. El dato es ambiguo: el nombre del archivo dice
+    // "montos expresados en pesos" y la fila dice lo contrario, y entre las dos
+    // lecturas hay un factor de 1444. **Lo decidió el usuario**, sabiendo eso.
     //
-    // Meterla como pesos la deja 1444 veces más chica de lo real, y nadie lo
-    // nota: el número se ve plausible. Se saltea y se informa, que es lo que ya
-    // decía el esquema — "se guarda para poder RECHAZAR lo que no sea PES".
+    // Lo que no se hace es convertir en silencio. El importe resultante es el
+    // único de todo el sistema que no está impreso en ningún papel, así que
+    // sale listado en pantalla con el original al lado y queda anotado en el
+    // historial del comprobante. Si la lectura era la otra, se puede encontrar
+    // y deshacer.
     const moneda = dato(celdas, "moneda");
     if (!PESOS.has(moneda.toUpperCase())) {
-      salteadas.push({
+      // Diezmilésimas: una cotización se imprime con cuatro decimales y
+      // redondearla antes de multiplicar mueve el importe.
+      const cotizacion = aEscala(dato(celdas, "tipoCambio"), 4, { puntoEsDecimal: true });
+      if (cotizacion == null || cotizacion <= 0n) {
+        // Sin cotización no hay conversión posible, y multiplicar por 1 sería
+        // inventar. Ésta sí se saltea.
+        salteadas.push({
+          linea,
+          motivo: `en ${moneda}, sin cotización`,
+          detalle: `${dato(celdas, "denominacion")} · ${fechaEmision} · ${dato(celdas, "importeTotal")} ${moneda}`,
+        });
+        continue;
+      }
+      const aPesos = (v: bigint) => (v * cotizacion + 5000n) / 10000n;
+      convertidaDe = `${moneda} ${dato(celdas, "importeTotal")} × ${dato(celdas, "tipoCambio")}`;
+      total = aPesos(importeTotal);
+      if (neto != null) neto = aPesos(neto);
+      if (iva != null) iva = aPesos(iva);
+      convertidas.push({
         linea,
-        motivo: `en ${moneda}`,
-        detalle: `${dato(celdas, "denominacion")} · ${fechaEmision} · ${dato(celdas, "importeTotal")} ${moneda}`,
+        emisor: dato(celdas, "denominacion"),
+        fecha: fechaEmision,
+        original: `${dato(celdas, "importeTotal")} ${moneda}`,
+        cotizacion: dato(celdas, "tipoCambio"),
+        resultado: total,
       });
-      continue;
     }
 
     filas.push({
@@ -198,15 +270,19 @@ export function leerCsvDeArca(texto: string): LecturaDeCsv {
       puntoVenta,
       numero,
       fechaEmision,
-      importeTotal,
-      neto: aCentavos(dato(celdas, "neto")) ?? undefined,
-      iva: aCentavos(dato(celdas, "iva")) ?? undefined,
+      importeTotal: total,
+      neto,
+      iva,
+      // Ya está en pesos: guardar la moneda original diría que el número es una
+      // cosa que no es. El origen vive en `convertidaDe`, que es texto para
+      // leer y no se confunde con un importe.
       moneda: "PES",
       cae: dato(celdas, "cae").replace(/\D/g, "") || undefined,
+      convertidaDe,
     });
   }
 
-  return { filas, salteadas };
+  return { filas, salteadas, convertidas, omitidasPorFecha };
 }
 
 /** Parte una línea por `;`, respetando las comillas: la denominación de un

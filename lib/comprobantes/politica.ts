@@ -4,6 +4,8 @@ import { leerQr, elegirQrDeFactura } from "./qr";
 import { esDia, instanteDe } from "@/lib/dates";
 import type { Cabecera, Destino, Kind } from "./tipos";
 import type { DeudaProveedor } from "./pagos";
+import type { Convertida } from "./arca-csv";
+import { formatear } from "@/lib/money";
 
 // Las decisiones que toman las server actions, fuera de las server actions.
 //
@@ -47,6 +49,29 @@ export function aFilaDeuda(d: DeudaProveedor): FilaDeuda {
     total: aTextoPlano(d.total),
     cantidad: d.cantidad,
     sinImporte: d.sinImporte,
+  };
+}
+
+/** Una conversión de moneda, lista para cruzar al navegador. El importe va en
+ *  TEXTO ya formateado por la misma razón que en `FilaDeuda`: `JSON.stringify`
+ *  de un BigInt tira. */
+export type ConvertidaVisible = {
+  linea: number;
+  emisor: string;
+  fecha: string;
+  original: string;
+  cotizacion: string;
+  resultado: string;
+};
+
+export function aConvertidaVisible(c: Convertida): ConvertidaVisible {
+  return {
+    linea: c.linea,
+    emisor: c.emisor,
+    fecha: c.fecha,
+    original: c.original,
+    cotizacion: c.cotizacion,
+    resultado: formatear(c.resultado),
   };
 }
 
