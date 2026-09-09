@@ -314,7 +314,7 @@ export default function ListaPagos({
             </h2>
 
             <div className="tablewrap">
-              <table className="pg-tabla">
+              <table className="pg-tabla pg-tabla-vence">
                 <caption className="sr-only">{g.titulo}</caption>
                 <thead>
                   <tr>
@@ -348,7 +348,7 @@ export default function ListaPagos({
                             }
                           />
                         </td>
-                        <td>
+                        <td className="pg-c-nombre">
                           {/* Botón de verdad y no solo una fila clicable: con
                               teclado una fila no se puede enfocar, y quien paga
                               mira el comprobante de todas. */}
@@ -357,7 +357,7 @@ export default function ListaPagos({
                           </button>
                           {f.kind !== "FACTURA" && <span className="pg-tipo">{etiqueta(f.kind)}</span>}
                         </td>
-                        <td>{f.vencimiento ? legible(f.vencimiento) : "—"}</td>
+                        <td className="pg-c-vence">{f.vencimiento ? legible(f.vencimiento) : "—"}</td>
                         <td className="pg-num">{f.total ? formatear(BigInt(f.total)) : "—"}</td>
                         {/* Dos acciones distintas y con nombres distintos: el
                             COMPROBANTE es la foto del papel —lo que vale ante un
@@ -409,7 +409,7 @@ export default function ListaPagos({
         </div>
       ) : (
         <div className="tablewrap">
-          <table className="pg-tabla">
+          <table className="pg-tabla pg-tabla-deuda">
             <thead>
               <tr>
                 <th scope="col">Proveedor</th>
@@ -420,8 +420,8 @@ export default function ListaPagos({
             <tbody>
               {deuda.map((d) => (
                 <tr key={d.supplierId ?? "sin"}>
-                  <td>{d.nombre}</td>
-                  <td className="pg-num">{d.cantidad}</td>
+                  <td className="pg-c-nombre">{d.nombre}</td>
+                  <td className="pg-num pg-c-cant">{d.cantidad}</td>
                   <td className="pg-num pg-fuerte">
                     {formatear(BigInt(d.total))}
                     {/* Un comprobante sin importe NO es un importe de cero.

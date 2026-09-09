@@ -30,7 +30,7 @@ export default async function EntidadesPage() {
         </div>
       </div>
       <div className="content">
-        <p className="msub">
+        <p className="intro">
           Cada factura pertenece a un contribuyente. La empresa y la UTE son dos, con CUIT y libro
           de IVA propios, y sus deudas no se suman. Cuando el comprobante trae QR, la entidad se
           reconoce sola por el CUIT del receptor.

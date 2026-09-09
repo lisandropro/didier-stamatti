@@ -1580,7 +1580,14 @@ tbody tr:hover{background:var(--surface-2)}
    --------------------------------------------------------------------------- */
 
 .imp{display:flex; flex-direction:column; gap:var(--sp-5)}
-.imp-form{display:flex; flex-direction:column; gap:var(--sp-4); align-items:flex-start}
+/* El formulario en su propia superficie. Antes flotaba en una pagina vacia sin
+   ancla: el ojo no sabia donde empezar, y una pantalla que se usa una vez por
+   mes tiene que decir sola que hacer. */
+.imp-form{
+  display:flex; flex-direction:column; gap:var(--sp-4); align-items:flex-start;
+  background:var(--surface-2); border-radius:var(--r-md);
+  padding:var(--sp-5); max-width:640px;
+}
 .imp-form input[type="file"]{font-size:var(--t-sm); color:var(--muted)}
 .imp-error{white-space:pre-wrap; word-break:break-word}
 
@@ -1617,3 +1624,242 @@ tbody tr:hover{background:var(--surface-2)}
   padding:var(--sp-3) 0; border-bottom:1px solid var(--hair);
 }
 .imp-historial li:last-child{border-bottom:none}
+
+/* ---------------------------------------------------------------------------
+   Pagos en pantalla angosta: la tabla cambia de ESTRUCTURA, no de tamaño
+   ---------------------------------------------------------------------------
+
+   El problema que resuelve: `.tablewrap` scrollea horizontal, y en un teléfono
+   lo que quedaba afuera era la columna del IMPORTE. La pantalla que existe para
+   decidir qué pagar mostraba proveedor y fecha, y ningún número.
+
+   Achicar la letra no lo arregla —solo posterga el corte—. Lo que cambia es la
+   forma: cada fila pasa a ser una grilla de dos renglones donde el importe
+   tiene su lugar propio, alineado a la derecha, sin competir con nada.
+
+       [✓]  Proveedor              $ 764.107,11
+       [✓]  vence 11/09/26            👁  📄
+
+   El `<table>` se mantiene en el marcado: en escritorio sigue siendo una tabla
+   de verdad —con su encabezado, su densidad y su semántica para el lector de
+   pantalla— y eso no se sacrifica por el teléfono. */
+
+@media (max-width: 640px){
+  /* Sin scroll horizontal: si algo no entra, se reacomoda. */
+  .tablewrap{overflow-x:visible}
+
+  /* **La causa raiz.** Hay un `table{min-width:680px}` global: es lo que
+     obligaba a TODA tabla de la app a desbordar y scrollear en un telefono.
+     Acá se anula, que es lo que permite que la fila se reacomode en vez de
+     empujar el importe afuera. */
+  .pg-tabla-vence, .pg-tabla-vence tbody, .pg-tabla-vence tr, .pg-tabla-vence td{
+    display:block;
+    min-width:0;
+    max-width:100%;
+  }
+  /* El encabezado se oculta a la vista pero SIGUE en el árbol de
+     accesibilidad: cada celda mantiene su columna para el lector de pantalla. */
+  .pg-tabla-vence thead{
+    position:absolute; width:1px; height:1px; overflow:hidden;
+    clip-path:inset(50%); white-space:nowrap;
+  }
+
+  .pg-tabla-vence tr{
+    display:grid;
+    /* `minmax(0,1fr)` y no `1fr`: `1fr` es `minmax(auto,1fr)`, y ese `auto`
+       toma como minimo el ancho del contenido sin cortar. Con el nombre en
+       nowrap la columna se niega a achicarse y vuelve a empujar el importe
+       afuera — el mismo problema, ahora adentro del grid. */
+    grid-template-columns:auto minmax(0,1fr) auto;
+    grid-template-areas:
+      "check nombre importe"
+      "check vence  acciones";
+    align-items:center;
+    column-gap:var(--sp-3);
+    row-gap:var(--sp-1);
+    padding:var(--sp-3) var(--sp-4);
+    border-bottom:1px solid var(--hair);
+  }
+  .pg-tabla-vence tr:last-child{border-bottom:none}
+  .pg-tabla-vence td{padding:0; border:none}
+
+  .pg-tabla-vence .pg-check{grid-area:check; align-self:center}
+  .pg-tabla-vence .pg-c-nombre{grid-area:nombre; min-width:0}
+  .pg-tabla-vence .pg-c-vence{grid-area:vence; font-size:var(--t-sm); color:var(--muted)}
+  /* Las dos acciones son distintas a proposito —el COMPROBANTE es la foto del
+     papel y el DETALLE es la hoja que arma el sistema— asi que ninguna puede
+     quedar cortada. `display:block` del reacomodo las apilaba y la segunda se
+     iba de la fila. */
+  .pg-tabla-vence .pg-ver{
+    grid-area:acciones; justify-self:end;
+    display:flex; gap:var(--sp-2); align-items:center;
+  }
+
+  /* El importe es lo que se vino a ver: gana peso y no se parte nunca. */
+  .pg-tabla-vence .pg-num{
+    grid-area:importe; justify-self:end; white-space:nowrap;
+    font-size:var(--t-lg); font-weight:650; color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* El nombre puede ser largo; se corta con puntos suspensivos en vez de
+     empujar el importe fuera de la pantalla. */
+  .pg-tabla-vence .pg-nombre{
+    display:block; max-width:100%; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; text-align:left;
+  }
+
+  /* La de deuda por proveedor: tres columnas, y "Comprobantes" es una etiqueta
+     larga para una cifra corta. El conteo baja como dato secundario del nombre
+     y el total se queda con la derecha. */
+  .pg-tabla-deuda, .pg-tabla-deuda tbody, .pg-tabla-deuda tr, .pg-tabla-deuda td{
+    display:block;
+    min-width:0;
+    max-width:100%;
+  }
+  .pg-tabla-deuda thead{
+    position:absolute; width:1px; height:1px; overflow:hidden;
+    clip-path:inset(50%); white-space:nowrap;
+  }
+  .pg-tabla-deuda tr{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:
+      "nombre total"
+      "cant   total";
+    align-items:center;
+    column-gap:var(--sp-3);
+    padding:var(--sp-3) var(--sp-4);
+    border-bottom:1px solid var(--hair);
+  }
+  .pg-tabla-deuda tr:last-child{border-bottom:none}
+  .pg-tabla-deuda td{padding:0; border:none}
+  .pg-tabla-deuda .pg-c-nombre{
+    grid-area:nombre; min-width:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .pg-tabla-deuda .pg-c-cant{
+    grid-area:cant; text-align:left;
+    font-size:var(--t-sm); color:var(--muted);
+  }
+  /* `Comprobantes` no aparece como encabezado, asi que la cifra sola no se
+     entenderia: la unidad va pegada al numero. */
+  .pg-tabla-deuda .pg-c-cant::after{content:" comprobantes"}
+  .pg-tabla-deuda .pg-fuerte{
+    grid-area:total; justify-self:end; text-align:right; white-space:nowrap;
+    font-size:var(--t-lg); font-variant-numeric:tabular-nums;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Entidades — a nombre de quién viene cada factura
+   ---------------------------------------------------------------------------
+
+   La versión anterior era un formulario suelto y una tarjeta adentro del
+   contenido, con la prosa cruzando toda la pantalla. Acá el alta es un bloque
+   con su propio fondo —es una acción, no un ítem más— y las entidades son una
+   LISTA con reglas finas, no tarjetas: son cuatro datos por fila, y encerrar
+   cada una en su caja agrega peso visual sin agregar información. */
+
+.ent{display:flex; flex-direction:column; gap:var(--sp-5)}
+
+.ent-alta{
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-4);
+  background:var(--surface-2); border-radius:var(--r-md);
+  padding:var(--sp-4) var(--sp-5);
+}
+/* El nombre se lleva el espacio sobrante; el CUIT tiene largo fijo y no gana
+   nada con ser más ancho. */
+.ent-alta .field{flex:1 1 220px; min-width:0; gap:var(--sp-2)}
+.ent-alta .ent-campo-cuit{flex:0 1 190px}
+.ent-alta .btn{flex:0 0 auto; min-height:var(--tap)}
+
+.ent-lista{list-style:none; margin:0; padding:0}
+.ent-lista li{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:var(--sp-4); padding:var(--sp-4) 0;
+  border-bottom:1px solid var(--hair);
+}
+.ent-lista li:first-child{padding-top:0}
+.ent-lista li:last-child{border-bottom:none}
+/* Desactivada: se atenúa, no se esconde. Sus comprobantes siguen existiendo y
+   alguien tiene que poder entender de quién son. */
+.ent-inactiva .ent-datos{opacity:.55}
+
+.ent-datos{display:flex; flex-direction:column; gap:var(--sp-1); min-width:0}
+.ent-nombre{
+  display:flex; align-items:center; gap:var(--sp-2);
+  font-size:var(--t-md); font-weight:600; color:var(--ink);
+}
+.ent-meta{display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap}
+
+/* El CUIT se edita en el lugar. Se ve que es editable —subrayado punteado— sin
+   disfrazarse de botón: no es una acción, es un valor que se puede corregir. */
+.ent-cuit{
+  background:none; border:none; padding:0; cursor:pointer;
+  font-family:var(--font-ui); font-size:var(--t-sm); color:var(--muted);
+  font-variant-numeric:tabular-nums; letter-spacing:.01em;
+  border-bottom:1px dashed var(--hair);
+  transition:color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.ent-cuit:hover{color:var(--ink); border-bottom-color:var(--muted)}
+.ent-cuit:focus-visible{outline:2px solid var(--gold); outline-offset:3px; border-radius:2px}
+.ent-cuit-input{
+  width:15ch; font-size:var(--t-sm); font-variant-numeric:tabular-nums;
+  min-height:var(--tap);
+}
+.ent-cuenta{font-size:var(--t-sm); color:var(--muted)}
+.ent-cuenta::before{content:"· "}
+
+.ent-nota{
+  margin:0; font-size:var(--t-sm); color:var(--muted);
+  max-width:68ch; line-height:1.5; text-wrap:pretty;
+}
+
+@media (max-width: 560px){
+  /* El botón baja a su propia línea en vez de apretar el nombre. */
+  .ent-lista li{flex-wrap:wrap}
+  .ent-lista li .btn{width:100%}
+  .ent-alta .btn{width:100%}
+}
+
+/* ---------------------------------------------------------------------------
+   Prosa introductoria
+   ---------------------------------------------------------------------------
+   Un párrafo que explica una pantalla cruzaba los 1120px del contenido. A esa
+   medida el ojo pierde el renglón al volver, que es exactamente el problema que
+   el límite de 65-75 caracteres resuelve. */
+.intro{
+  max-width:68ch; margin:0 0 var(--sp-5);
+  font-size:var(--t-base); color:var(--muted); line-height:1.55;
+  text-wrap:pretty;
+}
+.intro strong{color:var(--ink); font-weight:600}
+
+/* Importar de ARCA: el selector de archivo, con el control nativo escondido
+   pero enfocable, y su etiqueta haciendo de botón. */
+.imp-archivo{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap}
+.imp-archivo .btn{min-height:var(--tap); cursor:pointer}
+/* El input escondido sigue recibiendo foco por teclado: el anillo tiene que
+   verse en la etiqueta, o no hay forma de saber dónde está el foco. */
+.imp-archivo input:focus-visible + .btn{outline:2px solid var(--gold); outline-offset:2px}
+.imp-nombre{font-size:var(--t-sm); color:var(--ink); word-break:break-all}
+.imp-vacio{color:var(--muted)}
+
+/* Que hace la importacion, cuando todavia no se hizo ninguna. Un vacio que
+   ensena la pantalla en vez de decir "no hay nada": es la unica pantalla de la
+   app que se usa una vez por mes, asi que nadie recuerda que esperaba. */
+.imp-que-hace{
+  margin-top:var(--sp-6); max-width:640px;
+  border-top:1px solid var(--hair); padding-top:var(--sp-5);
+}
+.imp-que-hace h2{
+  margin:0 0 var(--sp-3); font-size:var(--t-sm); font-weight:650;
+  color:var(--muted); letter-spacing:.02em;
+}
+.imp-que-hace dl{margin:0; display:flex; flex-direction:column; gap:var(--sp-4)}
+.imp-que-hace dt{font-size:var(--t-base); font-weight:600; color:var(--ink)}
+.imp-que-hace dd{
+  margin:var(--sp-1) 0 0; font-size:var(--t-sm); color:var(--muted);
+  line-height:1.5; max-width:60ch;
+}

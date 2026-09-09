@@ -58,7 +58,7 @@ export function EntidadesManager({ filas }: { filas: EntidadFila[] }) {
     }
     setNombre("");
     setCuit("");
-    setOk("Entidad dada de alta.");
+    setOk(`"${nombre.trim()}" quedó cargada.`);
     router.refresh();
   }
 
@@ -75,8 +75,11 @@ export function EntidadesManager({ filas }: { filas: EntidadFila[] }) {
   }
 
   return (
-    <div className="user-list">
-      <form className="users-head" onSubmit={alta}>
+    <div className="ent">
+      {/* El alta va primero y en su propio bloque: es una acción, no un ítem más
+          de la lista. Los tres campos en una línea porque son tres, y apilarlos
+          haría que una tarea de quince segundos ocupe media pantalla. */}
+      <form className="ent-alta" onSubmit={alta}>
         <div className="field">
           <label htmlFor="ent-nombre">Nombre</label>
           <input
@@ -85,9 +88,10 @@ export function EntidadesManager({ filas }: { filas: EntidadFila[] }) {
             onChange={(e) => setNombre(e.target.value)}
             placeholder="Soluciones para Eventos S.A."
             maxLength={120}
+            autoComplete="off"
           />
         </div>
-        <div className="field">
+        <div className="field ent-campo-cuit">
           <label htmlFor="ent-cuit">CUIT</label>
           <input
             id="ent-cuit"
@@ -96,6 +100,7 @@ export function EntidadesManager({ filas }: { filas: EntidadFila[] }) {
             placeholder="30-71773748-9"
             inputMode="numeric"
             maxLength={13}
+            autoComplete="off"
           />
         </div>
         <button className="btn primary" disabled={guardando || !nombre.trim() || !cuit.trim()}>
@@ -103,56 +108,85 @@ export function EntidadesManager({ filas }: { filas: EntidadFila[] }) {
         </button>
       </form>
 
-      {error && <div className="login-error">{error}</div>}
-      {ok && <div className="settings-ok">{ok}</div>}
-
-      {filas.length === 0 && (
-        <p className="msub">
-          Todavía no hay ninguna entidad. Sin al menos una, las facturas entran sin saber de quién
-          son.
+      {error && (
+        <p className="login-error" role="alert">
+          {error}
+        </p>
+      )}
+      {ok && (
+        <p className="settings-ok" role="status">
+          {ok}
         </p>
       )}
 
-      {filas.map((e) => (
-        <div className="user-row" key={e.id}>
-          <div className="user-info">
-            <div className="user-name">
-              {e.nombre}
-              {!e.activa && <span className="chip neutral">inactiva</span>}
-            </div>
-            <div className="user-email">
-              {editando === e.id ? (
-                <input
-                  defaultValue={conGuiones(e.cuit)}
-                  aria-label={`CUIT de ${e.nombre}`}
-                  onBlur={(ev) => {
-                    const v = ev.target.value;
-                    if (v.replace(/\D/g, "") !== e.cuit) cambiar(e.id, { cuit: v });
-                    else setEditando(null);
-                  }}
-                  autoFocus
-                />
-              ) : (
-                <button className="btn ghost" onClick={() => setEditando(e.id)}>
-                  {conGuiones(e.cuit)}
-                </button>
-              )}
-            </div>
-            <div className="msub">
-              {e.comprobantes === 0
-                ? "Sin comprobantes todavía"
-                : `${e.comprobantes} comprobante${e.comprobantes === 1 ? "" : "s"}`}
-            </div>
-          </div>
-          <div className="user-actions">
-            <button className="btn ghost" onClick={() => cambiar(e.id, { activa: !e.activa })}>
-              {e.activa ? "Desactivar" : "Activar"}
-            </button>
-          </div>
+      {filas.length === 0 ? (
+        // Un vacío que enseña qué hace la pantalla, no que dice "no hay nada".
+        <div className="empty-card">
+          <p>Todavía no hay ninguna entidad.</p>
+          <p className="hint">
+            Sin al menos una, los comprobantes entran sin saber de quién son y quedan sueltos en
+            la bandeja de Pagos.
+          </p>
         </div>
-      ))}
+      ) : (
+        <ul className="ent-lista">
+          {filas.map((e) => (
+            <li key={e.id} className={e.activa ? undefined : "ent-inactiva"}>
+              <div className="ent-datos">
+                <span className="ent-nombre">
+                  {e.nombre}
+                  {!e.activa && <span className="chip neutral">inactiva</span>}
+                </span>
 
-      <p className="msub">
+                <span className="ent-meta">
+                  {editando === e.id ? (
+                    <input
+                      className="ent-cuit-input"
+                      defaultValue={conGuiones(e.cuit)}
+                      aria-label={`CUIT de ${e.nombre}`}
+                      inputMode="numeric"
+                      maxLength={13}
+                      autoFocus
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Escape") setEditando(null);
+                        if (ev.key === "Enter") ev.currentTarget.blur();
+                      }}
+                      onBlur={(ev) => {
+                        const v = ev.target.value;
+                        if (v.replace(/\D/g, "") !== e.cuit) cambiar(e.id, { cuit: v });
+                        else setEditando(null);
+                      }}
+                    />
+                  ) : (
+                    // Editable y que se vea que lo es. El caso real es haber
+                    // tipeado mal un dígito, y un CUIT equivocado no da error:
+                    // da facturas que nunca encuentran su entidad.
+                    <button
+                      type="button"
+                      className="ent-cuit"
+                      onClick={() => setEditando(e.id)}
+                      title="Corregir el CUIT"
+                    >
+                      {conGuiones(e.cuit)}
+                    </button>
+                  )}
+                  <span className="ent-cuenta">
+                    {e.comprobantes === 0
+                      ? "sin comprobantes"
+                      : `${e.comprobantes} comprobante${e.comprobantes === 1 ? "" : "s"}`}
+                  </span>
+                </span>
+              </div>
+
+              <button className="btn ghost" onClick={() => cambiar(e.id, { activa: !e.activa })}>
+                {e.activa ? "Desactivar" : "Activar"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="ent-nota">
         Desactivar una entidad la saca de la lista al capturar. No borra nada: sus comprobantes
         siguen siendo suyos y se siguen viendo.
       </p>

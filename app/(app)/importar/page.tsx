@@ -36,13 +36,46 @@ export default async function ImportarPage() {
         </div>
       </div>
       <div className="content">
-        <p className="msub">
+        <p className="intro">
           Entrá a <strong>arca.gob.ar</strong> con la clave fiscal, abrí{" "}
           <strong>Mis Comprobantes → Recibidos</strong>, elegí el período y descargá el CSV.
           No lo abras en Excel: le cambia el formato.
         </p>
 
         <ImportarArca entidades={entidades.map((e) => ({ id: e.id, nombre: e.nombre }))} />
+
+        {/* Sin historial, la pantalla no dice nada de lo que hace. Y es la única
+            de la app que se usa una vez por mes: nadie se acuerda de qué
+            esperaba. Los tres resultados son los que devuelve el importador,
+            así que esto es la pantalla explicándose con lo que realmente hace. */}
+        {previas.length === 0 && (
+          <section className="imp-que-hace">
+            <h2>Qué va a pasar cuando subas el archivo</h2>
+            <dl>
+              <div>
+                <dt>Van a aparecer las facturas que nadie trajo</dt>
+                <dd>
+                  El fisco ya sabe qué te facturaron. Las que no estén cargadas entran solas, sin
+                  foto. Es lo que contesta &ldquo;¿qué facturas hay que no tengo?&rdquo;.
+                </dd>
+              </div>
+              <div>
+                <dt>Las que ya están se completan con el dato exacto</dt>
+                <dd>
+                  ARCA le gana a una lectura automática, pero nunca a algo que corregiste a mano:
+                  eso no se pisa, se te muestra la diferencia.
+                </dd>
+              </div>
+              <div>
+                <dt>Vas a ver primero, y confirmar después</dt>
+                <dd>
+                  El primer paso no guarda nada. Te dice cuántas se crean, cuántas se completan y
+                  qué diferencias hay; recién ahí decidís.
+                </dd>
+              </div>
+            </dl>
+          </section>
+        )}
 
         {previas.length > 0 && (
           <section className="imp-historial">

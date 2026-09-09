@@ -28,6 +28,10 @@ export function ImportarArca({
   const [error, setError] = useState<string | null>(null);
   const [hecho, setHecho] = useState<ResultadoImportacion | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  /** El nombre del archivo elegido. El control nativo lo mostraba; al
+   *  esconderlo hay que reponerlo o se pierde la confirmacion de que se
+   *  eligio algo. */
+  const [elegido, setElegido] = useState<string | null>(null);
 
   async function mirar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -63,6 +67,7 @@ export function ImportarArca({
     setPrevia(null);
     setHecho(r.resultado);
     form.reset();
+    setElegido(null);
     router.refresh();
   }
 
@@ -81,11 +86,30 @@ export function ImportarArca({
             </select>
           </div>
         )}
-        <div className="field">
-          <label htmlFor="imp-archivo">Archivo CSV</label>
-          <input id="imp-archivo" name="archivo" type="file" accept=".csv,text/csv" required />
+        {/* El control de archivo del navegador no se puede estilar y no se
+            parece a ningún otro campo de la app. La forma estándar y accesible
+            es esconderlo —sin sacarlo del foco por teclado— y usar su `<label>`
+            como el botón. El nombre del archivo elegido se muestra al lado,
+            porque el control nativo lo hacía y perderlo sería un retroceso. */}
+        <div className="imp-archivo">
+          <input
+            id="imp-archivo"
+            name="archivo"
+            type="file"
+            accept=".csv,text/csv"
+            required
+            className="sr-only"
+            onChange={(ev) => setElegido(ev.target.files?.[0]?.name ?? null)}
+          />
+          <label htmlFor="imp-archivo" className="btn ghost">
+            {elegido ? "Cambiar archivo" : "Elegir archivo"}
+          </label>
+          <span className={elegido ? "imp-nombre" : "imp-nombre imp-vacio"}>
+            {elegido ?? "Ningún archivo elegido"}
+          </span>
         </div>
-        <button className="btn primary" disabled={ocupado}>
+
+        <button className="btn primary" disabled={ocupado || !elegido}>
           {ocupado ? "Leyendo…" : "Ver qué va a pasar"}
         </button>
       </form>
