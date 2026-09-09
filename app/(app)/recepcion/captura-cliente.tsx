@@ -558,6 +558,13 @@ export default function CapturaCliente({
             Sacar otra
           </button>
 
+          {/* El permiso para saltear llega ANTES de las preguntas. Abajo del
+              boton de guardar se leia despues de haberlas contestado, que es
+              cuando ya no sirve. */}
+          <p className="hint cap-salteables">
+            Lo que sigue se puede saltear. Lo que importa es que las fotos queden.
+          </p>
+
           {/* Solo si hay más de una entidad. Con una sola la pregunta no tiene
               respuesta posible distinta, y una pregunta que siempre se contesta
               igual es un toque de más en una pantalla que vive de no tenerlos. */}
@@ -636,10 +643,6 @@ export default function CapturaCliente({
             <button type="button" className="btn primary cap-guardar" onClick={guardar}>
               Guardar {tanda.length === 1 ? "el comprobante" : `los ${tanda.length}`}
             </button>
-            {/* Las dos preguntas son salteables a propósito: el día que llegan
-                tres proveedores juntos es el día que se abandona una app que
-                obliga a contestarlas. */}
-            <p className="hint">Las dos preguntas se pueden saltear. Lo que importa es que las fotos queden.</p>
           </div>
         </section>
       )}

@@ -1157,8 +1157,27 @@ tbody tr:hover{background:var(--surface-2)}
   transition:background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 .cap-opcion.elegida{background:var(--brand); border-color:var(--brand); color:var(--on-brand)}
-.cap-cierre{display:flex; flex-direction:column; gap:var(--sp-3)}
+/* Guardar queda SIEMPRE al alcance del pulgar.
+ *
+ * Antes era el ultimo elemento de una pila que scrollea: con cinco fotos en la
+ * grilla mas las preguntas, caia abajo del pliegue. Y eso contradecia lo que la
+ * pantalla dice de si misma — las preguntas son salteables a proposito, porque
+ * el dia que llegan tres proveedores juntos es el dia que se abandona una app
+ * que obliga a contestarlas. Si hay que scrollear pasandolas para guardar, en
+ * la practica no son salteables: estan en el medio.
+ *
+ * Es el mismo patron que ya usa el boton de arranque de esta misma pantalla. */
+.cap-cierre{
+  position:sticky; bottom:var(--sp-4); z-index:15;
+  display:flex; flex-direction:column; gap:var(--sp-3);
+  /* Fondo propio: sin esto la grilla de fotos se ve pasar por atras del boton. */
+  padding-top:var(--sp-3);
+  background:linear-gradient(to bottom, transparent, var(--ground) 22%);
+}
 .cap-guardar{min-height:56px; font-size:var(--t-lg)}
+/* Aire abajo para que el boton pegajoso no tape la ultima pregunta al final
+   del scroll. */
+.cap-revision{padding-bottom:var(--sp-4)}
 
 .cap-listo{
   display:flex; align-items:center; gap:var(--sp-2); margin:0 0 var(--sp-4);
@@ -1911,3 +1930,6 @@ tbody tr:hover{background:var(--surface-2)}
      importe no se parte. */
   .pg-resumen{flex-direction:column; gap:var(--sp-4)}
 }
+
+/* El permiso para saltear las preguntas, arriba de ellas. */
+.cap-salteables{margin:0}
