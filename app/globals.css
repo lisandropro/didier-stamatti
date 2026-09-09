@@ -264,7 +264,19 @@ tbody tr:hover{background:var(--surface-2)}
    (pestaña oculta, headless), el modal igual se ve. Realza, no condiciona. */
 @keyframes modal-in{from{transform:translateY(8px) scale(.985)}to{transform:none}}
 .modal h2{margin:0 0 3px; font-size:var(--t-xl); font-weight:700; letter-spacing:-.01em}
-.modal .msub{color:var(--muted); font-size:var(--t-sm); margin-bottom:var(--sp-5); text-wrap:pretty}
+/* Subtítulo apagado. No es solo del modal: en /importar y /pagos hay texto que
+   explica lo que se ve y no tiene por qué competir con el dato. El margen sí es
+   del modal, donde el subtítulo separa el título del formulario. */
+.msub{color:var(--muted); font-size:var(--t-sm); text-wrap:pretty}
+.modal .msub{margin-bottom:var(--sp-5)}
+/* Adentro de un bloque de color el subtítulo se apaga por peso, no por gris:
+   gris sobre fondo de color se ve lavado (la misma razón que .imp-linea). Y
+   bajarle opacidad lo empeoraría todavía más: el par --warn sobre --warn-soft
+   ya está en 3,2:1. Hereda el color del bloque y no se toca. */
+.imp-conflictos .msub,
+.pg-alerta .msub,
+.revision .msub,
+.banner .msub{color:inherit}
 /* stepper − [n] + del editor de stock */
 .stepper-row{display:flex; align-items:center; justify-content:center; gap:12px; margin:8px 0 4px}
 .step-btn{width:54px; height:54px; border-radius:var(--r-md); border:1px solid var(--hair); background:var(--surface-2); font-size:var(--t-3xl); font-weight:600; line-height:1; color:var(--ink); cursor:pointer; display:grid; place-items:center; user-select:none}
