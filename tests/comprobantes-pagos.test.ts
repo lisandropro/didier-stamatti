@@ -551,3 +551,50 @@ test("no se puede asignar a una entidad que no existe", async () => {
   // Y NO deja un cambio registrado de algo que no pasó.
   assert.equal(await prisma.documentChange.count({ where: { documentId: doc.id } }), 0);
 });
+
+// ---------------------------------------------------------------------------
+// El signo de un comprobante
+// ---------------------------------------------------------------------------
+//
+// La regla vivia copiada en pagos.ts y en documento.ts, y el resumen de la
+// pantalla de pagos estaba por agregar una tercera copia — que nacio mal:
+// sumaba las notas de credito en vez de restarlas, y mostraba una deuda semanal
+// MAS GRANDE que la real. Ahora hay una sola, y estas pruebas la fijan.
+
+test("una nota de credito RESTA, no suma", async () => {
+  const { aporteAlSaldo, signoDelComprobante } = await import("../lib/comprobantes/politica");
+  assert.equal(signoDelComprobante("NOTA_CREDITO"), -1);
+  assert.equal(aporteAlSaldo("NOTA_CREDITO", 45_000_00n), -45_000_00n);
+});
+
+test("un remito no cuenta: no es una deuda", async () => {
+  // Es constancia de que la mercaderia entro. Si sumara, el saldo del proveedor
+  // saldria al doble.
+  const { aporteAlSaldo, signoDelComprobante } = await import("../lib/comprobantes/politica");
+  assert.equal(signoDelComprobante("REMITO"), 0);
+  assert.equal(aporteAlSaldo("REMITO", 100_00n), 0n);
+});
+
+test("una factura suma, y un importe ausente no es un cero", async () => {
+  const { aporteAlSaldo } = await import("../lib/comprobantes/politica");
+  assert.equal(aporteAlSaldo("FACTURA", 764_107_11n), 764_107_11n);
+  assert.equal(aporteAlSaldo("FACTURA", null), 0n);
+});
+
+test("el saldo de un proveedor con nota de credito baja", async () => {
+  // La comprobacion de punta a punta: la regla compartida atraviesa la consulta.
+  await prisma.document.deleteMany();
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100_000_00n,
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 501,
+    },
+  });
+  await prisma.document.create({
+    data: {
+      kind: "NOTA_CREDITO", source: "QR", supplierId: donAngel, importeTotal: 40_000_00n,
+      cuitEmisor: "20135041379", tipoCbte: "NOTA_CREDITO_A", puntoVenta: 6, numero: 502,
+    },
+  });
+  assert.equal((await pagos.porProveedor())[0].total, 60_000_00n);
+});

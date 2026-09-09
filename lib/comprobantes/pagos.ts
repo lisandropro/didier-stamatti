@@ -1,5 +1,6 @@
 import { prismaComprobantes as db } from "@/lib/db-comprobantes";
 import { diasEntre, sumarDias } from "@/lib/dates";
+import { aporteAlSaldo } from "./politica";
 
 // Lo que ve y hace quien paga.
 //
@@ -15,10 +16,9 @@ import { diasEntre, sumarDias } from "@/lib/dates";
 
 const DIA = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Los tipos que RESTAN del saldo en vez de sumar. El importe se guarda
- *  siempre positivo y el signo lo decide el tipo: guardar negativos invita a
- *  cargar una factura común en negativo y descuadrar sin que nadie lo note. */
-const RESTAN = new Set(["NOTA_CREDITO"]);
+// El signo de cada tipo vive en `politica.ts`, en un solo lugar. Estaba escrito
+// por separado acá y en `documento.ts`, y una tercera copia —en el resumen de
+// la pantalla— nacio sumando las notas de credito en vez de restarlas.
 
 /** Los tipos que NO se pagan. Un remito es constancia de que la mercadería
  *  entró, no una deuda; si sumara, el saldo del proveedor saldría al doble. */
@@ -122,7 +122,7 @@ export async function porProveedor(entidadId?: string | null): Promise<DeudaProv
     if (d.importeTotal == null) {
       fila.sinImporte += 1;
     } else {
-      fila.total += RESTAN.has(d.kind) ? -d.importeTotal : d.importeTotal;
+      fila.total += aporteAlSaldo(d.kind, d.importeTotal);
     }
     fila.cantidad += 1;
     acumulado.set(clave, fila);

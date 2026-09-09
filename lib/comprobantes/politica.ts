@@ -141,3 +141,39 @@ export function fechaDePago(dia: string | undefined, ahora: Date): Date | null {
   // puede tirar el pago al día anterior.
   return instanteDe(dia, "12:00");
 }
+
+// ---------------------------------------------------------------------------
+// El signo de un comprobante
+// ---------------------------------------------------------------------------
+
+/**
+ * Cuánto pesa un comprobante en un saldo: `+1` suma, `-1` resta, `0` no cuenta.
+ *
+ * **El importe se guarda SIEMPRE positivo y el signo lo decide el tipo.**
+ * Guardar negativos invita a cargar una factura común en negativo y descuadrar
+ * sin que nadie lo note.
+ *
+ * Una nota de crédito resta. Un remito no es una deuda —es constancia de que la
+ * mercadería entró— y si sumara, el saldo del proveedor saldría al doble.
+ *
+ * **Por qué vive acá.** Esta regla estaba escrita por separado en `pagos.ts` y
+ * en `documento.ts`, y el resumen de la pantalla de pagos estaba por agregar
+ * una tercera copia — que ya nació mal: sumaba las notas de crédito en vez de
+ * restarlas, y mostraba una deuda semanal más grande que la real.
+ *
+ * Es el mismo argumento que ya está escrito en `money.ts` sobre el separador
+ * decimal: si se copia, las copias se van separando. Y acá lo que se separa es
+ * un número de plata.
+ */
+export function signoDelComprobante(kind: string): 1 | 0 | -1 {
+  if (kind === "REMITO") return 0;
+  if (kind === "NOTA_CREDITO") return -1;
+  return 1;
+}
+
+/** El aporte de un comprobante a un saldo, ya con su signo. */
+export function aporteAlSaldo(kind: string, importe: bigint | null): bigint {
+  if (importe == null) return 0n;
+  const s = signoDelComprobante(kind);
+  return s === 0 ? 0n : s === -1 ? -importe : importe;
+}

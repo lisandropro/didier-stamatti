@@ -1,3 +1,4 @@
+import { signoDelComprobante } from "./politica";
 import { formatear } from "@/lib/money";
 import { cuitValido } from "./cuit";
 import { renglonesCierran } from "./renglones";
@@ -157,7 +158,7 @@ export function armarDatos(
       percepciones: opcional(doc.percepciones),
       total: opcional(doc.importeTotal),
       cae: doc.cae ?? "",
-      leyendaTotal: RESTAN.has(doc.kind)
+      leyendaTotal: signoDelComprobante(doc.kind) === -1
         ? "Este comprobante RESTA de la deuda con el proveedor."
         : undefined,
     },
@@ -294,7 +295,7 @@ const ETIQUETAS: Record<string, string> = {
 };
 
 /** Los tipos cuyo importe RESTA de la deuda. */
-const RESTAN = new Set(["NOTA_CREDITO"]);
+// El signo vive en `politica.ts`, en un solo lugar.
 
 /** Cómo se resolvió la cabecera. Decirlo es lo contrario de disfrazarse: nombrar
  *  al organismo como PROCEDENCIA es divulgación, no impersonación. */

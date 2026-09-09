@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { pagar, asignarEntidad } from "@/app/actions/comprobantes";
 import { formatear } from "@/lib/money";
+import { aporteAlSaldo } from "@/lib/comprobantes/politica";
 import { diasEntre } from "@/lib/dates";
 
 // La pantalla de quien paga.
@@ -185,6 +186,7 @@ export default function ListaPagos({
   }
 
   const grupos = useMemo(() => agrupar(vencen, hoy), [vencen, hoy]);
+  const resumen = useMemo(() => resumir(grupos, deuda), [grupos, deuda]);
   const hayPendientes = incompletos.length > 0 || duplicados.length > 0 || bandejas.sinRevisar > 0;
 
   return (
@@ -282,6 +284,53 @@ export default function ListaPagos({
             </>
           )}
         </section>
+      )}
+
+      {/* El estado de la deuda, en una línea.
+          Va ARRIBA de la alarma de duplicados a propósito: primero en qué
+          tamaño de problema estás, después qué revisar. */}
+      {resumen.todo.cantidad > 0 && (
+        <dl className="pg-resumen">
+          {resumen.vencido.cantidad > 0 && (
+            <div className="pg-resumen-item pg-resumen-vencido">
+              <dt>Vencido</dt>
+              <dd>
+                {formatear(resumen.vencido.total)}
+                <span className="pg-resumen-detalle">
+                  {resumen.vencido.cantidad} comprobante{resumen.vencido.cantidad === 1 ? "" : "s"}
+                </span>
+              </dd>
+            </div>
+          )}
+          {resumen.semana.cantidad > 0 && (
+            <div className="pg-resumen-item">
+              <dt>Esta semana</dt>
+              <dd>
+                {formatear(resumen.semana.total)}
+                <span className="pg-resumen-detalle">
+                  {resumen.semana.cantidad} comprobante{resumen.semana.cantidad === 1 ? "" : "s"}
+                </span>
+              </dd>
+            </div>
+          )}
+          <div className="pg-resumen-item">
+            <dt>Total pendiente</dt>
+            <dd>
+              {formatear(resumen.todo.total)}
+              <span className="pg-resumen-detalle">
+                {resumen.todo.cantidad} comprobante{resumen.todo.cantidad === 1 ? "" : "s"}
+                {/* Un total que se come los comprobantes sin importe da un
+                    número más chico que la deuda real. Decirlo es la diferencia
+                    entre un dato y una tranquilidad falsa. */}
+                {resumen.todo.sinImporte > 0 && (
+                  <span className="pg-resumen-incompleto">
+                    {" "}· faltan {resumen.todo.sinImporte} sin importe
+                  </span>
+                )}
+              </span>
+            </dd>
+          </div>
+        </dl>
       )}
 
       {duplicados.length > 0 && (
@@ -561,6 +610,50 @@ function agrupar(filas: Fila[], hoy: string) {
     { titulo: "Esta semana", filas: estaSemana, vencido: false },
     { titulo: "Más adelante", filas: despues, vencido: false },
   ].filter((g) => g.filas.length > 0);
+}
+
+/**
+ * Los tres numeros que contestan "cuanto debo" sin scrollear.
+ *
+ * **No reemplaza a la lista.** La pantalla abre en "que vence" y no en un
+ * tablero, y eso esta bien: la pregunta que trae a alguien aca es "que pago
+ * hoy", y una lista ordenada por urgencia la contesta mas rapido que unas
+ * cifras. Esto no compite — la enmarca. Quien abre quiere saber en que tamano
+ * de problema esta antes de empezar a leer filas.
+ *
+ * **`sinImporte` viaja con el total y no es un detalle.** Un comprobante sin
+ * importe NO es un importe de cero: sumarlo como cero da un numero mas chico
+ * que la deuda real, y ese es exactamente el error que hace que alguien crea
+ * que llega a fin de mes.
+ */
+function resumir(
+  grupos: { titulo: string; filas: Fila[]; vencido: boolean }[],
+  deuda: { total: string; cantidad: number; sinImporte: number }[],
+) {
+  const deUnGrupo = (titulo: string) => {
+    const g = grupos.find((x) => x.titulo === titulo);
+    if (!g) return { total: 0n, cantidad: 0, sinImporte: 0 };
+    return {
+      // El signo lo decide el TIPO, con la misma regla que usa el servidor.
+      // Sumar todo derecho hacia que una nota de credito engordara la deuda de
+      // la semana en vez de bajarla.
+      total: g.filas.reduce((a, f) => a + aporteAlSaldo(f.kind, f.total ? BigInt(f.total) : null), 0n),
+      cantidad: g.filas.length,
+      sinImporte: g.filas.filter((f) => !f.total).length,
+    };
+  };
+  return {
+    vencido: deUnGrupo("Vencidas"),
+    semana: deUnGrupo("Esta semana"),
+    // El total sale de la deuda por proveedor y NO de los grupos: los grupos
+    // solo tienen lo que tiene vencimiento cargado, y lo que no lo tiene se
+    // debe igual. Sumar los grupos habria dado un total tranquilizador y falso.
+    todo: {
+      total: deuda.reduce((a, d) => a + BigInt(d.total), 0n),
+      cantidad: deuda.reduce((a, d) => a + d.cantidad, 0),
+      sinImporte: deuda.reduce((a, d) => a + d.sinImporte, 0),
+    },
+  };
 }
 
 function legible(dia: string): string {

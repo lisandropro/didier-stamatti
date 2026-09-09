@@ -1863,3 +1863,51 @@ tbody tr:hover{background:var(--surface-2)}
   margin:var(--sp-1) 0 0; font-size:var(--t-sm); color:var(--muted);
   line-height:1.5; max-width:60ch;
 }
+
+/* ---------------------------------------------------------------------------
+   Pagos — el estado de la deuda, en una línea
+   ---------------------------------------------------------------------------
+
+   **No es un tablero, y esa es la decisión.** La pantalla abre en "qué vence"
+   porque la pregunta que trae a alguien acá es "¿qué pago hoy?", y una lista
+   ordenada por urgencia la contesta más rápido que unas cifras. Esto no compite
+   con la lista: la enmarca. Quien abre quiere saber en qué tamaño de problema
+   está antes de empezar a leer filas.
+
+   Por eso las cifras son del tamaño de un título de sección y no de un titular:
+   el número grande y solo, con su etiqueta chiquita debajo, es la plantilla que
+   convierte cualquier pantalla en un panel de métricas — y acá el protagonista
+   tiene que seguir siendo la lista. */
+
+.pg-resumen{
+  display:flex; flex-wrap:wrap; gap:var(--sp-6);
+  margin:0 0 var(--sp-5); padding:0 0 var(--sp-4);
+  border-bottom:1px solid var(--hair);
+}
+.pg-resumen-item{min-width:0}
+.pg-resumen dt{
+  font-size:var(--t-sm); color:var(--muted); margin-bottom:2px;
+}
+.pg-resumen dd{
+  margin:0; display:flex; flex-direction:column; gap:1px;
+  font-size:var(--t-lg); font-weight:650; color:var(--ink);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+/* Lo vencido es plata que ya se pasó de fecha: se lee distinto del resto sin
+   gritar. El color hace el trabajo; el tamaño se mantiene. */
+.pg-resumen-vencido dd{color:var(--crit)}
+.pg-resumen-vencido dt{color:var(--crit)}
+
+.pg-resumen-detalle{
+  font-size:var(--t-sm); font-weight:400; color:var(--muted);
+  white-space:normal;
+}
+/* Un total al que le faltan comprobantes sin importe es un número más chico que
+   la deuda real. Se avisa donde se lee el número, no en una nota al pie. */
+.pg-resumen-incompleto{color:var(--warn)}
+
+@media (max-width: 560px){
+  /* Los tres en fila no entran; en columna cada uno conserva su renglón y el
+     importe no se parte. */
+  .pg-resumen{flex-direction:column; gap:var(--sp-4)}
+}
