@@ -3,9 +3,14 @@ import type { FilaArca } from "./arca";
 
 // Leer el CSV de *Mis Comprobantes → Recibidos*.
 //
-// **Este archivo está escrito CONTRA UN FORMATO NO VERIFICADO.** Al momento de
-// escribirlo no había un CSV real de ARCA a mano. Por eso está construido para
-// que la forma en que puede equivocarse sea **ruidosa y útil**, no silenciosa:
+// **Verificado contra un archivo real** de *Mis Comprobantes → Recibidos*:
+// 746 comprobantes de enero a septiembre de 2026. Antes estaba escrito contra
+// suposiciones, y de once nombres de columna tres estaban mal —incluida una
+// obligatoria— más la codificación. El fallo ruidoso hizo su trabajo: habría
+// dicho exactamente qué columnas existían.
+//
+// Se conserva construido para que la forma en que puede equivocarse sea
+// **ruidosa y útil**, no silenciosa:
 //
 //   - Los nombres de columna se buscan EXACTOS. Si falta uno, no importa nada y
 //     el error **lista las columnas que sí encontró**. Ese mensaje es
@@ -23,24 +28,24 @@ import type { FilaArca } from "./arca";
 const SEP = ";";
 
 /**
- * Cómo se llama cada cosa en el archivo.
+ * Cómo se llama cada cosa en el archivo. Tomados de un export real.
  *
- * **Sin verificar contra un archivo real.** Si alguno no coincide, el error lo
- * dice con los nombres verdaderos al lado y corregir esta tabla es todo el
- * trabajo que queda.
+ * Si alguno dejara de coincidir, el error lo dice con los nombres verdaderos al
+ * lado y corregir esta tabla es todo el trabajo.
  */
 const COLUMNAS = {
-  fecha: "Fecha",
+  fecha: "Fecha de Emisión",
   tipo: "Tipo de Comprobante",
   puntoVenta: "Punto de Venta",
   numero: "Número Desde",
   cuitEmisor: "Nro. Doc. Emisor",
   denominacion: "Denominación Emisor",
   importeTotal: "Imp. Total",
-  neto: "Imp. Neto Gravado",
-  iva: "IVA",
+  neto: "Imp. Neto Gravado Total",
+  iva: "Total IVA",
   moneda: "Moneda",
   cae: "Cód. Autorización",
+  otrosTributos: "Otros Tributos",
 } as const;
 
 /** Las que no pueden faltar: sin una de éstas, la fila no identifica un
@@ -54,13 +59,34 @@ const OBLIGATORIAS = [
   "importeTotal",
 ] as const;
 
-/** Los códigos de comprobante de AFIP. Mismo vocabulario que el lector de QR. */
+/**
+ * Los códigos de comprobante de AFIP.
+ *
+ * **`63` y `81` faltaban, y esas diez filas abortaban las 746.** En el archivo
+ * real aparecen liquidaciones del banco (63) y tiques factura de proveedores de
+ * combustible (81): compras y cargos de verdad, no rarezas. Un código
+ * desconocido corta el archivo entero, así que la tabla vale la pena completa.
+ *
+ * Lo que importa de cada entrada no es la etiqueta sino si empieza con
+ * `NOTA_CREDITO`: de eso depende que el importe RESTE del saldo.
+ */
 const TIPOS: Record<number, string> = {
   1: "A", 2: "NOTA_DEBITO_A", 3: "NOTA_CREDITO_A",
   6: "B", 7: "NOTA_DEBITO_B", 8: "NOTA_CREDITO_B",
   11: "C", 12: "NOTA_DEBITO_C", 13: "NOTA_CREDITO_C",
-  51: "M", 201: "A", 206: "B", 211: "C",
+  51: "M", 52: "NOTA_DEBITO_M", 53: "NOTA_CREDITO_M",
+  // Liquidaciones: el banco las emite por sus comisiones.
+  63: "LIQUIDACION_A", 64: "LIQUIDACION_B",
+  // Tique factura: controlador fiscal. Combustible, peajes.
+  81: "TIQUE_A", 82: "TIQUE_B", 83: "TIQUE",
+  // Factura de crédito electrónica MiPyME.
+  201: "A", 202: "NOTA_DEBITO_A", 203: "NOTA_CREDITO_A",
+  206: "B", 207: "NOTA_DEBITO_B", 208: "NOTA_CREDITO_B",
+  211: "C", 212: "NOTA_DEBITO_C", 213: "NOTA_CREDITO_C",
 };
+
+/** La moneda que el sistema acepta. En el archivo real vienen como `$`. */
+const PESOS = new Set(["$", "PES", "ARS", ""]);
 
 export class ErrorDeCsv extends Error {}
 
@@ -70,7 +96,24 @@ export class ErrorDeCsv extends Error {}
  * Tira `ErrorDeCsv` con un mensaje que se pueda leer sin abrir el código: es lo
  * único que va a ver quien suba un archivo que no se entiende.
  */
-export function leerCsvDeArca(texto: string): FilaArca[] {
+/** Una fila que se entiende pero que NO entra, con el motivo. */
+export type Salteada = { linea: number; motivo: string; detalle: string };
+
+export type LecturaDeCsv = { filas: FilaArca[]; salteadas: Salteada[] };
+
+/**
+ * Convierte el texto del CSV en filas.
+ *
+ * Tira `ErrorDeCsv` con un mensaje que se pueda leer sin abrir el código: es lo
+ * único que va a ver quien suba un archivo que no se entiende.
+ *
+ * **Saltear no es lo mismo que fallar.** Una fila que no se ENTIENDE corta el
+ * archivo entero, como se decidió: o entra todo o no entra nada, así siempre se
+ * sabe en qué estado quedó la base. Una fila que se entiende perfectamente pero
+ * que el sistema no acepta —una factura en dólares— es otra cosa: se saltea,
+ * se informa, y las demás entran.
+ */
+export function leerCsvDeArca(texto: string): LecturaDeCsv {
   // El BOM que mete Excel se cuela en el nombre de la primera columna y la hace
   // no coincidir nunca, sin que se vea en pantalla.
   const limpio = texto.replace(/^﻿/, "");
@@ -97,6 +140,7 @@ export function leerCsvDeArca(texto: string): FilaArca[] {
   };
 
   const filas: FilaArca[] = [];
+  const salteadas: Salteada[] = [];
   for (let n = 1; n < lineas.length; n++) {
     // El número que se muestra es el de la línea del archivo, contando el
     // encabezado: es lo que se ve al abrirlo en el Bloc de notas.
@@ -126,6 +170,27 @@ export function leerCsvDeArca(texto: string): FilaArca[] {
     const importeTotal = aCentavos(dato(celdas, "importeTotal"));
     if (importeTotal == null) throw mal(`el importe total no se entiende ("${dato(celdas, "importeTotal")}")`);
 
+    // **Una factura en otra moneda NO se convierte.**
+    //
+    // El archivo real trae tres en dólares, con `Tipo Cambio` 1444,50 mientras
+    // las de pesos traen 1,00. El nombre del archivo dice "montos expresados en
+    // pesos" y las filas dicen lo contrario, así que no está claro si ese
+    // importe ya está convertido — y entre las dos lecturas hay un factor de
+    // 1444.
+    //
+    // Meterla como pesos la deja 1444 veces más chica de lo real, y nadie lo
+    // nota: el número se ve plausible. Se saltea y se informa, que es lo que ya
+    // decía el esquema — "se guarda para poder RECHAZAR lo que no sea PES".
+    const moneda = dato(celdas, "moneda");
+    if (!PESOS.has(moneda.toUpperCase())) {
+      salteadas.push({
+        linea,
+        motivo: `en ${moneda}`,
+        detalle: `${dato(celdas, "denominacion")} · ${fechaEmision} · ${dato(celdas, "importeTotal")} ${moneda}`,
+      });
+      continue;
+    }
+
     filas.push({
       cuitEmisor,
       denominacion: dato(celdas, "denominacion") || undefined,
@@ -136,12 +201,12 @@ export function leerCsvDeArca(texto: string): FilaArca[] {
       importeTotal,
       neto: aCentavos(dato(celdas, "neto")) ?? undefined,
       iva: aCentavos(dato(celdas, "iva")) ?? undefined,
-      moneda: dato(celdas, "moneda") || undefined,
+      moneda: "PES",
       cae: dato(celdas, "cae").replace(/\D/g, "") || undefined,
     });
   }
 
-  return filas;
+  return { filas, salteadas };
 }
 
 /** Parte una línea por `;`, respetando las comillas: la denominación de un

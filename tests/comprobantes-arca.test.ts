@@ -104,6 +104,33 @@ test("reimportar la misma fila no duplica nada", async () => {
   const r = await arca.importar([fila()], { entidadId, actor: ACTOR });
   assert.equal(r.creadas, 0);
   assert.equal(await prisma.document.count(), 1);
+  // Y aparece donde tiene que aparecer: ya estaba, no había nada que corregir.
+  assert.equal(r.yaEstaban, 1);
+});
+
+test("los números cierran: creadas + completadas + yaEstaban = filas leídas", async () => {
+  // Contra el archivo real —743 filas— la pantalla mostraba 741 creadas y 1
+  // completada. Faltaba una, y sin este tercer número no había forma de saber
+  // si se había perdido en el camino o simplemente ya estaba bien.
+  //
+  // `sinRespaldo` NO entra en la cuenta a propósito: no cuenta filas del
+  // archivo sino comprobantes nuestros que el archivo no trae.
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", entidadId, fechaEmision: "2026-09-03",
+      cuitEmisor: "20135041379", tipoCbte: "A", puntoVenta: 6, numero: 57875,
+      importeTotal: 76410711n,
+    },
+  });
+  const filas = [
+    fila(),                                         // ya está y coincide
+    fila({ numero: 57876 }),                        // nueva
+    fila({ numero: 57877, importeTotal: 12345n }),  // nueva
+  ];
+  const r = await arca.importar(filas, { entidadId, actor: ACTOR }, { aplicar: false });
+  assert.equal(r.creadas + r.completadas + r.yaEstaban, r.filasLeidas);
+  assert.equal(r.yaEstaban, 1);
+  assert.equal(r.creadas, 2);
 });
 
 test("ARCA le gana a una lectura automática, y queda el rastro", async () => {

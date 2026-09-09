@@ -364,10 +364,11 @@ async function contextoDeImportacion(fd: FormData) {
     return { ok: false as const, error: "Primero cargá una entidad en la pantalla de Entidades." };
   }
 
-  // El CSV de ARCA no es UTF-8: viene en la codificación de Windows para
-  // castellano. Leerlo como UTF-8 rompe las eñes y los acentos de la
-  // denominación del emisor, y ahí los proveedores nacen con el nombre mal.
-  const texto = new TextDecoder("windows-1252").decode(await archivo.arrayBuffer());
+  // **El CSV de ARCA es UTF-8.** Se leía como windows-1252 por suposición, y
+  // contra el archivo real eso rompía hasta el encabezado: "Fecha de Emisión"
+  // se convertía en "Fecha de EmisiÃ³n" y no coincidía con nada. Los bytes lo
+  // dicen sin ambigüedad: la `ó` viene como C3 B3.
+  const texto = new TextDecoder("utf-8").decode(await archivo.arrayBuffer());
   return { ok: true as const, sesion, entidad, texto, nombre: archivo.name };
 }
 
@@ -382,13 +383,13 @@ export async function previsualizarArca(fd: FormData) {
   if (!ctx.ok) return { ok: false as const, error: ctx.error };
 
   try {
-    const filas = leerCsvDeArca(ctx.texto);
+    const { filas, salteadas } = leerCsvDeArca(ctx.texto);
     const previa = await importarArcaFilas(
       filas,
       { entidadId: ctx.entidad.id, actor: { id: ctx.sesion.id, name: ctx.sesion.name } },
       { aplicar: false },
     );
-    return { ok: true as const, previa, entidad: ctx.entidad.nombre };
+    return { ok: true as const, previa, salteadas, entidad: ctx.entidad.nombre };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
   }
@@ -415,7 +416,7 @@ export async function importarArca(fd: FormData) {
   }
 
   try {
-    const filas = leerCsvDeArca(ctx.texto);
+    const { filas, salteadas } = leerCsvDeArca(ctx.texto);
     const r = await importarArcaFilas(filas, {
       entidadId: ctx.entidad.id,
       actor: { id: ctx.sesion.id, name: ctx.sesion.name },
@@ -438,7 +439,7 @@ export async function importarArca(fd: FormData) {
     });
     revalidatePath("/pagos");
     revalidatePath("/importar");
-    return { ok: true as const, resultado: r };
+    return { ok: true as const, resultado: r, salteadas };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
   }

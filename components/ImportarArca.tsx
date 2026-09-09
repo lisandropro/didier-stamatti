@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { previsualizarArca, importarArca } from "@/app/actions/comprobantes";
 import type { ResultadoImportacion } from "@/lib/comprobantes/arca";
+import type { Salteada } from "@/lib/comprobantes/arca-csv";
 
 // Importar el CSV de *Mis Comprobantes → Recibidos*.
 //
@@ -32,6 +33,12 @@ export function ImportarArca({
    *  esconderlo hay que reponerlo o se pierde la confirmacion de que se
    *  eligio algo. */
   const [elegido, setElegido] = useState<string | null>(null);
+  /** Las filas que se entienden pero no entran —hoy, las que están en otra
+   *  moneda—. **No se limpian al importar**: después de aplicar, la previa
+   *  desaparece y esto es lo único que queda diciendo que hay comprobantes que
+   *  cargar a mano. Si se borraran junto con la previa, el archivo real habría
+   *  entrado con tres facturas menos y nadie se enteraba. */
+  const [salteadas, setSalteadas] = useState<Salteada[]>([]);
 
   async function mirar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,6 +47,7 @@ export function ImportarArca({
     setError(null);
     setHecho(null);
     setPrevia(null);
+    setSalteadas([]);
     const r = await previsualizarArca(new FormData(e.currentTarget));
     setOcupado(false);
     if (!r.ok) {
@@ -48,6 +56,7 @@ export function ImportarArca({
     }
     setPrevia(r.previa);
     setEntidadPrevia(r.entidad);
+    setSalteadas(r.salteadas);
   }
 
   async function aplicar() {
@@ -66,6 +75,7 @@ export function ImportarArca({
     }
     setPrevia(null);
     setHecho(r.resultado);
+    setSalteadas(r.salteadas);
     form.reset();
     setElegido(null);
     router.refresh();
@@ -138,6 +148,15 @@ export function ImportarArca({
               <strong>{previa.completadas}</strong>
               <span>ya cargadas, que se completan con el dato del fisco</span>
             </li>
+            {/* Solo cuando hay. Si no, es un cero que no dice nada — pero
+                cuando lo hay, es lo que hace que 741 + 1 dé las 743 filas del
+                archivo y no falte ninguna sin explicación. */}
+            {previa.yaEstaban > 0 && (
+              <li>
+                <strong>{previa.yaEstaban}</strong>
+                <span>que ya estaban cargadas y coinciden</span>
+              </li>
+            )}
             <li>
               <strong>{previa.sinRespaldo}</strong>
               <span>que tenemos y ARCA no conoce, en ese período</span>
@@ -168,6 +187,8 @@ export function ImportarArca({
             </div>
           )}
 
+          <Salteadas filas={salteadas} />
+
           <div className="imp-acciones">
             <button className="btn primary" onClick={aplicar} disabled={ocupado}>
               {ocupado ? "Importando…" : "Importar"}
@@ -189,6 +210,41 @@ export function ImportarArca({
           {hecho.creadas > 0 && " Las nuevas no tienen vencimiento cargado: ARCA no lo trae."}
         </section>
       )}
+
+      {hecho && <Salteadas filas={salteadas} />}
+    </div>
+  );
+}
+
+/**
+ * Las que quedaron afuera.
+ *
+ * Se listan enteras, no contadas: son pocas y a cada una hay que ir a cargarla
+ * a mano. Un "3 salteadas" obligaría a abrir el CSV para saber cuáles.
+ */
+function Salteadas({ filas }: { filas: Salteada[] }) {
+  if (filas.length === 0) return null;
+  return (
+    <div className="imp-salteadas">
+      <strong>
+        {filas.length} comprobante{filas.length === 1 ? "" : "s"} que no{" "}
+        {filas.length === 1 ? "entra" : "entran"}, y hay que cargar a mano.
+      </strong>
+      {/* El párrafo explica el ÚNICO motivo que existe hoy: la moneda. Si algún
+          día `Salteada.motivo` trae un segundo motivo, esto empieza a mentir —
+          hay que pasar a mostrar `f.motivo` por fila. */}
+      <p>
+        Están en otra moneda. El archivo se llama &ldquo;montos expresados en pesos&rdquo;, pero la
+        fila trae la cotización del dólar: no se sabe si el importe ya está convertido, y entre las
+        dos lecturas hay una diferencia de más de mil veces. Convertirlo sería inventar el número.
+      </p>
+      <ul>
+        {filas.map((f) => (
+          <li key={f.linea}>
+            {f.detalle} <span className="imp-linea">(línea {f.linea} del archivo)</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

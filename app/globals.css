@@ -1632,6 +1632,19 @@ tbody tr:hover{background:var(--surface-2)}
 .imp-conflictos ul{margin:var(--sp-2) 0 0; padding-left:var(--sp-5)}
 .imp-conflictos p{margin:var(--sp-2) 0 0}
 
+/* Las filas que se entienden pero no entran: hoy, las que están en otra moneda.
+   Se listan enteras porque a cada una hay que ir a cargarla a mano, y un
+   contador obligaría a abrir el CSV para saber cuáles. */
+.imp-salteadas{
+  background:var(--warn-soft); border-radius:var(--r-md);
+  padding:var(--sp-4); font-size:var(--t-sm); color:var(--warn);
+}
+.imp-salteadas p{margin:var(--sp-2) 0 0}
+.imp-salteadas ul{margin:var(--sp-3) 0 0; padding-left:var(--sp-5); display:flex; flex-direction:column; gap:2px}
+.imp-salteadas li{word-break:break-word}
+/* Gris sobre un fondo de color se ve lavado: se apaga con el mismo tono, no con --muted. */
+.imp-linea{opacity:.75}
+
 .imp-acciones{display:flex; gap:var(--sp-3)}
 .imp-hecho{line-height:1.45}
 

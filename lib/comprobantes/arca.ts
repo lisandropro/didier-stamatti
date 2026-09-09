@@ -56,6 +56,17 @@ export type ResultadoImportacion = {
   completadas: number;
   /** ARCA las conoce y nadie había traído el papel. */
   creadas: number;
+  /**
+   * Ya estaban cargadas y no había nada que corregir.
+   *
+   * **Existe para que los números cierren.** Contra el archivo real —743
+   * filas— la pantalla mostraba 741 creadas y 1 completada: faltaba una y no
+   * había forma de saber si se había perdido. `creadas + completadas +
+   * yaEstaban` tiene que dar `filasLeidas`, siempre; si no da, algo se cayó en
+   * el camino. `sinRespaldo` NO entra en esa cuenta: no cuenta filas del
+   * archivo sino comprobantes nuestros que el archivo no trae.
+   */
+  yaEstaban: number;
   /** Tenemos el papel y ARCA no las conoce, dentro del período. */
   sinRespaldo: number;
   /** Dónde ARCA difiere de algo corregido a mano. No se pisa. */
@@ -134,6 +145,7 @@ export async function importar(
     filasLeidas: filas.length,
     completadas: 0,
     creadas: 0,
+    yaEstaban: 0,
     sinRespaldo: 0,
     discrepancias: [],
     desde: null,
@@ -222,6 +234,7 @@ export async function importar(
     // `enArca` se marca aunque no cambie ningún otro campo: saber que el fisco
     // la conoce ES el resultado de la importación.
     if (cambios.length > 0) res.completadas += 1;
+    else res.yaEstaban += 1;
 
     const yaEstaba = existente.enArca === true;
     if (aplicar && (Object.keys(data).length > 0 || !yaEstaba)) {

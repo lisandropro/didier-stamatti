@@ -39,7 +39,8 @@ export default async function ImportarPage() {
         <p className="intro">
           Entrá a <strong>arca.gob.ar</strong> con la clave fiscal, abrí{" "}
           <strong>Mis Comprobantes → Recibidos</strong>, elegí el período y descargá el CSV.
-          No lo abras en Excel: le cambia el formato.
+          Te lo va a bajar en un <strong>.zip</strong>: descomprimilo y subí el archivo que hay
+          adentro. No lo abras en Excel: le cambia el formato.
         </p>
 
         <ImportarArca entidades={entidades.map((e) => ({ id: e.id, nombre: e.nombre }))} />
