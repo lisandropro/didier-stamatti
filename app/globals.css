@@ -2090,3 +2090,13 @@ tbody tr:hover{background:var(--surface-2)}
 @media (prefers-reduced-motion: reduce){
   .cond-op{transition:none}
 }
+
+/* La fecha calculada con el plazo del proveedor. Se marca porque NO la dice el
+   papel: una fecha calculada que se muestra igual que una leída es una fecha
+   inventada con buena presentación, y quien paga no sabe cuál puede discutir.
+   La marca no es sólo color — "aprox." se lee aunque no se distingan tonos. */
+.pg-propuesto{color:var(--muted)}
+.pg-propuesto abbr{
+  font-size:var(--t-xs); text-decoration:none; border-bottom:1px dotted currentColor;
+  cursor:help;
+}

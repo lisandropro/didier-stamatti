@@ -179,10 +179,32 @@ test("propone el vencimiento desde la condición de pago del proveedor", () => {
   assert.equal(pagos.proponerVencimiento(null, 7), null);
 });
 
-test("lo propuesto no se guarda solo", async () => {
-  // Proponer es ayudar a quien paga, no decidir por ella. Hasta que alguien
-  // confirme, el campo sigue vacío y el comprobante sigue en la bandeja.
-  await prisma.supplier.update({ where: { id: donAngel }, data: { diasPago: 7 } });
+test("un plazo cargado a medias NO propone nada", async () => {
+  // `diasPago` con la condición sin pactar es una fila vieja, no una decisión.
+  // Proponer sobre eso sería inventar un vencimiento que nadie acordó.
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: 7, condicionAcordadaAt: null },
+  });
+  const d = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100n,
+      fechaEmision: "2026-07-28",
+    },
+  });
+  const [enBandeja] = (await pagos.sinVencimiento()).filter((x) => x.id === d.id);
+  assert.ok(enBandeja, "sin condición pactada tiene que seguir sin fecha");
+  assert.equal(enBandeja.propuesto, null);
+});
+
+test("con la condición pactada, la fecha se propone pero NO se guarda", async () => {
+  // Proponer es ayudar a quien paga, no decidir por ella. La columna sigue
+  // vacía: un cálculo escrito en la base deja de distinguirse de un dato leído
+  // del papel, y a los dos meses nadie sabe cuál es cuál.
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: 7, condicionAcordadaAt: new Date() },
+  });
   const d = await prisma.document.create({
     data: {
       kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100n,
@@ -190,8 +212,73 @@ test("lo propuesto no se guarda solo", async () => {
     },
   });
   const leido = await prisma.document.findUniqueOrThrow({ where: { id: d.id } });
-  assert.equal(leido.vencimiento, null);
-  assert.ok((await pagos.bandejas()).sinVencimiento >= 1);
+  assert.equal(leido.vencimiento, null, "la columna no se toca");
+
+  const [fila] = (await pagos.queVence("2026-08-04", "2026-08-04")).filter((x) => x.id === d.id);
+  assert.ok(fila, "y sin embargo aparece el día que corresponde");
+  assert.equal(fila.propuesto, "2026-08-04");
+  assert.equal(fila.vencimiento, null, "la de papel sigue vacía: son dos datos distintos");
+});
+
+test("cargar el plazo del proveedor VACÍA la bandeja de sin vencimiento", async () => {
+  // Es la prueba de que el trabajo sirve. Si la bandeja no bajara al cargar la
+  // condición, nadie la cargaría dos veces.
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: null, condicionAcordadaAt: null },
+  });
+  const d = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100n,
+      fechaEmision: "2026-07-28",
+    },
+  });
+  const antes = (await pagos.sinVencimiento()).filter((x) => x.id === d.id).length;
+  assert.equal(antes, 1);
+
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: 30, condicionAcordadaAt: new Date() },
+  });
+  const despues = (await pagos.sinVencimiento()).filter((x) => x.id === d.id).length;
+  assert.equal(despues, 0, "la bandeja tiene que bajar cuando se hace el trabajo");
+});
+
+test("la fecha del PAPEL le gana a la calculada", async () => {
+  // El plazo pactado es lo que se hace cuando el papel no dice nada. Si dice
+  // una fecha, esa manda.
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: 7, condicionAcordadaAt: new Date() },
+  });
+  const d = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100n,
+      fechaEmision: "2026-07-28", vencimiento: "2026-09-30",
+    },
+  });
+  const [fila] = (await pagos.queVence("2026-09-30", "2026-09-30")).filter((x) => x.id === d.id);
+  assert.ok(fila, "tiene que entrar por la fecha del papel");
+  assert.equal(fila.propuesto, null, "no se propone nada cuando el papel ya dijo");
+
+  const enAgosto = (await pagos.queVence("2026-08-04", "2026-08-04")).filter((x) => x.id === d.id);
+  assert.equal(enAgosto.length, 0, "y NO entra por la fecha que habría calculado");
+});
+
+test("un comprobante con fecha propuesta sale de la lista de incompletos", async () => {
+  // Si no saliera, la pantalla seguiría pidiendo un dato que ya tiene.
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: 15, condicionAcordadaAt: new Date() },
+  });
+  const d = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 100n,
+      fechaEmision: "2026-07-28",
+    },
+  });
+  const [fila] = (await pagos.incompletos()).filter((x) => x.id === d.id);
+  assert.equal(fila, undefined, "no le falta nada: tiene proveedor, importe y fecha");
 });
 
 test("las bandejas cuentan lo que falta, con nulos y sin columna de estado", async () => {

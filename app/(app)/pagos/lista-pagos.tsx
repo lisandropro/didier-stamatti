@@ -19,9 +19,17 @@ type Fila = {
   id: string;
   nombre: string;
   kind: string;
+  /** La que dice el papel. */
   vencimiento: string | null;
+  /** La calculada con el plazo pactado con el proveedor. **No está guardada**:
+   *  se muestra distinta porque es una propuesta, no un dato. */
+  propuesto: string | null;
   total: string | null; // centavos en texto: BigInt no cruza como JSON
 };
+
+/** Con qué fecha entra una fila en las listas. El papel le gana al cálculo. */
+const vence = (f: { vencimiento: string | null; propuesto: string | null }) =>
+  f.vencimiento ?? f.propuesto;
 
 type Duplicado = { nombre: string; importe: string; documentIds: string[] };
 
@@ -393,7 +401,7 @@ export default function ListaPagos({
                             aria-label={
                               bloqueada
                                 ? `${f.nombre}: para elegirlo, deshacé la selección de ${proveedorElegido}`
-                                : `Elegir ${f.nombre} de ${f.vencimiento ?? "sin fecha"}`
+                                : `Elegir ${f.nombre} de ${vence(f) ?? "sin fecha"}`
                             }
                           />
                         </td>
@@ -406,7 +414,20 @@ export default function ListaPagos({
                           </button>
                           {f.kind !== "FACTURA" && <span className="pg-tipo">{etiqueta(f.kind)}</span>}
                         </td>
-                        <td className="pg-c-vence">{f.vencimiento ? legible(f.vencimiento) : "—"}</td>
+                        {/* La propuesta se marca. Sin la marca, una fecha
+                            calculada se lee igual que una leída del papel — y
+                            entonces nadie sabe cuál puede discutir. */}
+                        <td className="pg-c-vence">
+                          {f.vencimiento ? (
+                            legible(f.vencimiento)
+                          ) : f.propuesto ? (
+                            <span className="pg-propuesto" title="Calculado con el plazo del proveedor: no lo dice el papel">
+                              {legible(f.propuesto)} <abbr>aprox.</abbr>
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td className="pg-num">{f.total ? formatear(BigInt(f.total)) : "—"}</td>
                         {/* Dos acciones distintas y con nombres distintos: el
                             COMPROBANTE es la foto del papel —lo que vale ante un
@@ -597,12 +618,12 @@ export default function ListaPagos({
 /** Vencidos primero y aparte: lo urgente se distingue por dónde está, no solo
  *  por el color — quien no distingue rojos tiene que verlo igual. */
 function agrupar(filas: Fila[], hoy: string) {
-  const vencidas = filas.filter((f) => f.vencimiento && f.vencimiento < hoy);
+  const vencidas = filas.filter((f) => { const v = vence(f); return !!v && v < hoy; });
   const estaSemana = filas.filter(
-    (f) => f.vencimiento && f.vencimiento >= hoy && diasEntre(hoy, f.vencimiento) <= 7,
+    (f) => { const v = vence(f); return !!v && v >= hoy && diasEntre(hoy, v) <= 7; },
   );
   const despues = filas.filter(
-    (f) => f.vencimiento && f.vencimiento >= hoy && diasEntre(hoy, f.vencimiento) > 7,
+    (f) => { const v = vence(f); return !!v && v >= hoy && diasEntre(hoy, v) > 7; },
   );
 
   return [

@@ -223,6 +223,10 @@ export async function vencimientosEntre(desde: string, hasta: string, entidadId?
       nombre: d.nombre,
       kind: d.kind,
       vencimiento: d.vencimiento,
+      // Va aparte de la del papel a propósito: la pantalla tiene que poder
+      // decir cuál es cuál. Una fecha calculada que se muestra igual que una
+      // leída es una fecha inventada con buena presentación.
+      propuesto: d.propuesto,
       total: d.importeTotal == null ? null : aTextoPlano(d.importeTotal),
     })),
   };
