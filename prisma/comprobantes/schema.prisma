@@ -54,10 +54,34 @@ model Supplier {
   // ferretería de barrio). SQLite admite varios NULL en un índice único.
   cuit      String?    @unique
   alias     String?
-  // Días para pagar, cuando el proveedor factura con una condición en vez de
-  // una fecha ("7 DIAS" en la de Dinamark). Sirve para PROPONER el vencimiento;
-  // si el papel trae una fecha, gana la fecha. NULL = contado o no se sabe.
+  // --- La condición de pago que se pactó con este proveedor ---
+  //
+  // **Es un acuerdo, no un dato que se copia de un papel.** Alguien lo negoció,
+  // y dentro de seis meses alguien va a preguntar "¿desde cuándo le pagamos a
+  // 30 días?". Por eso no alcanza con el número: van también quién lo cargó y
+  // cuándo.
+  //
+  // Días para pagar, contados desde la emisión de la factura. Sirve para
+  // PROPONER el vencimiento; si el papel trae una fecha, gana la fecha.
+  //
+  // Los tres estados salen de las dos columnas juntas, sin columna de estado:
+  //
+  //   acordadaAt NULL                    → nadie contestó todavía (falta)
+  //   acordadaAt + diasPago 0            → contado, se paga contra entrega
+  //   acordadaAt + diasPago N            → a N días
+  //   acordadaAt + diasPago NULL         → se acordó que NO hay plazo fijo
+  //
+  // El comentario anterior decía que NULL era "contado o no se sabe". Son dos
+  // cosas distintas: contado es cero días y una decisión tomada; no se sabe es
+  // un hueco. Confundirlas hacía que un proveedor de contado y uno sin cargar
+  // se vieran igual, que es justo lo que esta pantalla viene a resolver.
   diasPago  Int?
+  /// Cuándo se registró la condición. NULL = nadie la cargó todavía.
+  condicionAcordadaAt DateTime?
+  /// Quién la registró. Va el nombre al lado del id, como en `DocumentChange`:
+  /// esta base no tiene claves foráneas hacia la de usuarios.
+  condicionAcordadaPorId   String?
+  condicionAcordadaPorName String?
   active    Boolean    @default(true)
   createdAt DateTime   @default(now())
   deletedAt DateTime?

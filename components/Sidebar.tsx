@@ -8,6 +8,7 @@ import {
   canVerStock,
   canCapturarComprobantes,
   canVerImportes,
+  canPagar,
 } from "@/lib/permissions";
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 import { NavPending } from "@/components/NavPending";
@@ -58,6 +59,13 @@ const ICONO_PAGOS = (
     <path d="M4 6h16v12H4z" /><path d="M4 10h16" /><path d="M8 14.5h4" />
   </svg>
 );
+/** Un camión de reparto: el proveedor es el que trae, no el que factura. */
+const ICONO_PROVEEDORES = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M2.5 7h11v9h-11z" /><path d="M13.5 10.5h4l3 3V16h-7z" />
+    <circle cx="6.5" cy="18" r="1.8" /><circle cx="16.5" cy="18" r="1.8" />
+  </svg>
+);
 
 /** El pedido y el inventario: solo para quien los arma. Alguien que entra a
  *  fotografiar comprobantes o a pagarlos no tiene por qué ver esas pantallas —
@@ -93,6 +101,13 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
       ? [{ href: "/recepcion", label: "Recepción", icon: ICONO_RECEPCION }]
       : []),
     ...(canVerImportes(user.role) ? [{ href: "/pagos", label: "Pagos", icon: ICONO_PAGOS }] : []),
+    // Va acá, con Pagos, y no en `ADMIN_NAV`: pactar a cuántos días se le paga
+    // a un proveedor es parte de pagar. Si sólo pudiera el ADMIN, quien paga
+    // tendría que pedirle el dato a otra persona — y así es como un dato se
+    // queda sin cargar para siempre.
+    ...(canPagar(user.role)
+      ? [{ href: "/proveedores", label: "Proveedores", icon: ICONO_PROVEEDORES }]
+      : []),
     ...NAV_AVISOS,
     ...(canManageSuggestions(user.role) ? ADMIN_NAV : []),
   ];

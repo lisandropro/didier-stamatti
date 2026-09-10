@@ -1982,3 +1982,111 @@ tbody tr:hover{background:var(--surface-2)}
 
 /* El permiso para saltear las preguntas, arriba de ellas. */
 .cap-salteables{margin:0}
+
+/* ---------------------------------------------------------------------------
+   Proveedores — a cuántos días se le paga a cada uno
+   ---------------------------------------------------------------------------
+   Una lista de trabajo, no una tabla de consulta: se recorre de arriba hacia
+   abajo hasta vaciarla. Por eso las filas que faltan se distinguen por dónde
+   están —van primero— y además por una marca, no sólo por color: quien no
+   distingue tonos tiene que poder verlo igual. */
+
+.cond{display:flex; flex-direction:column; gap:var(--sp-4)}
+
+.cond-total{margin:0 0 var(--sp-2); font-size:var(--t-base); color:var(--ink)}
+.cond-avance{margin:0; font-size:var(--t-sm); color:var(--muted)}
+
+.cond-lista{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
+
+.cond-fila{
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-4); display:flex; flex-direction:column; gap:var(--sp-3);
+}
+/* La ya resuelta: se achica y se apaga. No se resalta lo que falta —al empezar
+   falta todo, y un resalte que abarca la pantalla entera no resalta nada—; se
+   encoge lo hecho, y la lista se acorta sola a medida que avanza. */
+.cond-hecha{
+  flex-direction:row; align-items:center; justify-content:space-between;
+  gap:var(--sp-4); padding:var(--sp-3) var(--sp-4); background:var(--surface-2);
+}
+.cond-resuelto{display:flex; align-items:center; gap:var(--sp-3); flex-shrink:0}
+.cond-chip{
+  background:var(--brand); color:var(--on-brand);
+  border-radius:var(--r-pill); padding:3px var(--sp-3);
+  font-size:var(--t-sm); font-weight:600; white-space:nowrap;
+}
+.cond-cambiar{
+  background:none; border:none; padding:0; cursor:pointer;
+  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
+}
+.cond-cambiar:hover{color:var(--ink)}
+
+@media (max-width:560px){
+  .cond-hecha{flex-direction:column; align-items:flex-start; gap:var(--sp-2)}
+  /* Más chicos de ancho, nunca de alto: 44px es el área táctil mínima y no se
+     negocia. Lo que se recorta es el aire y la palabra "días". */
+  .cond-op{padding:0 var(--sp-3); font-size:var(--t-sm)}
+  .cond-dias{display:none}
+  .cond-dias-ultimo{display:inline}
+  .cond-fila{padding:var(--sp-3)}
+}
+
+.cond-quien{display:flex; flex-direction:column; gap:2px; min-width:0}
+.cond-nombre{font-size:var(--t-base); font-weight:600; color:var(--ink); word-break:break-word}
+.cond-plata{font-size:var(--t-sm); color:var(--muted); font-variant-numeric:tabular-nums}
+.cond-sindeuda{font-style:italic}
+/* El aviso viaja pegado al número, no en otra línea: separado se lee como un
+   comentario y el número sigue pareciendo completo. */
+.cond-incompleto{color:var(--warn)}
+
+/* Los plazos. Botones y no un desplegable: tocar una vez contra abrir, buscar
+   y elegir, en una pantalla que se recorre cien veces seguidas. */
+.cond-opciones{display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:center}
+.cond-op{
+  min-height:var(--tap); padding:0 var(--sp-3);
+  border:1px solid var(--hair); border-radius:var(--r-pill);
+  background:var(--surface); color:var(--ink);
+  font-size:var(--t-sm); font-weight:500; cursor:pointer;
+  transition:background .12s cubic-bezier(.22,1,.36,1), border-color .12s cubic-bezier(.22,1,.36,1);
+}
+.cond-op:hover:not(:disabled){background:var(--surface-2)}
+.cond-op:disabled{opacity:.5; cursor:not-allowed}
+.cond-op:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+/* El elegido, marcado por relleno y peso además del color. */
+.cond-op-on{background:var(--brand); border-color:var(--brand); color:var(--on-brand); font-weight:650}
+.cond-otro{color:var(--muted)}
+
+.cond-otro-campo{display:flex; gap:var(--sp-2); align-items:center}
+.cond-otro-campo input{
+  width:84px; min-height:var(--tap); padding:0 var(--sp-3);
+  border:1px solid var(--hair); border-radius:var(--r-sm);
+  background:var(--surface); color:var(--ink); font-size:var(--t-sm);
+}
+.cond-otro-campo input:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
+
+/* Qué significa el plazo elegido para ESTE proveedor. Es el control: "60 días"
+   al lado de una factura de julio se delata solo. */
+.cond-efecto{margin:0; font-size:var(--t-sm); color:var(--ink); font-variant-numeric:tabular-nums}
+
+.cond-firma{margin:0; font-size:var(--t-xs); color:var(--muted)}
+.cond-borrar{
+  background:none; border:none; padding:0; cursor:pointer;
+  font-size:var(--t-xs); color:var(--muted); text-decoration:underline;
+}
+.cond-borrar:hover:not(:disabled){color:var(--ink)}
+.cond-borrar:disabled{opacity:.5; cursor:not-allowed}
+
+.cond-error{margin:0; font-size:var(--t-sm); color:var(--crit)}
+
+/* Un vacío que enseña de dónde salen los proveedores, en vez de decir que no
+   hay ninguno. */
+.cond-vacio{
+  border:1px dashed var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-6); text-align:center; max-width:60ch; margin:0 auto;
+}
+.cond-vacio h2{margin:0 0 var(--sp-2); font-size:var(--t-lg); color:var(--ink)}
+.cond-vacio p{margin:0; font-size:var(--t-sm); color:var(--muted); line-height:1.5}
+
+@media (prefers-reduced-motion: reduce){
+  .cond-op{transition:none}
+}

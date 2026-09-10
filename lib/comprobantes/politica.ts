@@ -196,6 +196,26 @@ export function signoDelComprobante(kind: string): 1 | 0 | -1 {
   return 1;
 }
 
+/**
+ * Los tipos que NO se pagan.
+ *
+ * Un remito es constancia de que la mercadería entró, no una deuda; si sumara,
+ * el saldo del proveedor saldría al doble.
+ *
+ * **Es la misma regla que `signoDelComprobante` devuelve como `0`**, escrita
+ * como lista porque las consultas a la base necesitan un `notIn` y no pueden
+ * llamar a una función. Vive acá y no en `pagos.ts` por el mismo motivo que la
+ * del signo: estaba a punto de tener una copia nueva en la pantalla de
+ * condiciones, y de las copias de esta familia ya sabemos cómo terminan.
+ */
+export const NO_SE_PAGAN = ["REMITO"] as const;
+
+/** La misma regla para el código: la lista es para las consultas, esto para los
+ *  filtros en memoria. Dos formas, una sola definición. */
+export function sePaga(kind: string): boolean {
+  return !(NO_SE_PAGAN as readonly string[]).includes(kind);
+}
+
 /** El aporte de un comprobante a un saldo, ya con su signo. */
 export function aporteAlSaldo(kind: string, importe: bigint | null): bigint {
   if (importe == null) return 0n;

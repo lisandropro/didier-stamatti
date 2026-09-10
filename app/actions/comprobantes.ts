@@ -25,6 +25,7 @@ import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
 import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
 import { quienRecibe } from "@/lib/comprobantes/qr";
+import { conCondicion, acordar, olvidar } from "@/lib/comprobantes/condiciones";
 import {
   activas as entidadesActivas,
   todas as todasLasEntidades,
@@ -672,4 +673,67 @@ export async function leerComprobanteConIA(documentId: string): Promise<Resultad
     controles,
     renglones: renglonesGuardados,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Condiciones de pago
+// ---------------------------------------------------------------------------
+
+/**
+ * La lista de proveedores con su deuda y su condición.
+ *
+ * Pasa por `puedeResponderImportes` **antes** de consultar la base, como toda
+ * acción que devuelve plata: la deuda de cada proveedor es exactamente el dato
+ * que no tiene que llegarle a un teléfono de depósito.
+ */
+export async function proveedoresConCondicion() {
+  const sesion = await sesionVigente();
+  if (!puedeResponderImportes(sesion)) {
+    return { ok: false as const, error: "No tenés permiso para ver la deuda por proveedor." };
+  }
+  const filas = await conCondicion();
+  // El BigInt no cruza como JSON, igual que en la pantalla de pagos.
+  return {
+    ok: true as const,
+    filas: filas.map((f) => ({ ...f, deuda: aTextoPlano(f.deuda) })),
+  };
+}
+
+/**
+ * Registra la condición pactada con un proveedor.
+ *
+ * `dias` llega como texto desde el navegador: `""` significa **se acordó que no
+ * hay plazo fijo**, que es una respuesta y no un vacío. La diferencia entre eso
+ * y "nadie contestó" es lo que hace que la bandeja pueda llegar a cero.
+ */
+export async function acordarCondicion(supplierId: string, dias: string) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canPagar(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para pactar condiciones de pago." };
+  }
+  const n = dias.trim() === "" ? null : Number(dias);
+  if (n != null && !Number.isFinite(n)) {
+    return { ok: false as const, error: "Los días de pago tienen que ser un número." };
+  }
+  try {
+    await acordar(supplierId, n, { id: sesion.id, name: sesion.name });
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/proveedores");
+  revalidatePath("/pagos");
+  return { ok: true as const };
+}
+
+/** Vuelve un proveedor a "sin cargar". Cargar mal es fácil, y quedarse con un
+ *  dato inventado es peor que no tenerlo. */
+export async function olvidarCondicion(supplierId: string) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canPagar(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para pactar condiciones de pago." };
+  }
+  await olvidar(supplierId);
+  revalidatePath("/proveedores");
+  revalidatePath("/pagos");
+  return { ok: true as const };
 }

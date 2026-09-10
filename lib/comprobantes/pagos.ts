@@ -1,6 +1,6 @@
 import { prismaComprobantes as db } from "@/lib/db-comprobantes";
 import { diasEntre, sumarDias } from "@/lib/dates";
-import { aporteAlSaldo } from "./politica";
+import { aporteAlSaldo, NO_SE_PAGAN, sePaga } from "./politica";
 
 // Lo que ve y hace quien paga.
 //
@@ -20,9 +20,8 @@ const DIA = /^\d{4}-\d{2}-\d{2}$/;
 // por separado acá y en `documento.ts`, y una tercera copia —en el resumen de
 // la pantalla— nacio sumando las notas de credito en vez de restarlas.
 
-/** Los tipos que NO se pagan. Un remito es constancia de que la mercadería
- *  entró, no una deuda; si sumara, el saldo del proveedor saldría al doble. */
-const NO_SE_PAGAN = new Set(["REMITO"]);
+// `NO_SE_PAGAN` vive en `politica.ts`, junto a la regla del signo: son la misma
+// regla dicha de dos formas, y separarlas es como se desincronizan.
 
 export type DeudaProveedor = {
   supplierId: string | null;
@@ -218,11 +217,11 @@ export async function marcarPagados(
     select: { id: true, pagadoAt: true, kind: true },
   });
 
-  const aMarcar = encontrados.filter((d) => d.pagadoAt == null && !NO_SE_PAGAN.has(d.kind));
+  const aMarcar = encontrados.filter((d) => d.pagadoAt == null && sePaga(d.kind));
   const resumen: ResultadoPago = {
     marcados: aMarcar.length,
     yaEstaban: encontrados.filter((d) => d.pagadoAt != null).length,
-    noSePagan: encontrados.filter((d) => d.pagadoAt == null && NO_SE_PAGAN.has(d.kind)).length,
+    noSePagan: encontrados.filter((d) => d.pagadoAt == null && !sePaga(d.kind)).length,
     noEncontrados: ids.length - encontrados.length,
   };
   if (aMarcar.length === 0) return resumen;
