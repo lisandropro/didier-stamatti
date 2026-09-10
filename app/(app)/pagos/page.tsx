@@ -6,6 +6,7 @@ import {
   vencimientosEntre,
   pendientes,
   debitosDelMes,
+  proveedoresSinPlazo,
 } from "@/app/actions/comprobantes";
 import { activas } from "@/lib/comprobantes/entidades";
 import { hoy, sumarDias } from "@/lib/dates";
@@ -53,11 +54,12 @@ export default async function PagosPage({
   const desde = sumarDias(hoy(), -365);
   const hasta = sumarDias(hoy(), 60);
 
-  const [deuda, vencen, pend, debitos] = await Promise.all([
+  const [deuda, vencen, pend, debitos, sinPlazo] = await Promise.all([
     deudaPorProveedor(entidadId),
     vencimientosEntre(desde, hasta, entidadId),
     pendientes(),
     debitosDelMes(entidadId),
+    proveedoresSinPlazo(entidadId),
   ]);
 
   return (
@@ -72,6 +74,7 @@ export default async function PagosPage({
       entidadElegida={pedida === "sin" ? "sin" : (entidadId ?? "")}
       sinEntidad={pend.sinEntidad ?? 0}
       huerfanos={pend.huerfanos ?? []}
+      sinPlazo={sinPlazo.ok ? sinPlazo.cantidad : 0}
       debitos={
         debitos.ok && debitos.cantidad > 0
           ? { cantidad: debitos.cantidad, total: debitos.total, sinImporte: debitos.sinImporte }

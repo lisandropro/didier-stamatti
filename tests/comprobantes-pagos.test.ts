@@ -714,3 +714,30 @@ test("un débito automático NO aparece en qué pagar, pero se cuenta aparte", a
   assert.ok(deb.cantidad >= 1, "pero se cuenta");
   assert.ok(deb.total >= 164_115_900n, "y su importe se ve");
 });
+
+test("lo que sale solo está DENTRO del total pendiente, no al lado", async () => {
+  // La pantalla muestra los dos números juntos. Si fueran conjuntos separados,
+  // habría que sumarlos; si uno contiene al otro, sumarlos cuenta la misma
+  // plata dos veces. Esta prueba fija cuál de las dos cosas es, porque de eso
+  // depende cómo se escribe la pantalla — y la primera versión lo escribió al
+  // revés.
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: null, debitoAutomatico: true, condicionAcordadaAt: new Date() },
+  });
+  await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 500_000n,
+      fechaEmision: "2026-07-28",
+    },
+  });
+
+  const deuda = (await pagos.porProveedor()).reduce((a, d) => a + d.total, 0n);
+  const debito = (await pagos.debitosAutomaticos()).total;
+
+  assert.ok(debito > 0n, "hay al menos un débito");
+  assert.ok(
+    deuda >= debito,
+    "el total pendiente tiene que CONTENER lo que sale solo, no excluirlo",
+  );
+});

@@ -44,7 +44,7 @@ async function main() {
   if (!existing) {
     // La contrasena sale del entorno, no del repositorio.
     //
-    // "didier123" estaba escrita aca, y el repositorio se clona, se respalda y
+    // Habia una contrasena escrita aca, y el repositorio se clona, se respalda y
     // se lee. Peor: el seed corre en cada despliegue, asi que la contrasena del
     // unico ADMIN quedaba fijada por el codigo fuente y no se podia cambiar sin
     // publicar una version.

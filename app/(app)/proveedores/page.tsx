@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { canPagar } from "@/lib/permissions";
 import { conCondicion } from "@/lib/comprobantes/condiciones";
+import { activas } from "@/lib/comprobantes/entidades";
 import { formatear } from "@/lib/money";
 import { hoy } from "@/lib/dates";
 import { CondicionesPago } from "@/components/CondicionesPago";
@@ -28,12 +29,26 @@ export const metadata = { title: "Proveedores" };
  * pudiera el ADMIN, la persona que efectivamente paga tendría que pedirle a
  * otra que le cargue el dato, y eso es como un dato se queda sin cargar.
  */
-export default async function ProveedoresPage() {
+export default async function ProveedoresPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ entidad?: string }>;
+}) {
   const sesion = await getSessionUser();
   if (!sesion) redirect("/login");
   if (!canPagar(sesion.role)) redirect("/");
 
-  const filas = await conCondicion();
+  // **El mismo filtro que la pantalla de pagos.** Sin esto, la deuda que ordena
+  // esta lista suma dos contribuyentes en cuanto exista una segunda entidad, y
+  // el orden —que es todo el valor de la pantalla— sale mal sin avisar. Hoy hay
+  // una sola entidad activa, así que el error no se vería: por eso conviene que
+  // el filtro exista antes y no después.
+  const entidades = await activas();
+  const pedida = (await searchParams).entidad;
+  const entidadId =
+    pedida === "sin" ? null : entidades.some((e) => e.id === pedida) ? pedida : undefined;
+
+  const filas = await conCondicion(entidadId);
   const conDeuda = filas.filter((f) => f.comprobantes > 0);
   const deudaTotal = conDeuda.reduce((a, f) => a + f.deuda, 0n);
 

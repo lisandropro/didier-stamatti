@@ -26,7 +26,7 @@ import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
 import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
 import { quienRecibe } from "@/lib/comprobantes/qr";
-import { conCondicion, acordar, olvidar } from "@/lib/comprobantes/condiciones";
+import { conCondicion, acordar, olvidar, sinCondicion } from "@/lib/comprobantes/condiciones";
 import type { CondicionPactada } from "@/lib/comprobantes/condiciones";
 import {
   activas as entidadesActivas,
@@ -221,6 +221,16 @@ export async function debitosDelMes(entidadId?: string | null) {
   }
   const d = await debitosAutomaticos(entidadId);
   return { ok: true as const, cantidad: d.cantidad, total: aTextoPlano(d.total), sinImporte: d.sinImporte };
+}
+
+/** Cuántos proveedores deben plata y todavía no tienen plazo pactado. Es el
+ *  número que conecta la pantalla de pagos con la de proveedores. */
+export async function proveedoresSinPlazo(entidadId?: string | null) {
+  const sesion = await sesionVigente();
+  if (!puedeResponderImportes(sesion)) {
+    return { ok: false as const, error: "No tenés permiso para ver la deuda por proveedor." };
+  }
+  return { ok: true as const, cantidad: await sinCondicion(entidadId) };
 }
 
 export async function vencimientosEntre(desde: string, hasta: string, entidadId?: string | null) {
@@ -703,12 +713,12 @@ export async function leerComprobanteConIA(documentId: string): Promise<Resultad
  * acción que devuelve plata: la deuda de cada proveedor es exactamente el dato
  * que no tiene que llegarle a un teléfono de depósito.
  */
-export async function proveedoresConCondicion() {
+export async function proveedoresConCondicion(entidadId?: string | null) {
   const sesion = await sesionVigente();
   if (!puedeResponderImportes(sesion)) {
     return { ok: false as const, error: "No tenés permiso para ver la deuda por proveedor." };
   }
-  const filas = await conCondicion();
+  const filas = await conCondicion(entidadId);
   // El BigInt no cruza como JSON, igual que en la pantalla de pagos.
   return {
     ok: true as const,

@@ -48,6 +48,7 @@ export default function ListaPagos({
   sinEntidad,
   huerfanos,
   debitos,
+  sinPlazo,
 }: {
   hoy: string;
   deuda: { supplierId: string | null; nombre: string; total: string; cantidad: number; sinImporte: number }[];
@@ -71,6 +72,10 @@ export default function ListaPagos({
    * `null` = no hay ninguno, y entonces no ocupa lugar en la pantalla.
    */
   debitos: { cantidad: number; total: string; sinImporte: number } | null;
+  /** Cuántos proveedores deben plata y no tienen plazo cargado. Es lo que
+   *  conecta esta pantalla con la de Proveedores: sin el enlace, el trabajo de
+   *  allá no se descubre desde acá. */
+  sinPlazo: number;
   /** Y cuáles son. Sin esto la bandeja sería un número que nadie puede bajar. */
   huerfanos: {
     id: string;
@@ -332,22 +337,6 @@ export default function ListaPagos({
               </dd>
             </div>
           )}
-          {debitos && (
-            <div className="pg-resumen-item pg-resumen-debito">
-              <dt>Sale solo</dt>
-              <dd>
-                {debitos.total}
-                <span className="pg-resumen-detalle">
-                  {debitos.cantidad} de débito automático
-                  {debitos.sinImporte > 0 && (
-                    <span className="pg-resumen-incompleto">
-                      {" "}· faltan {debitos.sinImporte} sin importe
-                    </span>
-                  )}
-                </span>
-              </dd>
-            </div>
-          )}
           <div className="pg-resumen-item">
             <dt>Total pendiente</dt>
             <dd>
@@ -365,6 +354,27 @@ export default function ListaPagos({
               </span>
             </dd>
           </div>
+          {/* **Va DESPUÉS del total y dice que está adentro.** La primera
+              versión lo puso al lado, como un casillero más: cualquiera habría
+              sumado los dos y contado la misma plata dos veces. Un resumen
+              donde las partes no se sabe si suman o se contienen es peor que
+              no tener resumen. */}
+          {debitos && (
+            <div className="pg-resumen-item pg-resumen-debito">
+              <dt>De eso, sale solo</dt>
+              <dd>
+                {debitos.total}
+                <span className="pg-resumen-detalle">
+                  {debitos.cantidad} de débito automático · ya está en el total
+                  {debitos.sinImporte > 0 && (
+                    <span className="pg-resumen-incompleto">
+                      {" "}· faltan {debitos.sinImporte} sin importe
+                    </span>
+                  )}
+                </span>
+              </dd>
+            </div>
+          )}
         </dl>
       )}
 
@@ -565,6 +575,18 @@ export default function ListaPagos({
           {bandejas.sinRevisar > 0 && (
             <p className="hint">
               <strong>{bandejas.sinRevisar}</strong> sin revisar la recepción.
+            </p>
+          )}
+
+          {/* **Éste es el enlace que le da sentido al trabajo de Proveedores.**
+              El contador existía y no lo mostraba nadie — la misma falla que
+              este proyecto ya encontró tres veces. Sin esto, la pantalla dice
+              que faltan fechas y no dice dónde se arreglan. */}
+          {sinPlazo > 0 && (
+            <p className="hint">
+              <strong>{sinPlazo}</strong> proveedor{sinPlazo === 1 ? "" : "es"} con deuda y sin
+              plazo de pago cargado.{" "}
+              <Link href="/proveedores">Cargarlos</Link> hace que sus facturas reciban fecha solas.
             </p>
           )}
         </>
