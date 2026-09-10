@@ -20,12 +20,14 @@ import {
   bandejas,
   posiblesDuplicados,
   incompletos,
+  debitosAutomaticos,
 } from "@/lib/comprobantes/pagos";
 import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
 import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
 import { quienRecibe } from "@/lib/comprobantes/qr";
 import { conCondicion, acordar, olvidar } from "@/lib/comprobantes/condiciones";
+import type { CondicionPactada } from "@/lib/comprobantes/condiciones";
 import {
   activas as entidadesActivas,
   todas as todasLasEntidades,
@@ -208,6 +210,17 @@ export async function deudaPorProveedor(entidadId?: string | null) {
     return { ok: false, error: "No tenés permiso para ver importes." };
   }
   return { ok: true, filas: (await porProveedor(entidadId)).map(aFilaDeuda) };
+}
+
+/** Lo que sale solo de la cuenta. Se muestra aparte para que la plata no
+ *  desaparezca de la pantalla al sacarla de la lista de "qué pagar". */
+export async function debitosDelMes(entidadId?: string | null) {
+  const sesion = await sesionVigente();
+  if (!puedeResponderImportes(sesion)) {
+    return { ok: false as const, error: "No tenés permiso para ver importes." };
+  }
+  const d = await debitosAutomaticos(entidadId);
+  return { ok: true as const, cantidad: d.cantidad, total: aTextoPlano(d.total), sinImporte: d.sinImporte };
 }
 
 export async function vencimientosEntre(desde: string, hasta: string, entidadId?: string | null) {
@@ -715,12 +728,21 @@ export async function acordarCondicion(supplierId: string, dias: string) {
   if (!sesion || !canPagar(sesion.role)) {
     return { ok: false as const, error: "No tenés permiso para pactar condiciones de pago." };
   }
-  const n = dias.trim() === "" ? null : Number(dias);
-  if (n != null && !Number.isFinite(n)) {
-    return { ok: false as const, error: "Los días de pago tienen que ser un número." };
+  // El navegador manda texto. `""` es "no hay plazo fijo" y `"debito"` es la
+  // plata que sale sola: las dos son respuestas, no vacíos.
+  const t = dias.trim();
+  let condicion: CondicionPactada;
+  if (t === "") condicion = { estado: "sin-plazo" };
+  else if (t === "debito") condicion = { estado: "debito" };
+  else {
+    const n = Number(t);
+    if (!Number.isFinite(n)) {
+      return { ok: false as const, error: "Los días de pago tienen que ser un número." };
+    }
+    condicion = { estado: "dias", dias: n };
   }
   try {
-    await acordar(supplierId, n, { id: sesion.id, name: sesion.name });
+    await acordar(supplierId, condicion, { id: sesion.id, name: sesion.name });
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
   }

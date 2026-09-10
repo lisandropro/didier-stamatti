@@ -685,3 +685,32 @@ test("el saldo de un proveedor con nota de credito baja", async () => {
   });
   assert.equal((await pagos.porProveedor())[0].total, 60_000_00n);
 });
+
+test("un débito automático NO aparece en qué pagar, pero se cuenta aparte", async () => {
+  // Esta lista contesta "qué pago", y a un débito no lo paga nadie: sale solo.
+  // Pero la plata sale igual, así que no puede desaparecer de la vista — un
+  // total que deja de mostrar plata que se va es peor que no tenerlo.
+  await prisma.supplier.update({
+    where: { id: donAngel },
+    data: { diasPago: null, debitoAutomatico: true, condicionAcordadaAt: new Date() },
+  });
+  const d = await prisma.document.create({
+    data: {
+      kind: "FACTURA", source: "QR", supplierId: donAngel, importeTotal: 164_115_900n,
+      fechaEmision: "2026-07-28",
+    },
+  });
+
+  const enLista = (await pagos.queVence("2000-01-01", "2100-01-01")).filter((x) => x.id === d.id);
+  assert.equal(enLista.length, 0, "nadie lo paga: no va en la lista");
+
+  const enBandeja = (await pagos.sinVencimiento()).filter((x) => x.id === d.id);
+  assert.equal(enBandeja.length, 0, "tampoco se le pide una fecha que no hace falta");
+
+  const enIncompletos = (await pagos.incompletos()).filter((x) => x.id === d.id);
+  assert.equal(enIncompletos.length, 0, "no le falta nada");
+
+  const deb = await pagos.debitosAutomaticos();
+  assert.ok(deb.cantidad >= 1, "pero se cuenta");
+  assert.ok(deb.total >= 164_115_900n, "y su importe se ve");
+});

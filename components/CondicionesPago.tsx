@@ -4,6 +4,11 @@ import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { acordarCondicion, olvidarCondicion } from "@/app/actions/comprobantes";
 import { sumarDias } from "@/lib/dates";
+// El tipo viene del origen y no se copia acá. La primera versión lo repetía, y
+// al agregar el débito automático la copia dejó de compilar — que es la forma
+// barata de descubrir una duplicación. Si se hubieran parecido lo suficiente,
+// habrían seguido separándose en silencio.
+import type { Condicion } from "@/lib/comprobantes/condiciones";
 
 // A cuántos días se le paga a cada proveedor.
 //
@@ -30,11 +35,6 @@ import { sumarDias } from "@/lib/dates";
 // achica, la lista se acorta sola, y lo que queda por hacer es lo que ocupa
 // lugar.
 
-type Condicion =
-  | { estado: "sin-cargar" }
-  | { estado: "dias"; dias: number }
-  | { estado: "sin-plazo" };
-
 export type FilaProveedor = {
   id: string;
   nombre: string;
@@ -59,6 +59,9 @@ const PLAZOS: { valor: string; etiqueta: string; dias?: boolean; ultimoDias?: bo
   { valor: "45", etiqueta: "45", dias: true },
   { valor: "60", etiqueta: "60", dias: true, ultimoDias: true },
   { valor: "", etiqueta: "Sin plazo fijo" },
+  // No es un plazo: es otra forma de pagar. Va último porque es el caso menos
+  // frecuente, pero va —son los servicios y los seguros, todos los meses.
+  { valor: "debito", etiqueta: "Débito automático" },
 ];
 
 export function CondicionesPago({ filas, hoy }: { filas: FilaProveedor[]; hoy: string }) {
@@ -114,7 +117,13 @@ function Fila({ f, hoy }: { f: FilaProveedor; hoy: string }) {
   // estrechamiento de la unión adentro de un callback, y además se lee mejor.
   const cond = f.condicion;
   const elegido =
-    cond.estado === "sin-cargar" ? null : cond.estado === "sin-plazo" ? "" : String(cond.dias);
+    cond.estado === "sin-cargar"
+      ? null
+      : cond.estado === "sin-plazo"
+        ? ""
+        : cond.estado === "debito"
+          ? "debito"
+          : String(cond.dias);
 
   function guardar(dias: string) {
     setError(null);
@@ -247,6 +256,12 @@ function Fila({ f, hoy }: { f: FilaProveedor; hoy: string }) {
           {f.masVieja ? aDiaCorto(f.masVieja) : "—"}.
         </p>
       )}
+      {cond.estado === "debito" && (
+        <p className="cond-efecto">
+          Sale solo de la cuenta. Sus comprobantes no van a aparecer en qué pagar — nadie los
+          paga— pero siguen contando en el costo y en el IVA.
+        </p>
+      )}
 
       {!sinCargar && (
         <p className="cond-firma">
@@ -310,6 +325,7 @@ function OtroPlazo({
 /** Cómo se lee una condición en una línea. */
 function etiquetaDe(c: Condicion): string {
   if (c.estado === "sin-plazo") return "Sin plazo fijo";
+  if (c.estado === "debito") return "Débito automático";
   if (c.estado === "dias") return c.dias === 0 ? "Contado" : `${c.dias} días`;
   return "";
 }

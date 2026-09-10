@@ -95,7 +95,7 @@ test("un proveedor recién creado está SIN CARGAR, no en contado", async () => 
 
 test("contado son CERO días, y es una respuesta cargada", async () => {
   const id = await proveedorCon("MORELLATO", 100n);
-  await cond.acordar(id, 0, ACTOR);
+  await cond.acordar(id, { estado: "dias", dias: 0 }, ACTOR);
   const [f] = (await cond.conCondicion()).filter((x) => x.id === id);
   assert.deepEqual(f.condicion, { estado: "dias", dias: 0 });
   assert.equal(f.acordadaPor, "Aldana", "un acuerdo tiene que decir quién lo hizo");
@@ -106,7 +106,7 @@ test("«sin plazo fijo» NO es lo mismo que sin cargar", async () => {
   // como "sin cargar", la bandeja nunca llegaría a cero y alguien volvería a
   // preguntar lo mismo cada semana.
   const id = await proveedorCon("MORELLATO", 100n);
-  await cond.acordar(id, null, ACTOR);
+  await cond.acordar(id, { estado: "sin-plazo" }, ACTOR);
   const [f] = (await cond.conCondicion()).filter((x) => x.id === id);
   assert.equal(f.condicion.estado, "sin-plazo");
   assert.equal(await cond.sinCondicion(), 0, "ya no falta cargarlo");
@@ -116,7 +116,7 @@ test("borrar devuelve el proveedor a sin cargar", async () => {
   // Cargar mal es fácil. Si no se pudiera volver atrás, la respuesta a la duda
   // sería dejar cualquier cosa.
   const id = await proveedorCon("MORELLATO", 100n);
-  await cond.acordar(id, 30, ACTOR);
+  await cond.acordar(id, { estado: "dias", dias: 30 }, ACTOR);
   await cond.olvidar(id);
   const [f] = (await cond.conCondicion()).filter((x) => x.id === id);
   assert.equal(f.condicion.estado, "sin-cargar");
@@ -125,8 +125,8 @@ test("borrar devuelve el proveedor a sin cargar", async () => {
 
 test("un plazo imposible se rechaza en vez de guardarse", async () => {
   const id = await proveedorCon("MORELLATO", 100n);
-  await assert.rejects(() => cond.acordar(id, -5, ACTOR), /0 a 365/);
-  await assert.rejects(() => cond.acordar(id, 3000, ACTOR), /0 a 365/);
+  await assert.rejects(() => cond.acordar(id, { estado: "dias", dias: -5 }, ACTOR), /0 a 365/);
+  await assert.rejects(() => cond.acordar(id, { estado: "dias", dias: 3000 }, ACTOR), /0 a 365/);
   const [f] = (await cond.conCondicion()).filter((x) => x.id === id);
   assert.equal(f.condicion.estado, "sin-cargar", "un rechazo no puede dejar rastro");
 });
@@ -199,7 +199,7 @@ test("primero los que faltan, después los cargados, al final los sin deuda", as
   const chico = await proveedorCon("CHICO", 1_000n);
   const grande = await proveedorCon("GRANDE", 900_000n);
   const cargado = await proveedorCon("CARGADO", 500_000n);
-  await cond.acordar(cargado, 30, ACTOR);
+  await cond.acordar(cargado, { estado: "dias", dias: 30 }, ACTOR);
   const vacio = await prisma.supplier.create({ data: { name: "SIN DEUDA" } });
 
   const orden = (await cond.conCondicion()).map((f) => f.id);
@@ -217,7 +217,7 @@ test("la bandeja cuenta sólo a los que deben plata", async () => {
 test("cargar el plazo baja la bandeja", async () => {
   const id = await proveedorCon("MORELLATO", 1_000n);
   assert.equal(await cond.sinCondicion(), 1);
-  await cond.acordar(id, 30, ACTOR);
+  await cond.acordar(id, { estado: "dias", dias: 30 }, ACTOR);
   assert.equal(await cond.sinCondicion(), 0);
 });
 
@@ -249,4 +249,37 @@ test("una factura de CERO pesos es un cero de verdad, no un dato que falta", asy
   const [f] = (await cond.conCondicion()).filter((x) => x.id === p.id);
   assert.equal(f.deuda, 0n);
   assert.equal(f.sinImporte, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Débito automático
+// ---------------------------------------------------------------------------
+
+test("el débito automático es un cuarto estado, no un plazo de cero días", async () => {
+  // Lo trajo un caso real: Seguros Rivadavia debita todos los meses el seguro
+  // de los vehículos. No es "contado" —nadie paga nada— y ponerlo como contado
+  // lo mostraría vencido cada mes, pidiendo una decisión que no existe.
+  const id = await proveedorCon("SEGUROS RIVADAVIA", 1_641_159_00n);
+  await cond.acordar(id, { estado: "debito" }, ACTOR);
+  const [f] = (await cond.conCondicion()).filter((x) => x.id === id);
+  assert.deepEqual(f.condicion, { estado: "debito" });
+  assert.equal(await cond.sinCondicion(), 0, "es una respuesta: baja la bandeja");
+});
+
+test("un proveedor de débito pasa a plazo y deja de ser débito", async () => {
+  // Si `debitoAutomatico` no se limpiara al cambiar, quedaría un proveedor a 30
+  // días que igual desaparece de la lista de pagos, y nadie entendería por qué.
+  const id = await proveedorCon("SEGUROS RIVADAVIA", 100n);
+  await cond.acordar(id, { estado: "debito" }, ACTOR);
+  await cond.acordar(id, { estado: "dias", dias: 30 }, ACTOR);
+  const [f] = (await cond.conCondicion()).filter((x) => x.id === id);
+  assert.deepEqual(f.condicion, { estado: "dias", dias: 30 });
+});
+
+test("borrar limpia también el débito automático", async () => {
+  const id = await proveedorCon("SEGUROS RIVADAVIA", 100n);
+  await cond.acordar(id, { estado: "debito" }, ACTOR);
+  await cond.olvidar(id);
+  const [f] = (await cond.conCondicion()).filter((x) => x.id === id);
+  assert.equal(f.condicion.estado, "sin-cargar");
 });

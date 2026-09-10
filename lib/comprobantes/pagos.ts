@@ -56,6 +56,8 @@ export type DocumentoAPagar = {
    * la nueva.
    */
   propuesto: string | null;
+  /** El proveedor debita solo: nadie paga esto a mano. */
+  debitoAutomatico: boolean;
   kind: string;
 };
 
@@ -192,6 +194,10 @@ export async function queVence(
 
   return docs
     .map(aDocumentoAPagar)
+    // **Los débitos automáticos no entran.** Esta lista contesta "qué pago", y
+    // a eso no lo paga nadie: sale solo. Mostrarlo sería pedir una decisión que
+    // no existe, y una lista con cosas que no se hacen se deja de leer.
+    .filter((d) => !d.debitoAutomatico)
     .filter((d) => {
       const f = fechaDePagoEsperada(d);
       return f != null && f >= desde && f <= hasta;
@@ -227,7 +233,43 @@ export async function sinVencimiento(): Promise<DocumentoAPagar[]> {
     include: { supplier: true },
     orderBy: { fechaEmision: "asc" },
   });
-  return docs.map(aDocumentoAPagar).filter((d) => fechaDePagoEsperada(d) == null);
+  return docs
+    .map(aDocumentoAPagar)
+    .filter((d) => !d.debitoAutomatico && fechaDePagoEsperada(d) == null);
+}
+
+/**
+ * Lo que sale solo de la cuenta: seguros, leasing, luz, gas, internet.
+ *
+ * **Se cuenta aparte, no se esconde.** Sus comprobantes salen de las listas de
+ * "qué pagar" porque nadie los paga, pero la plata sale igual — y un total que
+ * deja de mostrar plata que se va es exactamente la clase de número que este
+ * proyecto no quiere. Va como una línea al lado del resto.
+ *
+ * Hoy nadie cruza el débito contra la factura: se ve en el extracto y se asume
+ * que está bien. Eso lo resolvería la conciliación bancaria, que ya está en el
+ * esquema y todavía no la usa nadie.
+ */
+export async function debitosAutomaticos(
+  entidadId?: string | null,
+): Promise<{ cantidad: number; total: bigint; sinImporte: number }> {
+  const docs = await db.document.findMany({
+    where: {
+      deletedAt: null,
+      pagadoAt: null,
+      kind: { notIn: [...NO_SE_PAGAN] },
+      supplier: { debitoAutomatico: true, condicionAcordadaAt: { not: null } },
+      ...filtroDeEntidad(entidadId),
+    },
+    select: { importeTotal: true, kind: true },
+  });
+  let total = 0n;
+  let sinImporte = 0;
+  for (const d of docs) {
+    if (d.importeTotal == null) sinImporte += 1;
+    else total += aporteAlSaldo(d.kind, d.importeTotal);
+  }
+  return { cantidad: docs.length, total, sinImporte };
 }
 
 function aDocumentoAPagar(d: {
@@ -236,19 +278,28 @@ function aDocumentoAPagar(d: {
   fechaEmision: string | null;
   importeTotal: bigint | null;
   kind: string;
-  supplier: { name: string; diasPago: number | null; condicionAcordadaAt: Date | null } | null;
+  supplier: {
+    name: string;
+    diasPago: number | null;
+    debitoAutomatico: boolean;
+    condicionAcordadaAt: Date | null;
+  } | null;
 }): DocumentoAPagar {
   // Sólo se propone si la condición se PACTÓ. Un proveedor sin cargar tiene
   // `diasPago` en NULL igual que uno que se paga cuando se puede, y proponer
   // sobre el primero sería inventar un vencimiento que nadie acordó.
   const acordada = d.supplier?.condicionAcordadaAt != null;
+  const debito = acordada && d.supplier?.debitoAutomatico === true;
   return {
     id: d.id,
+    debitoAutomatico: debito,
     nombre: d.supplier?.name ?? "Sin proveedor",
     importeTotal: d.importeTotal,
     vencimiento: d.vencimiento,
+    // Un débito automático no tiene fecha que proponer: no hay nada que
+    // decidir, la plata sale sola.
     propuesto:
-      d.vencimiento == null && acordada
+      d.vencimiento == null && acordada && !debito
         ? proponerVencimiento(d.fechaEmision, d.supplier?.diasPago ?? null)
         : null,
     kind: d.kind,
@@ -542,7 +593,7 @@ export async function incompletos(): Promise<Incompleto[]> {
       // Sin esta línea, cargar la condición de un proveedor no sacaría sus
       // facturas de la lista de incompletos, y la pantalla seguiría pidiendo un
       // dato que ya tiene.
-      if (fechaDePagoEsperada(base) == null) falta.push("vencimiento");
+      if (!base.debitoAutomatico && fechaDePagoEsperada(base) == null) falta.push("vencimiento");
       return { ...base, falta };
     })
     // El `OR` de la consulta es un prefiltro: trae los que tienen la columna

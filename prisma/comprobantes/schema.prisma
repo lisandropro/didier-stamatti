@@ -70,12 +70,24 @@ model Supplier {
   //   acordadaAt + diasPago 0            → contado, se paga contra entrega
   //   acordadaAt + diasPago N            → a N días
   //   acordadaAt + diasPago NULL         → se acordó que NO hay plazo fijo
+  //   acordadaAt + debitoAutomatico      → la plata sale sola de la cuenta
   //
   // El comentario anterior decía que NULL era "contado o no se sabe". Son dos
   // cosas distintas: contado es cero días y una decisión tomada; no se sabe es
   // un hueco. Confundirlas hacía que un proveedor de contado y uno sin cargar
   // se vieran igual, que es justo lo que esta pantalla viene a resolver.
   diasPago  Int?
+  /// **La plata sale sola de la cuenta**: seguros, leasing, luz, gas, internet.
+  ///
+  /// No es un plazo, es otra forma de pagar, y por eso no es un `diasPago` más:
+  /// no hay fecha que proponer porque no hay nada que decidir. Sus comprobantes
+  /// salen de las listas de "qué pagar" —nadie los paga— pero se cuentan
+  /// aparte, porque la plata sale igual y el IVA sigue siendo crédito fiscal.
+  ///
+  /// Hoy nadie cruza el débito contra la factura: se ve en el extracto y se
+  /// asume que está bien. Eso es lo que resolvería la conciliación bancaria,
+  /// que ya está en este esquema y todavía no la usa nadie.
+  debitoAutomatico Boolean @default(false)
   /// Cuándo se registró la condición. NULL = nadie la cargó todavía.
   condicionAcordadaAt DateTime?
   /// Quién la registró. Va el nombre al lado del id, como en `DocumentChange`:

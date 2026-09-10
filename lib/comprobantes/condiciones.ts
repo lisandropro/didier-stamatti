@@ -29,17 +29,25 @@ import { aporteAlSaldo, NO_SE_PAGAN } from "./politica";
  *   - `sin-plazo`   — se preguntó y la respuesta es que no hay plazo fijo: se
  *                     paga cuando se puede. **No es lo mismo que no saber**, y
  *                     mezclarlos haría que la pantalla nunca se vacíe.
+ *   - `debito`      — la plata sale sola de la cuenta. No es un plazo: es otra
+ *                     forma de pagar, y nadie decide nada. Sus comprobantes no
+ *                     van a la lista de "qué pagar".
  */
-export type Condicion =
-  | { estado: "sin-cargar" }
+export type Condicion = { estado: "sin-cargar" } | CondicionPactada;
+
+/** Lo que se puede acordar. `sin-cargar` no está: no es una respuesta. */
+export type CondicionPactada =
   | { estado: "dias"; dias: number }
-  | { estado: "sin-plazo" };
+  | { estado: "sin-plazo" }
+  | { estado: "debito" };
 
 export function condicionDe(p: {
   diasPago: number | null;
+  debitoAutomatico: boolean;
   condicionAcordadaAt: Date | null;
 }): Condicion {
   if (p.condicionAcordadaAt == null) return { estado: "sin-cargar" };
+  if (p.debitoAutomatico) return { estado: "debito" };
   if (p.diasPago == null) return { estado: "sin-plazo" };
   return { estado: "dias", dias: p.diasPago };
 }
@@ -159,10 +167,10 @@ export async function conCondicion(entidadId?: string | null): Promise<Proveedor
  */
 export async function acordar(
   supplierId: string,
-  dias: number | null,
+  c: CondicionPactada,
   actor: { id: string; name: string },
 ): Promise<void> {
-  if (dias != null && (!Number.isInteger(dias) || dias < 0 || dias > 365)) {
+  if (c.estado === "dias" && (!Number.isInteger(c.dias) || c.dias < 0 || c.dias > 365)) {
     // 365 es un tope de sanidad, no una regla del negocio: atrapa el dedo que
     // escribe 3000 y deja pasar cualquier plazo real.
     throw new Error("Los días de pago van de 0 a 365.");
@@ -170,7 +178,8 @@ export async function acordar(
   await db.supplier.update({
     where: { id: supplierId },
     data: {
-      diasPago: dias,
+      diasPago: c.estado === "dias" ? c.dias : null,
+      debitoAutomatico: c.estado === "debito",
       condicionAcordadaAt: new Date(),
       condicionAcordadaPorId: actor.id,
       condicionAcordadaPorName: actor.name,
@@ -188,6 +197,7 @@ export async function olvidar(supplierId: string): Promise<void> {
     where: { id: supplierId },
     data: {
       diasPago: null,
+      debitoAutomatico: false,
       condicionAcordadaAt: null,
       condicionAcordadaPorId: null,
       condicionAcordadaPorName: null,

@@ -47,6 +47,7 @@ export default function ListaPagos({
   entidadElegida,
   sinEntidad,
   huerfanos,
+  debitos,
 }: {
   hoy: string;
   deuda: { supplierId: string | null; nombre: string; total: string; cantidad: number; sinImporte: number }[];
@@ -60,6 +61,16 @@ export default function ListaPagos({
   entidadElegida: string;
   /** Cuántos comprobantes quedaron sin entidad asignada. */
   sinEntidad: number;
+  /**
+   * Lo que sale solo de la cuenta: seguros, leasing, luz, gas, internet.
+   *
+   * **Se muestra aunque no esté en la lista.** Sus comprobantes no van en "qué
+   * pagar" porque nadie los paga, pero la plata sale igual, y un total que deja
+   * de mostrar plata que se va es peor que no tener el total.
+   *
+   * `null` = no hay ninguno, y entonces no ocupa lugar en la pantalla.
+   */
+  debitos: { cantidad: number; total: string; sinImporte: number } | null;
   /** Y cuáles son. Sin esto la bandeja sería un número que nadie puede bajar. */
   huerfanos: {
     id: string;
@@ -317,6 +328,22 @@ export default function ListaPagos({
                 {formatear(resumen.semana.total)}
                 <span className="pg-resumen-detalle">
                   {resumen.semana.cantidad} comprobante{resumen.semana.cantidad === 1 ? "" : "s"}
+                </span>
+              </dd>
+            </div>
+          )}
+          {debitos && (
+            <div className="pg-resumen-item pg-resumen-debito">
+              <dt>Sale solo</dt>
+              <dd>
+                {debitos.total}
+                <span className="pg-resumen-detalle">
+                  {debitos.cantidad} de débito automático
+                  {debitos.sinImporte > 0 && (
+                    <span className="pg-resumen-incompleto">
+                      {" "}· faltan {debitos.sinImporte} sin importe
+                    </span>
+                  )}
                 </span>
               </dd>
             </div>

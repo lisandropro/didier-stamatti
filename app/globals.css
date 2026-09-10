@@ -1973,6 +1973,9 @@ tbody tr:hover{background:var(--surface-2)}
 /* Un total al que le faltan comprobantes sin importe es un número más chico que
    la deuda real. Se avisa donde se lee el número, no en una nota al pie. */
 .pg-resumen-incompleto{color:var(--warn)}
+/* Lo que sale solo: información, no tarea. Se muestra apagado porque nadie
+   tiene que hacer nada con esto — pero se muestra, porque la plata sale. */
+.pg-resumen-debito dt, .pg-resumen-debito dd{color:var(--muted)}
 
 @media (max-width: 560px){
   /* Los tres en fila no entran; en columna cada uno conserva su renglón y el

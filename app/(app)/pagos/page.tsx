@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { canVerImportes } from "@/lib/permissions";
-import { deudaPorProveedor, vencimientosEntre, pendientes } from "@/app/actions/comprobantes";
+import {
+  deudaPorProveedor,
+  vencimientosEntre,
+  pendientes,
+  debitosDelMes,
+} from "@/app/actions/comprobantes";
 import { activas } from "@/lib/comprobantes/entidades";
 import { hoy, sumarDias } from "@/lib/dates";
 import ListaPagos from "./lista-pagos";
@@ -48,10 +53,11 @@ export default async function PagosPage({
   const desde = sumarDias(hoy(), -365);
   const hasta = sumarDias(hoy(), 60);
 
-  const [deuda, vencen, pend] = await Promise.all([
+  const [deuda, vencen, pend, debitos] = await Promise.all([
     deudaPorProveedor(entidadId),
     vencimientosEntre(desde, hasta, entidadId),
     pendientes(),
+    debitosDelMes(entidadId),
   ]);
 
   return (
@@ -66,6 +72,11 @@ export default async function PagosPage({
       entidadElegida={pedida === "sin" ? "sin" : (entidadId ?? "")}
       sinEntidad={pend.sinEntidad ?? 0}
       huerfanos={pend.huerfanos ?? []}
+      debitos={
+        debitos.ok && debitos.cantidad > 0
+          ? { cantidad: debitos.cantidad, total: debitos.total, sinImporte: debitos.sinImporte }
+          : null
+      }
     />
   );
 }
