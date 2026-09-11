@@ -50,6 +50,8 @@ const ESPERADO = {
   // Gestionar sigue siendo solo de la administradora.
   RECEPCION: { enviar: true, gestionar: false },
   PAGOS: { enviar: true, gestionar: false },
+  // Dirección manda sugerencias como cualquiera, pero no gestiona la app.
+  DIRECCION: { enviar: true, gestionar: false },
 } as const;
 
 for (const rol of Object.keys(ESPERADO) as (keyof typeof ESPERADO)[]) {

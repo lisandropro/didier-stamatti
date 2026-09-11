@@ -9,6 +9,7 @@ import {
   canCapturarComprobantes,
   canVerImportes,
   canPagar,
+  canVerMargen,
 } from "@/lib/permissions";
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 import { NavPending } from "@/components/NavPending";
@@ -59,6 +60,13 @@ const ICONO_PAGOS = (
     <path d="M4 6h16v12H4z" /><path d="M4 10h16" /><path d="M8 14.5h4" />
   </svg>
 );
+/** Un billete: acá se mira lo que entra, no lo que sale. */
+const ICONO_INGRESOS = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <rect x="2.5" y="6.5" width="19" height="11" rx="2" /><circle cx="12" cy="12" r="2.6" />
+    <path d="M6 12h.01M18 12h.01" />
+  </svg>
+);
 /** Un camión de reparto: el proveedor es el que trae, no el que factura. */
 const ICONO_PROVEEDORES = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -107,6 +115,12 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
     // queda sin cargar para siempre.
     ...(canPagar(user.role)
       ? [{ href: "/proveedores", label: "Proveedores", icon: ICONO_PROVEEDORES }]
+      : []),
+    // El permiso más cerrado del sistema: ADMIN y DIRECCION. Quien paga
+    // proveedores no ve lo que se le cobra al cliente — no lo necesita, y es
+    // más sensible que la deuda.
+    ...(canVerMargen(user.role)
+      ? [{ href: "/ingresos", label: "Ingresos", icon: ICONO_INGRESOS }]
       : []),
     ...NAV_AVISOS,
     ...(canManageSuggestions(user.role) ? ADMIN_NAV : []),

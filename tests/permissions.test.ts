@@ -21,6 +21,19 @@ import {
  * que NO deja hacer. Si mañana alguien afloja una comprobación, esto lo frena.
  */
 const MATRIZ = {
+  // **Dirección es un rol de plata, no de operación.** Ve la empresa —precios,
+  // márgenes, deuda— y no toca el trabajo: ni pedidos, ni períodos, ni stock,
+  // ni usuarios. Existe porque la alternativa era hacer ADMIN a un socio, y
+  // ADMIN puede crear y borrar usuarios.
+  DIRECCION: {
+    canView: true,
+    canEditOrders: false,
+    canManagePeriods: false,
+    canEditStock: false,
+    canManageCatalog: false,
+    canManageUsers: false,
+    canSetResponsable: false,
+  },
   ADMIN: {
     canView: true,
     canEditOrders: true,
@@ -174,4 +187,35 @@ test("sin destinatarios prioritarios, el orden queda como estaba", () => {
     { id: "2", role: "ARMADOR" },
   ];
   assert.deepEqual(sortByNotificationPriority(entrada), entrada);
+});
+
+// --- El precio pactado: el permiso más cerrado ---------------------------------
+
+test("quien paga proveedores NO ve lo que se le cobra al cliente", async () => {
+  // Es la razón de ser del rol DIRECCION. Lo que se le cobra a un cliente dice
+  // cuánto gana la empresa por evento; quien paga proveedores no lo necesita
+  // para hacer su trabajo. Si alguna vez `canVerMargen` incluyera a PAGOS,
+  // esta prueba lo frena.
+  const { canVerMargen } = await import("../lib/permissions");
+  assert.equal(canVerMargen("PAGOS"), false);
+  assert.equal(canVerMargen("RECEPCION"), false);
+  assert.equal(canVerMargen("ARMADOR"), false);
+  assert.equal(canVerMargen("LOGISTICA"), false);
+  assert.equal(canVerMargen("ADMIN"), true);
+  assert.equal(canVerMargen("DIRECCION"), true);
+  assert.equal(canVerMargen(""), false);
+  assert.equal(canVerMargen("SUPERUSUARIO"), false);
+});
+
+test("DIRECCION es exactamente PAGOS más el margen", async () => {
+  // Si fuera menos, darle ese rol a quien hoy paga le sacaría algo que ya
+  // hacía. Si fuera más, sería un ADMIN encubierto.
+  const { canVerImportes, canPagar, canVerMargen, canManageUsers, canAdministrarComprobantes } =
+    await import("../lib/permissions");
+  assert.equal(canVerImportes("DIRECCION"), true);
+  assert.equal(canPagar("DIRECCION"), true);
+  assert.equal(canVerMargen("DIRECCION"), true);
+  // Y nada de administración.
+  assert.equal(canManageUsers("DIRECCION"), false);
+  assert.equal(canAdministrarComprobantes("DIRECCION"), false);
 });

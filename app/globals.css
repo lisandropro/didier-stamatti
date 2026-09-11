@@ -1,13 +1,25 @@
 @import "tailwindcss";
 
 /* ===== Design tokens — Didier Stamatti (B&N + dorado sobrio) ===== */
+/* --muted y --warn son texto, no decoración: los usa .hint, .rubro, th, .chip
+   y los bloques de aviso, casi siempre a --t-sm (12,5px). Ahí no corre la
+   excepción de "texto grande" de WCAG, así que el piso es 4,5:1 y se mide
+   contra el fondo MÁS OSCURO sobre el que cae cada uno, no contra el blanco:
+     --muted  → --surface-2 #F3F2EF (4,81) y --brand-soft #EEECE7 (4,57)
+     --warn   → --warn-soft #F6ECD8 (4,62)
+   Los dos venían fallando (muted 4,05 sobre --surface-2; warn 3,23 sobre
+   --warn-soft). Se corrigió bajando solo la luminosidad: el tono y la
+   saturación quedaron donde estaban, para no enfriar el gris cálido ni
+   apagar el dorado. Aclarar --warn-soft no servía: de L91% a L97% el
+   contraste sube 0,2 y el techo lo pone el blanco — el trabajo lo tiene que
+   hacer el texto. El bloque oscuro ya pasaba con holgura y no se tocó. */
 :root{
   --ground:#FBFAF8; --surface:#FFFFFF; --surface-2:#F3F2EF;
-  --ink:#141312; --muted:#79766F; --hair:#E7E4DE;
+  --ink:#141312; --muted:#6D6A64; --hair:#E7E4DE;
   --brand:#141312; --brand-strong:#000000; --brand-soft:#EEECE7; --on-brand:#FFFFFF;
   --gold:#A8813E;
   --ok:#2E7D50; --ok-soft:#E6F0E9;
-  --warn:#B0781E; --warn-soft:#F6ECD8;
+  --warn:#8E6118; --warn-soft:#F6ECD8;
   --crit:#B23A28; --crit-soft:#F7E4DF;
   --shadow:0 1px 2px rgba(20,19,18,.05),0 6px 20px rgba(20,19,18,.06);
   --shadow-lift:0 2px 4px rgba(20,19,18,.06),0 12px 28px rgba(20,19,18,.10);
@@ -271,8 +283,9 @@ tbody tr:hover{background:var(--surface-2)}
 .modal .msub{margin-bottom:var(--sp-5)}
 /* Adentro de un bloque de color el subtítulo se apaga por peso, no por gris:
    gris sobre fondo de color se ve lavado (la misma razón que .imp-linea). Y
-   bajarle opacidad lo empeoraría todavía más: el par --warn sobre --warn-soft
-   ya está en 3,2:1. Hereda el color del bloque y no se toca. */
+   bajarle opacidad lo volvería a romper: --warn sobre --warn-soft quedó en
+   4,62:1, que pasa AA pero sin sobra para regalar. Hereda el color del
+   bloque y no se toca. */
 .imp-conflictos .msub,
 .pg-alerta .msub,
 .revision .msub,
@@ -2102,4 +2115,104 @@ tbody tr:hover{background:var(--surface-2)}
 .pg-propuesto abbr{
   font-size:var(--t-xs); text-decoration:none; border-bottom:1px dotted currentColor;
   cursor:help;
+}
+
+/* ---------------------------------------------------------------------------
+   Ingresos — lo que se le cobró al cliente por cada evento
+   ---------------------------------------------------------------------------
+   La mitad que faltaba del margen. Como en Proveedores, es una lista de
+   trabajo: lo cargado se muestra en una línea y lo que falta es lo que ocupa
+   lugar. */
+
+.ing{display:flex; flex-direction:column; gap:var(--sp-4)}
+.ing-avance{margin:0; font-size:var(--t-sm); color:var(--muted)}
+.ing-lista{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
+
+.ing-fila{
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-4); display:flex; align-items:center; justify-content:space-between;
+  gap:var(--sp-4); flex-wrap:wrap;
+}
+.ing-hecha{background:var(--surface-2)}
+.ing-abierta{flex-direction:column; align-items:stretch; gap:var(--sp-4)}
+
+.ing-quien{display:flex; flex-direction:column; gap:2px; min-width:0}
+.ing-nombre{font-size:var(--t-base); font-weight:600; color:var(--ink); word-break:break-word}
+.ing-sub{font-size:var(--t-sm); color:var(--muted)}
+/* Los invitados NO son los comensales que se facturan. Van apagados y con el
+   nombre puesto, para que nadie los copie en el campo equivocado. */
+.ing-invitados{opacity:.8}
+
+.ing-plata{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap}
+.ing-neto{font-size:var(--t-lg); font-weight:650; color:var(--ink); font-variant-numeric:tabular-nums}
+.ing-detalle{font-size:var(--t-sm); color:var(--muted)}
+.ing-pendiente{color:var(--warn)}
+.ing-sinprecio{font-size:var(--t-sm); color:var(--muted); font-style:italic}
+
+.ing-editar{
+  background:none; border:none; padding:0; cursor:pointer;
+  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
+}
+.ing-editar:hover{color:var(--ink)}
+
+.ing-campos{display:flex; gap:var(--sp-4); flex-wrap:wrap}
+.ing-campos .field{flex:1; min-width:200px; margin-bottom:0}
+.ing-ayuda{
+  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted);
+  line-height:1.45; max-width:62ch;
+}
+
+.ing-iva{border:none; margin:0; padding:0}
+.ing-iva legend{
+  font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.07em;
+  color:var(--muted); font-weight:600; margin-bottom:var(--sp-2); padding:0;
+}
+.ing-opciones{display:flex; gap:var(--sp-2); flex-wrap:wrap}
+.ing-op{
+  min-height:var(--tap); padding:0 var(--sp-4);
+  border:1px solid var(--hair); border-radius:var(--r-pill);
+  background:var(--surface); color:var(--ink);
+  font-size:var(--t-sm); font-weight:500; cursor:pointer;
+}
+.ing-op:hover{background:var(--surface-2)}
+.ing-op:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.ing-op-on{background:var(--brand); border-color:var(--brand); color:var(--on-brand); font-weight:650}
+
+.ing-extras{display:flex; flex-direction:column; gap:var(--sp-2)}
+.ing-extras-titulo{
+  font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.07em;
+  color:var(--muted); font-weight:600;
+}
+.ing-extra{display:flex; gap:var(--sp-2); align-items:center; flex-wrap:wrap}
+.ing-extra input{
+  min-height:var(--tap); padding:0 var(--sp-3); flex:1; min-width:140px;
+  border:1px solid var(--hair); border-radius:var(--r-sm);
+  background:var(--surface); color:var(--ink); font-size:var(--t-sm);
+}
+.ing-extra input:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
+.ing-quitar{
+  background:none; border:none; padding:0 var(--sp-2); cursor:pointer;
+  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
+}
+.ing-quitar:hover{color:var(--crit)}
+
+.ing-acciones{display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap}
+.ing-borrar{
+  background:none; border:none; padding:0; cursor:pointer;
+  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
+}
+.ing-borrar:hover:not(:disabled){color:var(--crit)}
+.ing-firma{font-size:var(--t-xs); color:var(--muted)}
+.ing-error{margin:0; font-size:var(--t-sm); color:var(--crit)}
+
+.ing-vacio{
+  border:1px dashed var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-6); text-align:center; max-width:60ch; margin:0 auto;
+}
+.ing-vacio h2{margin:0 0 var(--sp-2); font-size:var(--t-lg); color:var(--ink)}
+.ing-vacio p{margin:0; font-size:var(--t-sm); color:var(--muted); line-height:1.5}
+
+@media (max-width:560px){
+  .ing-fila{flex-direction:column; align-items:stretch}
+  .ing-campos{flex-direction:column; gap:var(--sp-3)}
 }

@@ -43,6 +43,7 @@ model Entidad {
   deletedAt DateTime?
 
   documents Document[]
+  ingresos  EventoIngreso[]
 }
 
 // Un proveedor. El CUIT es la identidad real; el nombre en el papel varía
@@ -435,4 +436,73 @@ model BankImport {
   createdAt DateTime @default(now())
 
   @@index([accountId, createdAt])
+}
+
+// ===========================================================================
+// El otro lado del margen: lo que se le cobra al cliente
+// ===========================================================================
+
+/// Lo pactado con el cliente por un evento.
+///
+/// **Por qué vive acá y no en `Event`.** El evento está en la base del stock,
+/// cuyo respaldo retiene 14 días porque los pedidos se resetean. Esto es plata,
+/// y la plata se conserva años — el mismo motivo por el que los comprobantes
+/// tienen su propia base. Además el margen se calcula donde están los costos.
+///
+/// **`eventoId` NO es una clave foránea**: cruza bases, como los ids de usuario
+/// que ya viajan con el nombre al lado. Por eso se copian `lugar` y `fecha`: la
+/// fila se tiene que poder leer sola, y si alguien borra el evento del pedido
+/// el registro de lo que se cobró no puede desaparecer con él.
+///
+/// **El ingreso es lo PACTADO, no lo cobrado.** Es lo que contesta si el evento
+/// fue buen negocio; si el cliente pagó o no es otra pregunta, y mezclarlas
+/// haría que un evento excelente todavía impago diera margen negativo.
+model EventoIngreso {
+  id       String @id @default(cuid())
+  eventoId String @unique
+  /// Copiados del evento al guardar, para que esta fila se lea sola.
+  lugar    String
+  fecha    String // "AAAA-MM-DD"
+
+  /// A nombre de qué contribuyente se factura. Sin esto, el margen mezclaría
+  /// dos empresas, igual que lo haría la deuda.
+  entidadId String?
+  entidad   Entidad? @relation(fields: [entidadId], references: [id])
+
+  /// CENTAVOS. El precio del cubierto.
+  precioPorPersona BigInt?
+  /// **Por cuántos se cobra**, que NO es la cantidad de invitados del evento.
+  /// Es un mínimo garantizado: si vienen menos, se cobra igual lo presupuestado.
+  /// Confundirlo con `Event.guests` daría un ingreso más chico que el real.
+  comensales Int?
+  /// Si el precio pactado ya tiene el IVA adentro. Depende del cliente: a una
+  /// empresa se le factura A con IVA discriminado, a un particular B con el IVA
+  /// incluido. NULL = nadie contestó todavía, que no es lo mismo que "no".
+  conIva Boolean?
+
+  extras EventoExtra[]
+
+  /// Quién lo cargó y cuándo. Un precio pactado es una decisión de alguien.
+  cargadoPorId   String?
+  cargadoPorName String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([fecha])
+}
+
+/// Un extra de importe fijo: los kioscos, o algo puntual que pidió el cliente.
+///
+/// Es una tabla y no un campo "extras" con un número, porque puede haber varios
+/// y cada uno tiene su precio. Un solo total perdería qué se cobró.
+model EventoExtra {
+  id          String        @id @default(cuid())
+  ingresoId   String
+  ingreso     EventoIngreso @relation(fields: [ingresoId], references: [id], onDelete: Cascade)
+  descripcion String
+  /// CENTAVOS, fijo: no depende de la cantidad de gente.
+  importe     BigInt
+  orden       Int           @default(0)
+
+  @@index([ingresoId, orden])
 }

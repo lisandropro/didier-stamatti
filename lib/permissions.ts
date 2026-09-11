@@ -8,11 +8,12 @@
 // REGLA: esconder un botón NO es un permiso. Toda acción que escribe algo tiene
 // que llamar a la comprobación que corresponde, del lado del servidor.
 
-export const ROLES = ["ADMIN", "ARMADOR", "LOGISTICA", "RECEPCION", "PAGOS"] as const;
+export const ROLES = ["ADMIN", "DIRECCION", "ARMADOR", "LOGISTICA", "RECEPCION", "PAGOS"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Administradora",
+  DIRECCION: "Dirección",
   ARMADOR: "Armador/a",
   LOGISTICA: "Encargado de logística",
   RECEPCION: "Recepción de mercadería",
@@ -22,6 +23,7 @@ export const ROLE_LABEL: Record<string, string> = {
 /** Descripción corta para la pantalla de Usuarios. */
 export const ROLE_HELP: Record<string, string> = {
   ADMIN: "Control total",
+  DIRECCION: "Todo lo de Pagos, más los precios de los eventos y el margen",
   ARMADOR: "Arma pedidos",
   LOGISTICA: "Mira todo y cambia el responsable de la fiesta",
   RECEPCION: "Fotografía los comprobantes que llegan",
@@ -128,12 +130,33 @@ export function canCapturarComprobantes(role: string): boolean {
  *  Es lo que hace aceptable meter un módulo de plata dentro de una app que usa
  *  todo el equipo: compartir base de datos no es compartir visibilidad. */
 export function canVerImportes(role: string): boolean {
-  return role === "ADMIN" || role === "PAGOS";
+  return role === "ADMIN" || role === "PAGOS" || role === "DIRECCION";
 }
 
-/** Cargar el vencimiento del papel y marcar comprobantes como pagados. */
+/** Cargar el vencimiento del papel y marcar comprobantes como pagados.
+ *
+ *  Dirección entra acá a propósito: quien dirige la empresa es hoy una de las
+ *  personas que efectivamente paga. Si `DIRECCION` no incluyera esto, darle ese
+ *  rol le sacaría algo que ya hacía. */
 export function canPagar(role: string): boolean {
-  return role === "ADMIN" || role === "PAGOS";
+  return role === "ADMIN" || role === "PAGOS" || role === "DIRECCION";
+}
+
+/**
+ * Ver y cargar el **precio pactado de un evento**, y con él el margen.
+ *
+ * **Es el permiso más cerrado del sistema, y a propósito.** Lo que se le cobra
+ * a un cliente es más sensible que lo que se le debe a un proveedor: dice
+ * cuánto gana la empresa por evento. Quien paga proveedores no necesita saberlo
+ * para hacer su trabajo, así que `PAGOS` queda afuera.
+ *
+ * `DIRECCION` es exactamente `PAGOS` más esto. Existe como rol propio porque
+ * la alternativa era hacer ADMIN a un socio, y ADMIN puede además crear y
+ * borrar usuarios, cambiar entidades e importar del fisco — bastante más de lo
+ * que hace falta para mirar cuánto deja una fiesta.
+ */
+export function canVerMargen(role: string): boolean {
+  return role === "ADMIN" || role === "DIRECCION";
 }
 
 /** Dar de alta proveedores, fusionar duplicados, corregir vínculos, importar

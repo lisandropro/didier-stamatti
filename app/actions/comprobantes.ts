@@ -6,8 +6,13 @@ import { prismaComprobantes as comprobantesDb } from "@/lib/db-comprobantes";
 import { leerCsvDeArca } from "@/lib/comprobantes/arca-csv";
 import { importar as importarArcaFilas } from "@/lib/comprobantes/arca";
 import { sesionVigente } from "@/lib/auth";
-import { esDia } from "@/lib/dates";
-import { canCapturarComprobantes, canPagar, canAdministrarComprobantes } from "@/lib/permissions";
+import { esDia, instanteDe, diaDe } from "@/lib/dates";
+import {
+  canCapturarComprobantes,
+  canPagar,
+  canAdministrarComprobantes,
+  canVerMargen,
+} from "@/lib/permissions";
 import { guardarCaptura } from "@/lib/comprobantes/documentos";
 import { completarCabecera } from "@/lib/comprobantes/completar";
 import { leerComprobante } from "@/lib/comprobantes/leer-documento";
@@ -27,6 +32,11 @@ import { tipoReal } from "@/lib/comprobantes/archivos";
 import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
 import { quienRecibe } from "@/lib/comprobantes/qr";
 import { conCondicion, acordar, olvidar, sinCondicion } from "@/lib/comprobantes/condiciones";
+import {
+  porEvento,
+  guardar as guardarIngresoDeEvento,
+  borrar as borrarIngresoDeEvento,
+} from "@/lib/comprobantes/ingresos";
 import type { CondicionPactada } from "@/lib/comprobantes/condiciones";
 import {
   activas as entidadesActivas,
@@ -37,7 +47,10 @@ import {
   huerfanos as sinEntidadDocs,
   asignar as asignarEnt,
 } from "@/lib/comprobantes/entidades";
-import { aTextoPlano } from "@/lib/money";
+import { aTextoPlano, aCentavos, formatear } from "@/lib/money";
+// La base del stock: los eventos viven ahí, los precios acá. Esta acción es
+// uno de los pocos lugares que toca las dos a propósito.
+import { prisma } from "@/lib/db";
 import {
   puedeResponderImportes,
   aFilaDeuda,
@@ -771,5 +784,131 @@ export async function olvidarCondicion(supplierId: string) {
   await olvidar(supplierId);
   revalidatePath("/proveedores");
   revalidatePath("/pagos");
+  return { ok: true as const };
+}
+
+// ---------------------------------------------------------------------------
+// El precio pactado de un evento
+// ---------------------------------------------------------------------------
+
+/**
+ * Los eventos con lo que se pactó por cada uno.
+ *
+ * **Cruza las dos bases**: el evento vive en la del stock y el precio en la
+ * financiera, sin clave foránea entre ellas. Se traen los eventos, se piden sus
+ * precios por id y se juntan acá. Son decenas por período, no millones.
+ */
+export async function eventosConIngreso(desde: string, hasta: string) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canVerMargen(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para ver los precios de los eventos." };
+  }
+  if (!esDia(desde) || !esDia(hasta)) {
+    return { ok: false as const, error: "Las fechas van en AAAA-MM-DD." };
+  }
+
+  const eventos = await prisma.event.findMany({
+    where: {
+      deletedAt: null,
+      period: { deletedAt: null },
+      date: { gte: instanteDe(desde, "00:00")!, lte: instanteDe(hasta, "23:59")! },
+    },
+    select: { id: true, lugar: true, date: true, guests: true },
+    orderBy: { date: "desc" },
+  });
+
+  const ingresos = await porEvento(eventos.map((e) => e.id));
+
+  return {
+    ok: true as const,
+    filas: eventos.map((e) => {
+      const i = ingresos.get(e.id);
+      return {
+        eventoId: e.id,
+        lugar: e.lugar,
+        fecha: diaDe(e.date),
+        /** Los que van. **No** es por cuántos se cobra. */
+        invitados: e.guests,
+        precioPorPersona: i?.precioPorPersona == null ? null : aTextoPlano(i.precioPorPersona),
+        comensales: i?.comensales ?? null,
+        conIva: i?.conIva ?? null,
+        extras: (i?.extras ?? []).map((x) => ({
+          id: x.id,
+          descripcion: x.descripcion,
+          importe: aTextoPlano(x.importe),
+        })),
+        pactado: i?.pactado
+          ? {
+              bruto: formatear(i.pactado.bruto),
+              neto: formatear(i.pactado.neto),
+              iva: formatear(i.pactado.iva),
+            }
+          : null,
+        cargadoPor: i?.cargadoPor ?? null,
+      };
+    }),
+  };
+}
+
+/** Guarda lo pactado de un evento. Los importes llegan en texto plano de
+ *  centavos, como el resto de la plata que cruza al navegador. */
+export async function guardarIngreso(entrada: {
+  eventoId: string;
+  precioPorPersona: string | null;
+  comensales: number | null;
+  conIva: boolean | null;
+  extras: { descripcion: string; importe: string }[];
+}) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canVerMargen(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para cargar el precio de un evento." };
+  }
+
+  // El lugar y la fecha se copian del evento acá y no llegan del navegador: un
+  // cliente puede mandar cualquier cosa, y esta fila tiene que poder leerse
+  // sola aunque el evento después se borre.
+  const ev = await prisma.event.findFirst({
+    where: { id: entrada.eventoId, deletedAt: null },
+    select: { id: true, lugar: true, date: true },
+  });
+  if (!ev) return { ok: false as const, error: "Ese evento no existe." };
+
+  const aCentavosOTira = (v: string | null): bigint | null => {
+    if (v == null || v.trim() === "") return null;
+    const n = aCentavos(v, { puntoEsDecimal: false });
+    if (n == null) throw new Error(`No entiendo el importe "${v}".`);
+    return n;
+  };
+
+  try {
+    const entidades = await entidadesActivas();
+    await guardarIngresoDeEvento(
+      { eventoId: ev.id, lugar: ev.lugar, fecha: diaDe(ev.date) },
+      {
+        precioPorPersona: aCentavosOTira(entrada.precioPorPersona),
+        comensales: entrada.comensales,
+        conIva: entrada.conIva,
+        extras: entrada.extras
+          .filter((e) => e.descripcion.trim() !== "")
+          .map((e) => ({ descripcion: e.descripcion, importe: aCentavosOTira(e.importe) ?? 0n })),
+      },
+      entidades[0]?.id ?? null,
+      { id: sesion.id, name: sesion.name },
+    );
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/ingresos");
+  return { ok: true as const };
+}
+
+/** Vuelve un evento a "sin precio cargado". */
+export async function borrarIngreso(eventoId: string) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canVerMargen(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para borrar el precio de un evento." };
+  }
+  await borrarIngresoDeEvento(eventoId);
+  revalidatePath("/ingresos");
   return { ok: true as const };
 }
