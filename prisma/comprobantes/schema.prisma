@@ -55,6 +55,20 @@ model Supplier {
   // ferretería de barrio). SQLite admite varios NULL en un índice único.
   cuit      String?    @unique
   alias     String?
+  /// En qué rubro está: "Carnes", "Verduleria", "Impuestos"…
+  ///
+  /// **Decide si lo que se le compra entra en el costo de los eventos.** Sin
+  /// esto, repartir los comprobantes de un período entre sus fiestas metería
+  /// los impuestos y los retiros de los socios adentro del costo de una boda.
+  ///
+  /// NULL = sin clasificar. No se asume nada: lo que no está clasificado queda
+  /// **afuera** del costo y se informa aparte, para que el número nunca se
+  /// presente como completo cuando no lo está.
+  ///
+  /// Los valores salen de la auditoría de la caja (`MAESTROS-categorias.csv`),
+  /// para que la app y el análisis hablen el mismo idioma.
+  categoria String?
+
   // --- La condición de pago que se pactó con este proveedor ---
   //
   // **Es un acuerdo, no un dato que se copia de un papel.** Alguien lo negoció,

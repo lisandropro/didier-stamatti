@@ -31,12 +31,19 @@ import { subirFoto } from "@/lib/comprobantes/almacenamiento";
 import { tipoReal } from "@/lib/comprobantes/archivos";
 import { enderezarEnServidor } from "@/lib/comprobantes/enderezar-servidor";
 import { quienRecibe } from "@/lib/comprobantes/qr";
-import { conCondicion, acordar, olvidar, sinCondicion } from "@/lib/comprobantes/condiciones";
+import {
+  conCondicion,
+  acordar,
+  olvidar,
+  sinCondicion,
+  clasificar,
+} from "@/lib/comprobantes/condiciones";
 import {
   porEvento,
   guardar as guardarIngresoDeEvento,
   borrar as borrarIngresoDeEvento,
 } from "@/lib/comprobantes/ingresos";
+import { costoPorEvento, type PeriodoConEventos } from "@/lib/comprobantes/margen";
 import type { CondicionPactada } from "@/lib/comprobantes/condiciones";
 import {
   activas as entidadesActivas,
@@ -774,6 +781,23 @@ export async function acordarCondicion(supplierId: string, dias: string) {
   return { ok: true as const };
 }
 
+/** Pone el rubro de un proveedor: lo que decide si lo que se le compra entra en
+ *  el costo de los eventos. */
+export async function clasificarProveedor(supplierId: string, categoria: string) {
+  const sesion = await sesionVigente();
+  if (!sesion || !canPagar(sesion.role)) {
+    return { ok: false as const, error: "No tenés permiso para clasificar proveedores." };
+  }
+  try {
+    await clasificar(supplierId, categoria.trim() === "" ? null : categoria);
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/proveedores");
+  revalidatePath("/ingresos");
+  return { ok: true as const };
+}
+
 /** Vuelve un proveedor a "sin cargar". Cargar mal es fácil, y quedarse con un
  *  dato inventado es peor que no tenerlo. */
 export async function olvidarCondicion(supplierId: string) {
@@ -813,11 +837,50 @@ export async function eventosConIngreso(desde: string, hasta: string) {
       period: { deletedAt: null },
       date: { gte: instanteDe(desde, "00:00")!, lte: instanteDe(hasta, "23:59")! },
     },
-    select: { id: true, lugar: true, date: true, guests: true },
+    select: {
+      id: true,
+      lugar: true,
+      date: true,
+      guests: true,
+      period: { select: { id: true, label: true, startDay: true, endDay: true } },
+    },
     orderBy: { date: "desc" },
   });
 
   const ingresos = await porEvento(eventos.map((e) => e.id));
+
+  // El costo no se mide: se reparte entre los eventos del período, en
+  // proporción a los cubiertos. Los cubiertos son los PRESUPUESTADOS si
+  // están cargados —es por los que se cocina, el mínimo garantizado— y los
+  // invitados sólo como último recurso.
+  const periodos = new Map<string, PeriodoConEventos>();
+  for (const e of eventos) {
+    if (!e.period) continue;
+    const p = periodos.get(e.period.id) ?? {
+      id: e.period.id,
+      label: e.period.label,
+      startDay: e.period.startDay,
+      endDay: e.period.endDay,
+      eventos: [],
+    };
+    p.eventos.push({ id: e.id, lugar: e.lugar, guests: e.guests });
+    periodos.set(e.period.id, p);
+  }
+  const repartos = await costoPorEvento(
+    [...periodos.values()],
+    (eventoId, guests) => ingresos.get(eventoId)?.comensales ?? guests,
+  );
+  const costoDe = new Map<string, bigint>();
+  const repartoDeEvento = new Map<string, { sinClasificar: bigint; incompleto: boolean }>();
+  for (const r of repartos.values()) {
+    for (const c of r.porEvento) {
+      costoDe.set(c.eventoId, c.costo);
+      repartoDeEvento.set(c.eventoId, {
+        sinClasificar: r.sinClasificar,
+        incompleto: r.sinClasificar > 0n || r.sinImporte > 0,
+      });
+    }
+  }
 
   return {
     ok: true as const,
@@ -845,6 +908,21 @@ export async function eventosConIngreso(desde: string, hasta: string) {
             }
           : null,
         cargadoPor: i?.cargadoPor ?? null,
+        /** Su parte del costo del período. **Es un reparto, no una medición.** */
+        costo: costoDe.has(e.id) ? formatear(costoDe.get(e.id)!) : null,
+        /**
+         * El margen, sólo cuando existen las dos mitades.
+         *
+         * Ingreso NETO menos costo: comparar el bruto contra el costo daría un
+         * margen inflado un 21%, y ese número se usa para poner precios.
+         */
+        margen:
+          i?.pactado && costoDe.has(e.id)
+            ? formatear(i.pactado.neto - costoDe.get(e.id)!)
+            : null,
+        /** Si el costo del período está incompleto —proveedores sin rubro o
+         *  comprobantes sin importe—, el margen se muestra como provisorio. */
+        costoIncompleto: repartoDeEvento.get(e.id)?.incompleto ?? false,
       };
     }),
   };

@@ -2216,3 +2216,22 @@ tbody tr:hover{background:var(--surface-2)}
   .ing-fila{flex-direction:column; align-items:stretch}
   .ing-campos{flex-direction:column; gap:var(--sp-3)}
 }
+
+/* El rubro del proveedor: decide si su plata entra en el costo de los eventos.
+   Se muestra también en la fila compacta porque "sin rubro" significa que ese
+   proveedor NO está contando en ningún costo. */
+.cond-rubro{font-size:var(--t-xs); color:var(--muted); white-space:nowrap}
+.cond-rubro-falta{color:var(--warn)}
+.cond-categoria{margin-bottom:0}
+.cond-categoria select{max-width:280px}
+.cond-ayuda{
+  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted);
+  line-height:1.45; max-width:62ch;
+}
+
+/* El margen, con su advertencia pegada. El costo NO está medido: es la parte
+   que le tocó a este evento del gasto del período. Decirlo al lado del número
+   es la diferencia entre un dato y una cifra que alguien va a usar para poner
+   un precio creyendo que es exacta. */
+.ing-margen{display:block; font-size:var(--t-sm); color:var(--ink); font-variant-numeric:tabular-nums}
+.ing-aprox{color:var(--muted)}

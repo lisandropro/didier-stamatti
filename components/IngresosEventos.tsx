@@ -31,6 +31,13 @@ export type FilaEvento = {
   extras: { id: string; descripcion: string; importe: string }[];
   pactado: { bruto: string; neto: string; iva: string } | null;
   cargadoPor: string | null;
+  /** Su parte del costo del período. **Es un reparto, no una medición.** */
+  costo: string | null;
+  /** Ingreso neto menos costo. Sólo cuando existen las dos mitades. */
+  margen: string | null;
+  /** Si el costo del período está incompleto: proveedores sin rubro cargado o
+   *  comprobantes sin importe. Entonces el margen es provisorio y se dice. */
+  costoIncompleto: boolean;
 };
 
 export function IngresosEventos({ filas }: { filas: FilaEvento[] }) {
@@ -139,6 +146,20 @@ function Fila({ f }: { f: FilaEvento }) {
                   <span className="ing-pendiente"> · falta decir si el precio lleva IVA</span>
                 )}
               </span>
+              {/* **El costo es un reparto del período, no lo que costó esta
+                  fiesta.** Se dice con todas las letras: el sistema no sabe qué
+                  se compró para cada evento —la comida no está en el catálogo—
+                  y un número que parece medido y no lo es se usa para poner
+                  precios. */}
+              {f.margen && (
+                <span className="ing-margen">
+                  margen {f.margen}
+                  <span className="ing-aprox">
+                    {" "}· costo {f.costo} repartido del período
+                    {f.costoIncompleto && ", incompleto"}
+                  </span>
+                </span>
+              )}
             </>
           ) : (
             <span className="ing-sinprecio">sin precio</span>

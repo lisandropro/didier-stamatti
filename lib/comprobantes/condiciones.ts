@@ -1,5 +1,6 @@
 import { prismaComprobantes as db } from "@/lib/db-comprobantes";
 import { aporteAlSaldo, NO_SE_PAGAN } from "./politica";
+import { esCategoria } from "./categorias";
 
 // La condición de pago de cada proveedor.
 //
@@ -59,6 +60,9 @@ export type ProveedorConCondicion = {
   nombre: string;
   cuit: string | null;
   condicion: Condicion;
+  /** El rubro. Decide si lo que se le compra entra en el costo de los eventos.
+   *  NULL = sin clasificar, y entonces queda afuera del costo. */
+  categoria: string | null;
   acordadaPor: string | null;
   acordadaAt: string | null;
   /** Deuda viva, en centavos. Positiva o negativa: una nota de crédito resta. */
@@ -129,6 +133,7 @@ export async function conCondicion(entidadId?: string | null): Promise<Proveedor
       nombre: p.name,
       cuit: p.cuit,
       condicion: condicionDe(p),
+      categoria: p.categoria,
       acordadaPor: p.condicionAcordadaPorName,
       acordadaAt: p.condicionAcordadaAt ? p.condicionAcordadaAt.toISOString().slice(0, 10) : null,
       deuda: acc?.deuda ?? 0n,
@@ -185,6 +190,20 @@ export async function acordar(
       condicionAcordadaPorName: actor.name,
     },
   });
+}
+
+/**
+ * Pone el rubro de un proveedor.
+ *
+ * Va aparte de `acordar` porque son dos hechos distintos: el rubro es lo que el
+ * proveedor vende y la condición es lo que se pactó con él. Mezclarlos obligaría
+ * a contestar los dos para guardar cualquiera.
+ */
+export async function clasificar(supplierId: string, categoria: string | null): Promise<void> {
+  if (categoria != null && !esCategoria(categoria)) {
+    throw new Error(`No conozco el rubro "${categoria}".`);
+  }
+  await db.supplier.update({ where: { id: supplierId }, data: { categoria } });
 }
 
 /** Deshace el registro: el proveedor vuelve a "sin cargar".

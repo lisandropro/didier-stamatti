@@ -2,7 +2,12 @@
 
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { acordarCondicion, olvidarCondicion } from "@/app/actions/comprobantes";
+import {
+  acordarCondicion,
+  olvidarCondicion,
+  clasificarProveedor,
+} from "@/app/actions/comprobantes";
+import { CATEGORIAS } from "@/lib/comprobantes/categorias";
 import { sumarDias } from "@/lib/dates";
 // El tipo viene del origen y no se copia acá. La primera versión lo repetía, y
 // al agregar el débito automático la copia dejó de compilar — que es la forma
@@ -40,6 +45,7 @@ export type FilaProveedor = {
   nombre: string;
   cuit: string | null;
   condicion: Condicion;
+  categoria: string | null;
   acordadaPor: string | null;
   acordadaAt: string | null;
   deuda: string;
@@ -172,6 +178,14 @@ function Fila({ f, hoy }: { f: FilaProveedor; hoy: string }) {
           </span>
         </div>
         <div className="cond-resuelto">
+          {/* El rubro decide si lo que se le compra entra en el costo de los
+              eventos. Sin cargar, su plata queda AFUERA del costo — por eso se
+              avisa acá y no sólo al abrir la fila. */}
+          {f.categoria ? (
+            <span className="cond-rubro">{f.categoria}</span>
+          ) : (
+            <span className="cond-rubro cond-rubro-falta">sin rubro</span>
+          )}
           <span className="cond-chip">{etiquetaDe(cond)}</span>
           <button type="button" className="cond-cambiar" onClick={() => setAbierto(true)}>
             cambiar
@@ -200,6 +214,35 @@ function Fila({ f, hoy }: { f: FilaProveedor; hoy: string }) {
             </>
           )}
         </span>
+      </div>
+
+      <div className="field cond-categoria">
+        <label htmlFor={`cat-${f.id}`}>Rubro</label>
+        <select
+          id={`cat-${f.id}`}
+          value={f.categoria ?? ""}
+          disabled={guardando}
+          onChange={(e) => {
+            const v = e.target.value;
+            setError(null);
+            empezar(async () => {
+              const r = await clasificarProveedor(f.id, v);
+              if (!r.ok) setError(r.error);
+              else router.refresh();
+            });
+          }}
+        >
+          <option value="">Sin clasificar</option>
+          {CATEGORIAS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <p className="cond-ayuda">
+          Decide si lo que se le compra entra en el costo de los eventos. Lo que queda sin rubro
+          no se cuenta —no se sabe qué es— y la pantalla de Ingresos avisa cuánto quedó afuera.
+        </p>
       </div>
 
       <div className="cond-opciones" role="group" aria-label={`Plazo de pago de ${f.nombre}`}>
