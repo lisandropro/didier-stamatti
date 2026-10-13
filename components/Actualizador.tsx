@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import {
   CADA_MS,
+  avisarDeFalloAlGuardar,
   esErrorDeVersionVieja,
   sePuedeRecargar,
   type Situacion,
@@ -75,10 +76,10 @@ export function Actualizador({ version }: { version: string }) {
     // como error suelto, según desde dónde se haya llamado.
     const porRechazo = (e: PromiseRejectionEvent) => {
       const m = e.reason instanceof Error ? e.reason.message : String(e.reason ?? "");
-      if (esErrorDeVersionVieja(m)) recargar("una acción quedó vieja");
+      if (esErrorDeVersionVieja(m)) avisarDeFalloAlGuardar(e.reason);
     };
     const porError = (e: ErrorEvent) => {
-      if (esErrorDeVersionVieja(e.message)) recargar("una acción quedó vieja");
+      if (esErrorDeVersionVieja(e.message)) avisarDeFalloAlGuardar(e.message);
     };
 
     void mirar();

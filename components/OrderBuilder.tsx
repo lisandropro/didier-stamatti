@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AutosaveQueue } from "@/lib/autosave";
+import { clearDraft, readDraft, writeDraft } from "@/lib/session-draft";
 import { avisarDeFalloAlGuardar, mensajeDeFallo } from "@/lib/actualizacion";
 import { validQuantity, MAX_QUANTITY } from "@/lib/quantity";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
@@ -35,6 +36,7 @@ type OrderSave = { kind: "product"; row: ProductRow } | { kind: "custom"; id: st
 type CustomLine = { id: string; name: string; unit: string | null; qty: number; note: string | null; category: string };
 type SourceEvent = { id: string; lugar: string; dateLabel: string; periodLabel: string; lineCount: number };
 type Data = {
+  userId: string;
   event: {
     id: string;
     lugar: string;
@@ -76,9 +78,21 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState(data.event.status);
   const [statusSaving, setStatusSaving] = useState(false);
-  const [queue] = useState(() => new AutosaveQueue<OrderSave>((value) => value.kind === "product"
-    ? setLine({ eventId: data.event.id, productId: value.row.id, qty: value.row.qty, note: value.row.note })
-    : setCustomQty(value.id, value.qty), 700, marcarPendiente, marcarGuardado));
+  const draftKey = "order:" + data.userId + ":" + data.event.id;
+  const [drafts] = useState(() => new Map<string, OrderSave>());
+  function keepDrafts() {
+    if (drafts.size) writeDraft(draftKey, [...drafts.entries()]);
+    else clearDraft(draftKey);
+  }
+  const [queue] = useState(() => new AutosaveQueue<OrderSave>(async (value) => {
+    const key = value.kind === "product" ? value.row.id : "custom:" + value.id;
+    const result = value.kind === "product"
+      ? await setLine({ eventId: data.event.id, productId: value.row.id, qty: value.row.qty, note: value.row.note })
+      : await setCustomQty(value.id, value.qty);
+    // Una respuesta vieja no puede borrar una cantidad más reciente.
+    if (result.ok && drafts.get(key) === value) { drafts.delete(key); keepDrafts(); }
+    return result;
+  }, 700, marcarPendiente, marcarGuardado));
   const saveStatus = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
   const pending = saveStatus.pending;
   const savedOnce = saveStatus.saved;
@@ -89,8 +103,41 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [showEdit, setShowEdit] = useState(false);
   const [showShortages, setShowShortages] = useState(false);
   useEffect(() => {
+    let alive = true;
+    queueMicrotask(() => {
+      if (!alive) return;
+      const saved = readDraft<unknown>(draftKey);
+      if (Array.isArray(saved)) {
+        for (const entry of saved) {
+          if (!Array.isArray(entry) || entry.length !== 2) continue;
+          const [key, value] = entry;
+          if (typeof key !== "string" || !value || typeof value !== "object") continue;
+          if (value.kind === "product" && value.row && validQuantity(value.row.qty) && typeof value.row.note === "string" && value.row.note.length <= 1000) {
+            const row = currentItems.current.find((p) => p.id === key);
+            if (!row || (row.deBaja && row.qty === 0)) continue;
+            const next = { ...row, qty: value.row.qty, note: value.row.note };
+            currentItems.current = currentItems.current.map((p) => p.id === key ? next : p);
+            const pending: OrderSave = { kind: "product", row: next };
+            drafts.set(key, pending); queue.schedule(key, pending);
+          } else if (value.kind === "custom" && "custom:" + value.id === key && validQuantity(value.qty, 1) && data.customLines.some((c) => c.id === value.id)) {
+            const pending: OrderSave = { kind: "custom", id: value.id, qty: value.qty };
+            drafts.set(key, pending); queue.schedule(key, pending);
+            setCustoms((rows) => rows.map((c) => c.id === value.id ? { ...c, qty: value.qty } : c));
+          }
+        }
+        setItems(currentItems.current);
+        keepDrafts();
+      }
+    });
+    return () => { alive = false; };
+  // Se recupera una sola vez al montar este pedido.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  useEffect(() => {
     function leaving(event: BeforeUnloadEvent) {
-      if (queue.getSnapshot().pending) { event.preventDefault(); event.returnValue = ""; }
+      const saved = readDraft<unknown>(draftKey);
+      const recoverable = drafts.size > 0 && JSON.stringify(saved) === JSON.stringify([...drafts.entries()]);
+      if (queue.getSnapshot().pending && !recoverable) { event.preventDefault(); event.returnValue = ""; }
     }
     async function navigate(event: MouseEvent) {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !queue.getSnapshot().pending) return;
@@ -109,8 +156,13 @@ export function OrderBuilder({ data }: { data: Data }) {
       document.removeEventListener("click", navigate, true);
       void queue.close();
     };
-  }, [queue, router]);
+  }, [queue, router, draftKey, drafts]);
 
+  function scheduleSave(key: string, pending: OrderSave) {
+    drafts.set(key, pending); keepDrafts();
+    queue.schedule(key, pending);
+  }
+  function forgetSave(key: string) { drafts.delete(key); keepDrafts(); }
   function updateItem(id: string, patch: Partial<ProductRow>) {
     const previous = currentItems.current.find((p) => p.id === id);
     if (!previous) return;
@@ -118,7 +170,8 @@ export function OrderBuilder({ data }: { data: Data }) {
     if (!validQuantity(next.qty)) return;
     currentItems.current = currentItems.current.map((p) => p.id === id ? next : p);
     setItems(currentItems.current);
-    queue.schedule(id, { kind: "product", row: next });
+    const pending: OrderSave = { kind: "product", row: next };
+    scheduleSave(id, pending);
   }
 
   function stepQty(id: string, delta: number) {
@@ -246,6 +299,8 @@ export function OrderBuilder({ data }: { data: Data }) {
             setCustoms={setCustoms}
             onRefresh={() => router.refresh()}
             queue={queue}
+            scheduleSave={scheduleSave}
+            forgetSave={forgetSave}
             onError={setError}
           />
         ) : (
@@ -485,6 +540,8 @@ function ExtrasPanel({
   setCustoms,
   onRefresh,
   queue,
+  scheduleSave,
+  forgetSave,
   onError,
 }: {
   eventId: string;
@@ -492,6 +549,8 @@ function ExtrasPanel({
   setCustoms: React.Dispatch<React.SetStateAction<CustomLine[]>>;
   onRefresh: () => void;
   queue: AutosaveQueue<OrderSave>;
+  scheduleSave: (key: string, value: OrderSave) => void;
+  forgetSave: (key: string) => void;
   onError: (error: string | null) => void;
 }) {
   const [name, setName] = useState("");
@@ -535,7 +594,7 @@ function ExtrasPanel({
     const q = Math.max(1, next);
     if (saving || !validQuantity(q, 1)) return;
     setCustoms((prev) => prev.map((c) => (c.id === id ? { ...c, qty: q } : c)));
-    if (validQuantity(q, 1)) queue.schedule("custom:" + id, { kind: "custom", id, qty: q });
+    if (validQuantity(q, 1)) scheduleSave("custom:" + id, { kind: "custom", id, qty: q });
   }
 
   async function remove(id: string) {
@@ -547,6 +606,7 @@ function ExtrasPanel({
       await queue.cancel("custom:" + id);
       const result = await deleteLine(id);
       if (!result.ok) { onError(result.error ?? "No se pudo quitar el ítem."); return; }
+      forgetSave("custom:" + id);
       setCustoms((prev) => prev.filter((c) => c.id !== id));
       onRefresh();
     } catch (error) { onError(mensajeDeFallo(error)); avisarDeFalloAlGuardar(error); }

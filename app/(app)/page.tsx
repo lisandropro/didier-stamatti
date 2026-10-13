@@ -126,6 +126,7 @@ export default async function Home({
   });
 
   const data = {
+    userId: session.id,
     periodos: periodosDelSelector.map((w) => ({
       id: w.id,
       label: nombreDe(w),

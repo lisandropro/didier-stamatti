@@ -89,6 +89,9 @@ test("también en su forma corta o traducida a medias", () => {
   assert.equal(esErrorDeVersionVieja("failed to find server action"), true, "sin importar mayúsculas");
 });
 
+test("se reconoce el mensaje que recibe el navegador en Next 16", () => {
+  assert.equal(esErrorDeVersionVieja('Server Action "abc123" was not found on the server. \\nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action'), true);
+});
 test("un error común no dispara una recarga", () => {
   // Recargar por cualquier error sería peor que el problema: se perdería lo
   // que la persona está haciendo cada vez que se corta la señal.

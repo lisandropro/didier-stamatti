@@ -63,7 +63,7 @@ export function sePuedeRecargar(s: Situacion): boolean {
  */
 export function esErrorDeVersionVieja(mensaje: unknown): boolean {
   if (typeof mensaje !== "string") return false;
-  return /Failed to find Server Action|from an older or newer deployment/i.test(mensaje);
+  return /Failed to find Server Action|Server Action[^\n]*was not found on the server|failed-to-find-server-action|from an older or newer deployment/i.test(mensaje);
 }
 
 /** El texto de un error lanzado, venga como Error o como cualquier otra cosa. */
@@ -80,7 +80,7 @@ export function textoDelError(e: unknown): string {
  */
 export function mensajeDeFallo(e: unknown): string {
   return esErrorDeVersionVieja(textoDelError(e))
-    ? "La app estaba desactualizada y no se guardó. Se actualiza sola en un segundo: revisá esta última cantidad."
+    ? "La app estaba desactualizada y no se guardó. Se actualiza sola en un segundo: revisá los datos antes de continuar."
     : "No se pudo guardar. Revisá la conexión.";
 }
 

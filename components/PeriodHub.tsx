@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { avisarDeFalloAlGuardar, mensajeDeFallo } from "@/lib/actualizacion";
+import { clearDraft, readDraft } from "@/lib/session-draft";
+import { useSessionDraft } from "@/components/useSessionDraft";
 import {
   createPeriod,
   createEvent,
@@ -26,6 +29,7 @@ type EventItem = {
   shortageCount: number;
 };
 type HubData = {
+  userId: string;
   periodos: { id: string; label: string; rangeLabel: string; eventCount: number }[];
   selected: {
     id: string;
@@ -96,8 +100,19 @@ const IconUndo = (
 
 export function PeriodHub({ data }: { data: HubData }) {
   const router = useRouter();
+  const periodDraftKey = "new-period:" + data.userId;
+  const eventDraftKey = "new-event:" + data.userId;
   const [showPeriodo, setShowPeriodo] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    queueMicrotask(() => {
+      if (!alive) return;
+      if (readDraft(periodDraftKey)) setShowPeriodo(true);
+      else if (readDraft(eventDraftKey)) setShowEvent(true);
+    });
+    return () => { alive = false; };
+  }, [periodDraftKey, eventDraftKey]);
   const [showDelete, setShowDelete] = useState(false);
   const [showEditPeriodo, setShowEditPeriodo] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
@@ -349,7 +364,8 @@ export function PeriodHub({ data }: { data: HubData }) {
 
       {showPeriodo && (
         <NewPeriodModal
-          onClose={() => setShowPeriodo(false)}
+          draftKey={periodDraftKey}
+          onClose={() => { clearDraft(periodDraftKey); setShowPeriodo(false); }}
           onCreated={(id) => {
             setShowPeriodo(false);
             router.push(`/?w=${id}`);
@@ -359,10 +375,11 @@ export function PeriodHub({ data }: { data: HubData }) {
       )}
       {showEvent && (
         <NewEventModal
-          onClose={() => setShowEvent(false)}
-          onCreated={() => {
+          draftKey={eventDraftKey}
+          onClose={() => { clearDraft(eventDraftKey); setShowEvent(false); }}
+          onCreated={(id) => {
             setShowEvent(false);
-            router.refresh();
+            router.push(`/evento/${id}`);
           }}
         />
       )}
@@ -684,11 +701,14 @@ function ConfirmDeletePeriod({
   );
 }
 
-function NewPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const [label, setLabel] = useState("");
-  const [startDay, setStart] = useState("");
-  const [endDay, setEnd] = useState("");
-  const [unSoloDia, setUnSoloDia] = useState(false);
+function NewPeriodModal({ draftKey, onClose, onCreated }: { draftKey: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const draft = useSessionDraft(draftKey, { label: "", startDay: "", endDay: "", unSoloDia: false as boolean });
+  const { label, startDay, endDay, unSoloDia } = draft.value;
+  const setLabel = (v: string) => draft.setField("label", v);
+  const setStart = (v: string) => draft.setField("startDay", v);
+  const setEnd = (v: string) => draft.setField("endDay", v);
+  const setUnSoloDia = (v: boolean) => draft.setField("unSoloDia", v);
+  const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicado, setDuplicado] = useState<{ nombre: string } | null>(null);
@@ -696,20 +716,27 @@ function NewPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const hasta = unSoloDia ? startDay : endDay;
 
   async function save(permitirDuplicado = false) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setError(null);
-    const res = await createPeriod({ label, startDay, endDay: hasta, permitirDuplicado });
-    setSaving(false);
-    if (res.duplicado) return setDuplicado({ nombre: res.duplicado.nombre });
-    if (res.ok && res.id) onCreated(res.id);
-    else setError(res.error ?? "No se pudo crear.");
+    try {
+      const res = await createPeriod({ label, startDay, endDay: hasta, permitirDuplicado });
+      if (res.duplicado) return setDuplicado({ nombre: res.duplicado.nombre });
+      if (res.ok && res.id) { draft.clear(); onCreated(res.id); }
+      else setError(res.error ?? "No se pudo crear.");
+    } catch (e) {
+      setError(mensajeDeFallo(e));
+      avisarDeFalloAlGuardar(e);
+    } finally { inFlight.current = false; setSaving(false); }
   }
 
   if (duplicado) {
     return (
-      <div className="overlay" onClick={onClose}>
+      <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <h2>Ya existe uno igual</h2>
+          {error && <div role="alert" className="login-error">{error}</div>}
           <div className="msub">
             <b>{duplicado.nombre}</b> ya cubre exactamente esas fechas. Podés usar ese, o crear otro igual si de
             verdad son dos grupos distintos de vajilla.
@@ -726,7 +753,7 @@ function NewPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Nuevo período operativo</h2>
         <div className="msub">
@@ -736,7 +763,7 @@ function NewPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated
         <div className="field">
           <label>Nombre (opcional)</label>
           <input
-            type="text"
+            disabled={saving} type="text"
             placeholder="Si lo dejás vacío, se muestran las fechas"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
@@ -745,17 +772,17 @@ function NewPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated
         <div style={{ display: "flex", gap: 12 }}>
           <div className="field" style={{ flex: 1 }}>
             <label>Desde</label>
-            <input type="date" value={startDay} onChange={(e) => setStart(e.target.value)} autoFocus />
+            <input disabled={saving} type="date" value={startDay} onChange={(e) => setStart(e.target.value)} autoFocus />
           </div>
           {!unSoloDia && (
             <div className="field" style={{ flex: 1 }}>
               <label>Hasta</label>
-              <input type="date" value={endDay} onChange={(e) => setEnd(e.target.value)} />
+              <input disabled={saving} type="date" value={endDay} onChange={(e) => setEnd(e.target.value)} />
             </div>
           )}
         </div>
         <label className="check-line">
-          <input type="checkbox" checked={unSoloDia} onChange={(e) => setUnSoloDia(e.target.checked)} />
+          <input disabled={saving} type="checkbox" checked={unSoloDia} onChange={(e) => setUnSoloDia(e.target.checked)} />
           Es un solo día
         </label>
         {error && <div className="login-error">{error}</div>}
@@ -770,11 +797,14 @@ function NewPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated
   );
 }
 
-function NewEventModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [lugar, setLugar] = useState("");
-  const [date, setDate] = useState("");
-  const [guests, setGuests] = useState("");
-  const [responsable, setResponsable] = useState("");
+function NewEventModal({ draftKey, onClose, onCreated }: { draftKey: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const draft = useSessionDraft(draftKey, { lugar: "", date: "", guests: "", responsable: "" });
+  const { lugar, date, guests, responsable } = draft.value;
+  const setLugar = (v: string) => draft.setField("lugar", v);
+  const setDate = (v: string) => draft.setField("date", v);
+  const setGuests = (v: string) => draft.setField("guests", v);
+  const setResponsable = (v: string) => draft.setField("responsable", v);
+  const inFlight = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -784,27 +814,28 @@ function NewEventModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [falta, setFalta] = useState<{ label: string } | null>(null);
 
   async function save(opciones: { periodoElegidoId?: string; crearPeriodo?: boolean } = {}) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setError(null);
-    const res = await createEvent({
-      lugar,
-      date,
-      guests: guests.trim() === "" ? 0 : Number(guests),
-      responsable,
-      ...opciones,
-    });
-    setSaving(false);
-    if (res.elegirPeriodo) return setElegir(res.elegirPeriodo);
-    if (res.faltaPeriodo) return setFalta({ label: res.faltaPeriodo.label });
-    if (res.ok) onCreated();
-    else setError(res.error ?? "No se pudo crear.");
+    try {
+      const res = await createEvent({ lugar, date, guests: guests.trim() === "" ? 0 : Number(guests), responsable, ...opciones });
+      if (res.elegirPeriodo) { setFalta(null); return setElegir(res.elegirPeriodo); }
+      if (res.faltaPeriodo) { setElegir(null); return setFalta({ label: res.faltaPeriodo.label }); }
+      if (res.ok && res.id) { draft.clear(); onCreated(res.id); }
+      else setError(res.error ?? "No se pudo crear.");
+    } catch (e) {
+      setError(mensajeDeFallo(e));
+      avisarDeFalloAlGuardar(e);
+    } finally { inFlight.current = false; setSaving(false); }
   }
 
   if (elegir) {
     return (
-      <div className="overlay" onClick={onClose}>
+      <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <h2>¿A qué período va?</h2>
+          {error && <div role="alert" className="login-error">{error}</div>}
           <div className="msub">
             Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
             se cuenta el pedido.
@@ -827,9 +858,10 @@ function NewEventModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   if (falta) {
     return (
-      <div className="overlay" onClick={onClose}>
+      <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <h2>Falta el período de esa fecha</h2>
+          {error && <div role="alert" className="login-error">{error}</div>}
           <div className="msub">
             Ningún período incluye ese día. Se puede crear <b>{falta.label}</b> y poner el evento ahí; después
             podés estirarlo si el trabajo abarca más días.
@@ -846,26 +878,26 @@ function NewEventModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Nuevo evento</h2>
         <div className="msub">Cargá los datos del evento. El período sale de la fecha.</div>
         <div className="field">
           <label>Lugar</label>
-          <input type="text" placeholder="Ej: Puerto, Salón Roble…" value={lugar} onChange={(e) => setLugar(e.target.value)} autoFocus />
+          <input disabled={saving} type="text" placeholder="Ej: Puerto, Salón Roble…" value={lugar} onChange={(e) => setLugar(e.target.value)} autoFocus />
         </div>
         <div className="field">
           <label>Fecha y hora</label>
-          <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input disabled={saving} type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <div className="field" style={{ flex: 1 }}>
             <label>Invitados</label>
-            <input type="number" inputMode="numeric" min={0} placeholder="0" value={guests} onChange={(e) => setGuests(e.target.value)} />
+            <input disabled={saving} type="number" inputMode="numeric" min={0} placeholder="0" value={guests} onChange={(e) => setGuests(e.target.value)} />
           </div>
           <div className="field" style={{ flex: 1.4 }}>
             <label>Responsable</label>
-            <input type="text" placeholder="Nombre" value={responsable} onChange={(e) => setResponsable(e.target.value)} />
+            <input disabled={saving} type="text" placeholder="Nombre" value={responsable} onChange={(e) => setResponsable(e.target.value)} />
           </div>
         </div>
         {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}

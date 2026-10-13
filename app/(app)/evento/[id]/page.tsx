@@ -67,6 +67,7 @@ export default async function EventoPage({
   });
 
   const data = {
+    userId: session.id,
     event: {
       id: ev.id,
       lugar: ev.lugar,

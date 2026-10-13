@@ -75,8 +75,12 @@ export async function createPeriod(input: {
   const problema = problemaDeRango(startDay, endDay);
   if (problema) return { ok: false, error: problema };
 
-  const existentes = await periodosVivos();
-  const igual = duplicadoDe(existentes, startDay, endDay);
+  // Para detectar duplicados alcanza con buscar el rango, sin cargar el historial.
+  const igual = await prisma.operationalPeriod.findFirst({
+    where: { deletedAt: null, startDay, endDay },
+    select: { id: true, label: true, startDay: true, endDay: true },
+    orderBy: { id: "asc" },
+  });
   if (igual && !input.permitirDuplicado) {
     return { ok: false, duplicado: { id: igual.id, nombre: nombreDe(igual) } };
   }
