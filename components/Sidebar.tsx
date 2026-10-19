@@ -65,6 +65,7 @@ const NAV_PREPARAR = [
 const ADMIN_NAV = [
   { href: "/sugerencias", label: "Sugerencias", icon: IconSuggest },
   { href: "/dispositivos", label: "Dispositivos", icon: ICONS.avisos },
+  { href: "/cambios-tardios", label: "Cambios tardíos", icon: ICONS.historial },
   { href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios },
 ];
 

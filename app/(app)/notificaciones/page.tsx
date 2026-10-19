@@ -61,6 +61,7 @@ export default async function NotificacionesPage() {
         {canManageUsers(user.role) && (
           <p className="notif-enable-note">
             <Link href="/dispositivos">Ver a quién le llegan los avisos →</Link>
+            {" · "}<Link href="/cambios-tardios">Ver los cambios tardíos →</Link>
           </p>
         )}
         <NotificationsList items={items} />
