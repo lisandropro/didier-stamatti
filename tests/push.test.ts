@@ -56,6 +56,23 @@ const suscribir = (userId: string, sufijo: string) =>
 
 const PAYLOAD = { title: "El Carmen Center", body: "Copa de agua 10→24", url: "/aviso/x", tag: "order-x" };
 
+/** Las pruebas que provocan un fallo esperan que quede dicho en el log: se lo
+ *  captura para poder afirmarlo y para no ensuciar la salida de la suite. */
+async function conLogCapturado<T>(f: () => Promise<T>): Promise<{ resultado: T; log: string[] }> {
+  const original = console.error;
+  const log: string[] = [];
+  console.error = (...args: unknown[]) => {
+    log.push(args.join(" "));
+  };
+  try {
+    return { resultado: await f(), log };
+  } finally {
+    console.error = original;
+  }
+}
+
+const MENSAJE_CLAVES = "Las claves de avisos del servidor faltan o están mal. Avisale a la administradora.";
+
 test("clasificar: cada código cae donde corresponde", () => {
   assert.deepEqual(push.clasificar(201), { status: "ACEPTADO", reintentable: false });
   assert.deepEqual(push.clasificar(404), { status: "CADUCADO", reintentable: false });
@@ -193,4 +210,114 @@ test("la poda borra lo de más de 60 días y nada más", async () => {
   await prisma.pushDelivery.create({ data: { userId: usuario, kind: "ORDER_EDIT", status: "ACEPTADO", payload: "{}" } });
   assert.equal(await push.podarEntregas(), 1);
   assert.equal(await prisma.pushDelivery.count(), 1);
+});
+
+test("claves mal formadas: listo() lanza, queda una fila de error y nada lanza", async () => {
+  await suscribir(usuario, "k1");
+  push.transporte.listo = () => {
+    throw new Error("Vapid public key must be a URL safe Base 64 encoded string.");
+  };
+  const r = await push.sendPushToUser(usuario, PAYLOAD, { kind: "SISTEMA" });
+  assert.deepEqual(r, { intentos: 1, aceptados: 0 });
+  const filas = await prisma.pushDelivery.findMany();
+  assert.equal(filas.length, 1, "el envío no puede perderse sin dejar fila");
+  assert.equal(filas[0].status, "ERROR");
+  assert.equal(filas[0].reintentable, false);
+  assert.ok(filas[0].error?.startsWith(push.CLAVES_INVALIDAS), `error: ${filas[0].error}`);
+  assert.match(filas[0].error ?? "", /URL safe Base 64/, "el motivo real queda escrito");
+  assert.equal(cuerpos.length, 0, "no tiene que intentar mandar nada");
+  assert.deepEqual(await push.enviarPrueba(usuario, "https://fcm.googleapis.com/fcm/send/k1"), {
+    ok: false,
+    error: MENSAJE_CLAVES,
+  });
+});
+
+test("sin claves: la prueba dice lo mismo que con claves mal formadas", async () => {
+  await suscribir(usuario, "k2");
+  push.transporte.listo = () => false;
+  assert.deepEqual(await push.enviarPrueba(usuario, "https://fcm.googleapis.com/fcm/send/k2"), {
+    ok: false,
+    error: MENSAJE_CLAVES,
+  });
+});
+
+test("un reintento que también falla queda registrado y no se vuelve a reintentar", async () => {
+  await suscribir(usuario, "e2");
+  respuesta = 500;
+  await push.sendPushToUser(usuario, PAYLOAD, { kind: "ORDER_EDIT" });
+  assert.equal(await push.reintentarFallidos(), 1);
+  const intentos = await prisma.pushDelivery.findMany({ orderBy: { attempt: "asc" } });
+  assert.deepEqual(intentos.map((i) => [i.attempt, i.status]), [[1, "ERROR"], [2, "ERROR"]]);
+  assert.equal(await push.reintentarFallidos(), 0, "el segundo intento, aunque falle, no es candidato");
+  assert.equal(await prisma.pushDelivery.count(), 2);
+});
+
+test("justo dentro de la ventana (59 minutos) todavía se reintenta", async () => {
+  await suscribir(usuario, "w1");
+  respuesta = 500;
+  await push.sendPushToUser(usuario, PAYLOAD, { kind: "ORDER_EDIT" });
+  respuesta = 201;
+  const a59 = new Date(Date.now() + 59 * 60 * 1000);
+  assert.equal(await push.reintentarFallidos(a59), 1);
+});
+
+test("una prueba que falla por algo pasajero no se reintenta nunca", async () => {
+  await suscribir(usuario, "p1");
+  respuesta = 500;
+  const r = await push.enviarPrueba(usuario, "https://fcm.googleapis.com/fcm/send/p1");
+  assert.equal(r.ok, false);
+  const e = await prisma.pushDelivery.findFirst();
+  assert.equal(e?.kind, "PRUEBA");
+  assert.equal(e?.status, "ERROR");
+  assert.equal(e?.reintentable, false, "un 'si ves esto, andan' una hora tarde mentiría");
+  respuesta = 201;
+  assert.equal(await push.reintentarFallidos(), 0);
+  assert.equal(cuerpos.length, 1, "no salió un segundo push");
+});
+
+test("un registro con el payload roto se saltea y el barrido sigue", async () => {
+  const buena = await suscribir(usuario, "b1");
+  const rota = await suscribir(usuario, "b2");
+  // La fila rota va primera (createdAt más viejo): el barrido pasa por ella antes.
+  const filaRota = await prisma.pushDelivery.create({
+    data: {
+      userId: usuario,
+      subscriptionId: rota.id,
+      kind: "ORDER_EDIT",
+      status: "ERROR",
+      reintentable: true,
+      payload: "{no json",
+      createdAt: new Date(Date.now() - 1000),
+    },
+  });
+  await prisma.pushDelivery.create({
+    data: {
+      userId: usuario,
+      subscriptionId: buena.id,
+      kind: "ORDER_EDIT",
+      status: "ERROR",
+      reintentable: true,
+      payload: JSON.stringify(PAYLOAD),
+    },
+  });
+  const { resultado: n, log } = await conLogCapturado(() => push.reintentarFallidos());
+  assert.equal(n, 1, "cuenta lo que realmente se reenvió");
+  assert.equal(cuerpos.length, 1);
+  assert.equal(log.length, 1, "la fila rota queda dicha en el log, una vez");
+  assert.match(log[0], new RegExp(filaRota.id));
+});
+
+test("si no se puede escribir el registro, el dispositivo caducado igual se borra", async () => {
+  await suscribir(usuario, "z1");
+  respuesta = 410;
+  const original = prisma.pushDelivery.create;
+  prisma.pushDelivery.create = (() => Promise.reject(new Error("database is locked"))) as unknown as typeof original;
+  let log: string[];
+  try {
+    ({ log } = await conLogCapturado(() => push.sendPushToUser(usuario, PAYLOAD, { kind: "ORDER_EDIT" })));
+  } finally {
+    prisma.pushDelivery.create = original;
+  }
+  assert.equal(await prisma.pushSubscription.count(), 0, "el mantenimiento no depende del registro");
+  assert.ok(log.some((l) => l.includes("database is locked")), "el fallo queda dicho");
 });

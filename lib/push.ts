@@ -28,6 +28,14 @@ export type EstadoDeEntrega = "ACEPTADO" | "CADUCADO" | "RECHAZADO" | "ERROR";
 /** Un reintento solo dentro de esta ventana: un aviso de hace horas ya no sirve. */
 const VENTANA_REINTENTO_MIN = 60;
 
+/** Los dos motivos por los que no se puede ni intentar el envío. Quedan en
+ *  `error` del registro; las constantes evitan que quien lee el texto (la
+ *  prueba de un teléfono, la pantalla de dispositivos) dependa de un literal. */
+export const SIN_CLAVES = "sin claves";
+export const CLAVES_INVALIDAS = "claves inválidas";
+
+const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
 let configurado: boolean | null = null;
 
 /**
@@ -91,10 +99,24 @@ export async function enviarASuscripcion(
   let error: string | null = null;
   let resultado: { status: EstadoDeEntrega; reintentable: boolean };
 
-  if (!transporte.listo()) {
+  // `listo()` puede lanzar: `setVapidDetails` rechaza una clave o un subject mal
+  // formados. Si eso se escapara de acá, el envío se perdería sin dejar fila,
+  // que es justo lo que este registro existe para evitar.
+  let listo = false;
+  let falloDeClaves: string | null = null;
+  try {
+    listo = transporte.listo();
+  } catch (e) {
+    falloDeClaves = `${CLAVES_INVALIDAS}: ${mensajeDe(e).slice(0, 300)}`;
+  }
+
+  if (falloDeClaves) {
+    resultado = { status: "ERROR", reintentable: false };
+    error = falloDeClaves;
+  } else if (!listo) {
     // Antes esto volvía sin hacer nada y sin dejar rastro.
     resultado = { status: "ERROR", reintentable: false };
-    error = "sin claves";
+    error = SIN_CLAVES;
   } else if (!validPushEndpoint(sub.endpoint)) {
     resultado = { status: "RECHAZADO", reintentable: false };
     error = "endpoint no permitido";
@@ -109,11 +131,17 @@ export async function enviarASuscripcion(
     } catch (e) {
       const code = (e as { statusCode?: unknown })?.statusCode;
       statusCode = typeof code === "number" ? code : null;
-      error = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      error = mensajeDe(e).slice(0, 300);
     }
     resultado = clasificar(statusCode);
   }
 
+  // Una prueba que llega una hora tarde diría "si ves esto, andan" cuando ya no
+  // es cierto: la prueba se mira en el momento o no sirve.
+  if (meta.kind === "PRUEBA") resultado = { ...resultado, reintentable: false };
+
+  // Dos bloques aparte: que no se pueda escribir el registro (base ocupada) no
+  // puede dejar de borrar un dispositivo que ya murió.
   try {
     await prisma.pushDelivery.create({
       data: {
@@ -131,6 +159,11 @@ export async function enviarASuscripcion(
         urgency,
       },
     });
+  } catch (e) {
+    // No puede cortar el envío al resto, pero tampoco pasar en silencio.
+    console.error("[push] no se pudo registrar la entrega", id, mensajeDe(e));
+  }
+  try {
     if (resultado.status === "CADUCADO") {
       // App desinstalada o permiso revocado: el dispositivo ya no existe.
       await prisma.pushSubscription.deleteMany({ where: { id: sub.id } });
@@ -140,8 +173,8 @@ export async function enviarASuscripcion(
         data: resultado.status === "ACEPTADO" ? { lastOkAt: new Date() } : { lastErrorAt: new Date() },
       });
     }
-  } catch {
-    // Que no se pueda registrar no puede cortar el envío al resto.
+  } catch (e) {
+    console.error("[push] no se pudo actualizar el dispositivo", sub.id, mensajeDe(e));
   }
   return { id, status: resultado.status, error };
 }
@@ -163,7 +196,8 @@ export async function sendPushToUser(
     const subs = await prisma.pushSubscription.findMany({ where: { userId } });
     const r = await Promise.all(subs.map((s) => enviarASuscripcion(s, payload, meta, options.urgency ?? "normal")));
     return { intentos: r.length, aceptados: r.filter((x) => x.status === "ACEPTADO").length };
-  } catch {
+  } catch (e) {
+    console.error("[push] falló el envío a la persona", userId, mensajeDe(e));
     return { intentos: 0, aceptados: 0 };
   }
 }
@@ -183,26 +217,34 @@ export async function reintentarFallidos(ahora = new Date()): Promise<number> {
     });
     let n = 0;
     for (const f of fallidos) {
-      // Se marca ANTES de reenviar: si el barrido se corta a la mitad, el
-      // siguiente no lo manda dos veces.
-      const marcado = await prisma.pushDelivery.updateMany({
-        where: { id: f.id, retriedAt: null },
-        data: { retriedAt: ahora },
-      });
-      if (marcado.count === 0 || !f.subscriptionId) continue;
-      const sub = await prisma.pushSubscription.findUnique({ where: { id: f.subscriptionId } });
-      if (!sub) continue;
-      await enviarASuscripcion(
-        sub,
-        JSON.parse(f.payload) as PushPayload,
-        { kind: f.kind as TipoDeAviso, notificationId: f.notificationId },
-        f.urgency as Urgencia,
-        2,
-      );
-      n++;
+      // Fila por fila: una entrega con el payload roto no puede frenar el
+      // barrido de las demás.
+      try {
+        // Se marca ANTES de reenviar: si el barrido se corta a la mitad, el
+        // siguiente no lo manda dos veces.
+        const marcado = await prisma.pushDelivery.updateMany({
+          where: { id: f.id, retriedAt: null },
+          data: { retriedAt: ahora },
+        });
+        if (marcado.count === 0 || !f.subscriptionId) continue;
+        const sub = await prisma.pushSubscription.findUnique({ where: { id: f.subscriptionId } });
+        if (!sub) continue;
+        const payload = JSON.parse(f.payload) as PushPayload;
+        await enviarASuscripcion(
+          sub,
+          payload,
+          { kind: f.kind as TipoDeAviso, notificationId: f.notificationId },
+          f.urgency as Urgencia,
+          2,
+        );
+        n++;
+      } catch (e) {
+        console.error("[push] no se pudo reintentar la entrega", f.id, mensajeDe(e));
+      }
     }
     return n;
-  } catch {
+  } catch (e) {
+    console.error("[push] falló el barrido de reintentos", mensajeDe(e));
     return 0;
   }
 }
@@ -237,7 +279,9 @@ export async function enviarPrueba(userId: string, endpoint: string): Promise<{ 
     "high",
   );
   if (r.status === "ACEPTADO") return { ok: true };
-  if (r.error === "sin claves") return { ok: false, error: "Faltan las claves de avisos en el servidor. Avisale a la administradora." };
+  if (r.error === SIN_CLAVES || r.error?.startsWith(CLAVES_INVALIDAS)) {
+    return { ok: false, error: "Las claves de avisos del servidor faltan o están mal. Avisale a la administradora." };
+  }
   if (r.status === "CADUCADO") return { ok: false, error: "El servicio de avisos dio de baja este teléfono. Volvé a activar los avisos." };
   return { ok: false, error: "El servicio de avisos no aceptó el envío. Probá de nuevo en un rato." };
 }
