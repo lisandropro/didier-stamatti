@@ -70,3 +70,59 @@ test("primero quien no tiene ningún teléfono, después a quien no le llega, de
   assert.equal(r[2].dispositivos[0].descripcion, "Desconocido", "sin userAgent todavía");
   assert.equal(r.some((p) => p.id === aldana.id), true);
 });
+
+// Los envíos se crean con `createdAt` explícito: sin eso, todos caen en el mismo
+// instante y la prueba no distingue "del más nuevo al más viejo" del revés.
+const haceDias = (d: number) => new Date(Date.now() - d * 24 * 60 * 60 * 1000);
+const haceUnaHora = () => new Date(Date.now() - 60 * 60 * 1000);
+
+async function dispositivoConEnvios(
+  nombre: string,
+  envios: { status: string; createdAt: Date; attempt?: number }[],
+) {
+  const u = await prisma.user.create({
+    data: { name: nombre, email: `${nombre}@t.local`, role: "ARMADOR", passwordHash: "x" },
+  });
+  const s = await prisma.pushSubscription.create({
+    data: { userId: u.id, endpoint: `https://fcm.googleapis.com/fcm/send/${nombre}`, p256dh: "k", auth: "a" },
+  });
+  for (const e of envios) {
+    await prisma.pushDelivery.create({
+      data: { userId: u.id, subscriptionId: s.id, kind: "ORDER_EDIT", payload: "{}", ...e },
+    });
+  }
+  const persona = (await disp.estadoDeDispositivos()).find((p) => p.id === u.id);
+  assert.ok(persona, `${nombre} tiene que aparecer`);
+  return persona.dispositivos[0];
+}
+
+test("cuenta del más nuevo al más viejo: tres errores viejos y uno aceptado reciente SÍ le llega", async () => {
+  const d = await dispositivoConEnvios("Viejos", [
+    { status: "ERROR", createdAt: haceDias(4) },
+    { status: "ERROR", createdAt: haceDias(3) },
+    { status: "ERROR", createdAt: haceDias(2) },
+    { status: "ACEPTADO", createdAt: haceUnaHora() },
+  ]);
+  assert.equal(d.noLeLlega, false);
+});
+
+test("cuenta del más nuevo al más viejo: uno aceptado viejo y tres errores recientes NO le llega", async () => {
+  const d = await dispositivoConEnvios("Recientes", [
+    { status: "ACEPTADO", createdAt: haceDias(4) },
+    { status: "ERROR", createdAt: haceDias(3) },
+    { status: "ERROR", createdAt: haceDias(2) },
+    { status: "ERROR", createdAt: haceUnaHora() },
+  ]);
+  assert.equal(d.noLeLlega, true);
+});
+
+test("el reintento no es otro envío: dos envíos reales, uno con su reintento fallido, no alcanzan", async () => {
+  // Primer envío (intento 1) + su reintento (intento 2) + un segundo envío:
+  // tres filas fallidas, pero solo dos envíos reales.
+  const d = await dispositivoConEnvios("Reintento", [
+    { status: "ERROR", createdAt: haceDias(2), attempt: 1 },
+    { status: "ERROR", createdAt: haceDias(2), attempt: 2 },
+    { status: "ERROR", createdAt: haceUnaHora(), attempt: 1 },
+  ]);
+  assert.equal(d.noLeLlega, false);
+});

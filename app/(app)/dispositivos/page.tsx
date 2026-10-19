@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { canManageUsers, ROLE_LABEL } from "@/lib/permissions";
-import { estadoDeDispositivos } from "@/lib/dispositivos";
+import { estadoDeDispositivos, FALLOS_PARA_ALARMA } from "@/lib/dispositivos";
 import { fmtMomento } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +40,7 @@ export default async function DispositivosPage() {
                       <b>{d.descripcion}</b> · activado {fmtMomento(d.alta)} ·{" "}
                       {d.lastOkAt ? `último aviso que llegó: ${fmtMomento(d.lastOkAt)}` : "todavía no le llegó ninguno"}
                       {d.lastErrorAt ? ` · último error: ${fmtMomento(d.lastErrorAt)}` : ""}
-                      {d.noLeLlega ? " · NO LE LLEGA: fallaron los últimos 3 envíos" : ""}
+                      {d.noLeLlega ? ` · NO LE LLEGA: fallaron los últimos ${FALLOS_PARA_ALARMA} envíos` : ""}
                     </li>
                   ))}
                 </ul>

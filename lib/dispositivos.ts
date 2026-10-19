@@ -39,6 +39,8 @@ export async function estadoDeDispositivos(): Promise<PersonaVista[]> {
   });
   const subs = await prisma.pushSubscription.findMany({
     where: { userId: { in: usuarios.map((u) => u.id) } },
+    // Sin endpoint, p256dh ni auth: son las claves del teléfono y la pantalla no las usa.
+    select: { id: true, userId: true, userAgent: true, createdAt: true, lastOkAt: true, lastErrorAt: true },
     orderBy: { createdAt: "asc" },
   });
 
@@ -47,7 +49,9 @@ export async function estadoDeDispositivos(): Promise<PersonaVista[]> {
     const dispositivos: DispositivoVista[] = [];
     for (const s of subs.filter((x) => x.userId === u.id)) {
       const ultimos = await prisma.pushDelivery.findMany({
-        where: { subscriptionId: s.id },
+        // attempt 1: el reintento es una fila aparte del mismo envío, y contarlo
+        // dispararía la alarma con dos envíos reales en vez de tres.
+        where: { subscriptionId: s.id, attempt: 1 },
         orderBy: { createdAt: "desc" },
         take: FALLOS_PARA_ALARMA,
         select: { status: true },
