@@ -9,6 +9,9 @@ export type Cambio = { itemName: string; kind: string; before: string | null; af
 const DE_CANTIDAD = new Set(["AGREGADO", "QUITADO", "CANTIDAD"]);
 const MAX_EN_EL_PUSH = 3;
 const MAX_CUERPO = 500;
+// El nombre de quién lo hizo lo escribe una persona y no tiene tope: si no se
+// acota, un nombre larguísimo se come el presupuesto del cuerpo entero.
+const MAX_QUIEN = 60;
 
 /**
  * Junta los cambios de cada ítem en uno solo, del primer "antes" al último
@@ -18,10 +21,21 @@ const MAX_CUERPO = 500;
  * Las cantidades se agrupan por ítem (agregar, sacar y cambiar son la misma
  * cosa vista desde el depósito), las notas también, y los datos del evento
  * (fecha, lugar, responsable...) por tipo.
+ *
+ * Dos reglas más, porque el depósito actúa sobre cómo queda el pedido, no
+ * sobre la historia: copiar el pedido de otro evento pisa todo lo que se había
+ * tocado de los ítems antes de copiar, y la nota de un ítem que ya no está no
+ * se avisa.
  */
 export function consolidarCambios(cambios: Cambio[]): Cambio[] {
   const grupos = new Map<string, { primero: Cambio; ultimo: Cambio }>();
   for (const cambio of cambios) {
+    if (cambio.kind === "COPIADO") {
+      // Lo de los ítems anterior a la copia ya no existe; lo posterior sí cuenta.
+      for (const clave of [...grupos.keys()]) {
+        if (clave.startsWith("Q:") || clave.startsWith("N:")) grupos.delete(clave);
+      }
+    }
     const clave = DE_CANTIDAD.has(cambio.kind)
       ? `Q:${cambio.itemName}`
       : cambio.kind === "NOTA"
@@ -30,6 +44,14 @@ export function consolidarCambios(cambios: Cambio[]): Cambio[] {
     const g = grupos.get(clave);
     if (g) g.ultimo = cambio;
     else grupos.set(clave, { primero: cambio, ultimo: cambio });
+  }
+
+  // Ítems que al final no están (los sacaron, o los agregaron y los sacaron).
+  // Las notas van en su propio grupo, así que sin esto una nota sobreviviría
+  // al ítem y el depósito leería una nota de algo que ya no tiene que preparar.
+  const sinItem = new Set<string>();
+  for (const [clave, { ultimo }] of grupos) {
+    if (clave.startsWith("Q:") && (ultimo.after ?? null) === null) sinItem.add(clave.slice(2));
   }
 
   const netos: Cambio[] = [];
@@ -43,6 +65,7 @@ export function consolidarCambios(cambios: Cambio[]): Cambio[] {
       else if (after === null) netos.push({ itemName, kind: "QUITADO", before, after: null });
       else if (before !== after) netos.push({ itemName, kind: "CANTIDAD", before, after });
     } else if (clave.startsWith("N:")) {
+      if (sinItem.has(itemName)) continue;
       if ((before ?? "") !== (after ?? "")) netos.push({ itemName, kind: "NOTA", before, after });
     } else if (ultimo.kind === "COPIADO" || before !== after) {
       netos.push({ ...ultimo, before });
@@ -51,8 +74,29 @@ export function consolidarCambios(cambios: Cambio[]): Cambio[] {
   return netos;
 }
 
+/**
+ * Recorta a `n` unidades de longitud como mucho (la `length` de JS, que es la
+ * que cuenta el tope de 500), con "…" al final si cortó. Corta por caracteres
+ * enteros: partir un emoji por la mitad deja un carácter suelto que el
+ * teléfono muestra como un cuadradito.
+ */
 function recortar(s: string, n: number): string {
-  return s.length <= n ? s : `${s.slice(0, n - 1)}…`;
+  if (n <= 0) return "";
+  if (s.length <= n) return s;
+  if (n === 1) return "…";
+  let largo = 0;
+  let corte = "";
+  for (const caracter of s) {
+    if (largo + caracter.length > n - 1) break; // el último lugar es para el "…"
+    corte += caracter;
+    largo += caracter.length;
+  }
+  return `${corte}…`;
+}
+
+/** Un dato del evento que quedó vacío no se escribe como "null". */
+function dato(valor: string | null): string {
+  return valor ?? "(sin dato)";
 }
 
 /** Un cambio en pocas palabras, como lo leería el que prepara. */
@@ -71,13 +115,13 @@ export function describirCambio(c: Cambio): string {
     case "RESPONSABLE":
       return `Responsable: ${c.after ?? "sin responsable"}`;
     case "LUGAR":
-      return `Lugar: ${c.after}`;
+      return `Lugar: ${dato(c.after)}`;
     case "FECHA":
-      return `Fecha: ${c.after}`;
+      return `Fecha: ${dato(c.after)}`;
     case "INVITADOS":
-      return `Invitados: ${c.after}`;
+      return `Invitados: ${dato(c.after)}`;
     case "PERIODO":
-      return `Período: ${c.after}`;
+      return `Período: ${dato(c.after)}`;
     default:
       return c.itemName;
   }
@@ -96,6 +140,9 @@ export function textoDePush(
   if (netos.length === 0) return null;
   const visibles = netos.slice(0, MAX_EN_EL_PUSH).map(describirCambio).join(" · ");
   const resto = netos.length > MAX_EN_EL_PUSH ? ` · y ${netos.length - MAX_EN_EL_PUSH} más` : "";
-  const pie = `\n— ${actorName}`;
-  return { title: lugar, body: recortar(visibles + resto, MAX_CUERPO - pie.length) + pie };
+  const pie = `\n— ${recortar(actorName, MAX_QUIEN)}`;
+  // Se recorta solo el detalle: el "y N más" y el pie dicen cuántos cambios hay
+  // y quién los hizo, y son lo último que se puede perder.
+  const detalle = recortar(visibles, MAX_CUERPO - pie.length - resto.length);
+  return { title: lugar, body: detalle + resto + pie };
 }
