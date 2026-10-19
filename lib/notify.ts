@@ -22,6 +22,8 @@ export type ChangeKind =
   | "CANTIDAD"
   | "NOTA"
   | "COPIADO"
+  // Se descartaron los cambios o se restauró una versión: el pedido entero.
+  | "RESTAURADO"
   | "RESPONSABLE"
   // Datos generales del evento, no del pedido: se corrigen sin tocar las líneas.
   | "LUGAR"
@@ -34,6 +36,8 @@ export type OrderChangeInput = {
   kind: ChangeKind;
   before?: string | null;
   after?: string | null;
+  /** El ítem ya estaba tildado como preparado: el depósito tiene que rehacer algo. */
+  tardio?: boolean;
 };
 
 const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -41,6 +45,104 @@ const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : Stri
 function resumen(actorName: string, lugar: string, n: number): string {
   if (n === 1) return `${actorName} hizo un cambio en el pedido de ${lugar}`;
   return `${actorName} hizo ${n} cambios en el pedido de ${lugar}`;
+}
+
+type TipoDeTanda = "ORDER_EDIT" | "CAMBIO_TARDIO";
+
+function resumenDe(tipo: TipoDeTanda, actorName: string, lugar: string, n: number): string {
+  if (tipo === "ORDER_EDIT") return resumen(actorName, lugar, n);
+  return n === 1
+    ? `${actorName} cambió un ítem ya preparado de ${lugar}`
+    : `${actorName} cambió ${n} ítems ya preparados de ${lugar}`;
+}
+
+/** Suma `n` cambios a la tanda abierta de este destinatario y de este tipo, o
+ *  abre una nueva. Las dos tandas (común y tardía) siguen la misma regla. */
+async function sumarATanda(
+  tipo: TipoDeTanda,
+  recipientId: string,
+  actor: { id: string; name: string },
+  eventId: string,
+  lugar: string,
+  n: number,
+  ahora: Date,
+  batchCutoff: Date,
+): Promise<void> {
+  // Se busca un aviso de esta misma persona sobre este mismo pedido que
+  // todavía no haya salido al celular. Si el push ya salió, este cambio
+  // arranca una tanda nueva — si no, se colaría en un aviso ya avisado.
+  const abierto = await prisma.notification.findFirst({
+    where: {
+      recipientId,
+      type: tipo,
+      eventId,
+      actorName: actor.name,
+      read: false,
+      pushedAt: null,
+      sinceAt: { gte: batchCutoff },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (abierto) {
+    // Solo si sigue abierta. Entre la búsqueda de recién y esta escritura el
+    // barrido la puede cerrar: si se sumara igual, el cambio quedaría adentro
+    // de una tanda ya avisada y no saldría nunca al teléfono. En ese caso no
+    // se suma nada y más abajo se abre una tanda nueva.
+    const sumado = await prisma.notification.updateMany({
+      where: { id: abierto.id, pushedAt: null },
+      // `createdAt` se corre a ahora: es la marca de "última actividad". Nunca
+      // hacia atrás: dos guardados de la misma persona desde dos aparatos
+      // pueden llegar desordenados, y si la marca retrocediera, el resumen
+      // de la tanda (que llega hasta `createdAt`) dejaría afuera un cambio.
+      //
+      // El contador se incrementa en la base y no se escribe "lo leído + estos
+      // cambios": el barrido cierra la tanda solo si `changeCount` sigue igual,
+      // y es la única marca que se mueve siempre: `createdAt` puede quedarse
+      // quieta (si ya estaba adelante, porque nunca retrocede). Y con la suma
+      // hecha acá, dos guardados juntos leían el mismo número y dejaban uno solo.
+      data: {
+        createdAt: abierto.createdAt > ahora ? abierto.createdAt : ahora,
+        changeCount: { increment: n },
+      },
+    });
+    if (sumado.count > 0) {
+      // El mensaje dice el total que quedó en la base, releído después de
+      // sumar y no calculado con lo leído antes: con dos guardados juntos, lo
+      // leído ya no es el total. Se escribe solo si el contador sigue siendo
+      // ése; si otro guardado sumó en el medio, ése escribe su número, que es
+      // el nuevo. El texto del push no sale de acá sino de los cambios
+      // guardados, así que esto es solo lo que se lee en la lista de avisos.
+      const actual = await prisma.notification.findUnique({
+        where: { id: abierto.id },
+        select: { changeCount: true },
+      });
+      if (actual) {
+        await prisma.notification.updateMany({
+          where: { id: abierto.id, changeCount: actual.changeCount },
+          data: { message: resumenDe(tipo, actor.name, lugar, actual.changeCount) },
+        });
+      }
+      return;
+    }
+  }
+
+  // No había tanda abierta, o se cerró justo antes de sumarle este cambio.
+  await prisma.notification.create({
+    data: {
+      recipientId,
+      actorName: actor.name,
+      type: tipo,
+      eventId,
+      message: resumenDe(tipo, actor.name, lugar, n),
+      changeCount: n,
+      sinceAt: ahora,
+      createdAt: ahora,
+      // El aviso tardío abre Preparar, no "Qué cambió": lo que importa es qué
+      // rehacer ahora, no la lista de lo que se tocó.
+      linkUrl: tipo === "CAMBIO_TARDIO" ? `/preparar/${eventId}` : null,
+    },
+  });
 }
 
 /** Registra QUÉ se cambió y suma el cambio al aviso abierto de cada destinatario
@@ -72,6 +174,7 @@ export async function notifyOrderChange(
         kind: c.kind,
         before: c.before ?? null,
         after: c.after ?? null,
+        tardio: c.tardio ?? false,
         createdAt: ahora,
       })),
     });
@@ -93,79 +196,14 @@ export async function notifyOrderChange(
 
     const batchCutoff = new Date(ahora.getTime() - MAX_BATCH_MINUTES * 60 * 1000);
 
+    // Lo tardío va a su propia tanda: es otro aviso (qué rehacer, con prioridad
+    // para todos) y no se mezcla con los cambios comunes.
+    const comunes = cambios.filter((c) => !c.tardio).length;
+    const tardios = cambios.length - comunes;
+
     for (const r of recipients) {
-      // Se busca un aviso de esta misma persona sobre este mismo pedido que
-      // todavía no haya salido al celular. Si el push ya salió, este cambio
-      // arranca una tanda nueva — si no, se colaría en un aviso ya avisado.
-      const abierto = await prisma.notification.findFirst({
-        where: {
-          recipientId: r.id,
-          type: "ORDER_EDIT",
-          eventId,
-          actorName: actor.name,
-          read: false,
-          pushedAt: null,
-          sinceAt: { gte: batchCutoff },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      if (abierto) {
-        // Solo si sigue abierta. Entre la búsqueda de recién y esta escritura el
-        // barrido la puede cerrar: si se sumara igual, el cambio quedaría adentro
-        // de una tanda ya avisada y no saldría nunca al teléfono. En ese caso no
-        // se suma nada y más abajo se abre una tanda nueva.
-        const sumado = await prisma.notification.updateMany({
-          where: { id: abierto.id, pushedAt: null },
-          // `createdAt` se corre a ahora: es la marca de "última actividad". Nunca
-          // hacia atrás: dos guardados de la misma persona desde dos aparatos
-          // pueden llegar desordenados, y si la marca retrocediera, el resumen
-          // de la tanda (que llega hasta `createdAt`) dejaría afuera un cambio.
-          //
-          // El contador se incrementa en la base y no se escribe "lo leído + estos
-          // cambios": el barrido cierra la tanda solo si `changeCount` sigue igual,
-          // y es la única marca que se mueve siempre: `createdAt` puede quedarse
-          // quieta (si ya estaba adelante, porque nunca retrocede). Y con la suma
-          // hecha acá, dos guardados juntos leían el mismo número y dejaban uno solo.
-          data: {
-            createdAt: abierto.createdAt > ahora ? abierto.createdAt : ahora,
-            changeCount: { increment: cambios.length },
-          },
-        });
-        if (sumado.count > 0) {
-          // El mensaje dice el total que quedó en la base, releído después de
-          // sumar y no calculado con lo leído antes: con dos guardados juntos, lo
-          // leído ya no es el total. Se escribe solo si el contador sigue siendo
-          // ése; si otro guardado sumó en el medio, ése escribe su número, que es
-          // el nuevo. El texto del push no sale de acá sino de los cambios
-          // guardados, así que esto es solo lo que se lee en la lista de avisos.
-          const actual = await prisma.notification.findUnique({
-            where: { id: abierto.id },
-            select: { changeCount: true },
-          });
-          if (actual) {
-            await prisma.notification.updateMany({
-              where: { id: abierto.id, changeCount: actual.changeCount },
-              data: { message: resumen(actor.name, ev.lugar, actual.changeCount) },
-            });
-          }
-          continue;
-        }
-      }
-
-      // No había tanda abierta, o se cerró justo antes de sumarle este cambio.
-      await prisma.notification.create({
-        data: {
-          recipientId: r.id,
-          actorName: actor.name,
-          type: "ORDER_EDIT",
-          eventId,
-          message: resumen(actor.name, ev.lugar, cambios.length),
-          changeCount: cambios.length,
-          sinceAt: ahora,
-          createdAt: ahora,
-        },
-      });
+      if (comunes > 0) await sumarATanda("ORDER_EDIT", r.id, actor, eventId, ev.lugar, comunes, ahora, batchCutoff);
+      if (tardios > 0) await sumarATanda("CAMBIO_TARDIO", r.id, actor, eventId, ev.lugar, tardios, ahora, batchCutoff);
     }
   } catch {
     // Un fallo de notificación no debe romper el guardado del pedido.
@@ -191,6 +229,8 @@ export async function cambiosDeLaTanda(aviso: {
       eventId: aviso.eventId,
       actorName: aviso.actorName,
       createdAt: { gte: aviso.sinceAt, lte: aviso.createdAt },
+      // Los tardíos tienen su propia tanda y se leen en Preparar, no acá.
+      tardio: false,
     },
     orderBy: { createdAt: "asc" },
   });

@@ -122,6 +122,8 @@ export function describirCambio(c: Cambio): string {
       return `Invitados: ${dato(c.after)}`;
     case "PERIODO":
       return `Período: ${dato(c.after)}`;
+    case "RESTAURADO":
+      return c.after ?? "Se restauró el pedido";
     default:
       return c.itemName;
   }

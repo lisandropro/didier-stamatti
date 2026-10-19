@@ -8,6 +8,8 @@ import { canEditOrders } from "@/lib/permissions";
 import { validQuantity } from "@/lib/quantity";
 import { esCategoria } from "@/lib/categories";
 import { saveRecoverableVersion } from "@/lib/snapshot";
+import { estaTildado, hayTildados } from "@/lib/preparacion-db";
+import { claveDeLinea } from "@/lib/preparacion";
 
 export type OrderResult = { ok: boolean; error?: string; lineId?: string; count?: number };
 
@@ -52,6 +54,10 @@ export async function setLine(input: {
     if (!producto || (!producto.active && !existing)) return { ok: false, error: "El producto ya no está disponible." };
     const nombre = producto?.name ?? "Producto";
 
+    // ¿El depósito ya lo tildó? Entonces este cambio obliga a rehacer algo
+    // físico: va marcado, y avisa aparte y con prioridad.
+    const tardio = await estaTildado(tx, input.eventId, input.productId);
+
     // Puede cambiar la cantidad Y la nota en el mismo guardado: se registran las
     // dos cosas, porque la nota es justo lo que le importa al del depósito.
     const cambios: OrderChangeInput[] = [];
@@ -59,14 +65,14 @@ export async function setLine(input: {
     if (qty === 0) {
       if (existing) {
         await tx.orderLine.delete({ where: { id: existing.id } });
-        cambios.push({ itemName: nombre, kind: "QUITADO", before: String(existing.qty), after: null });
+        cambios.push({ itemName: nombre, kind: "QUITADO", before: String(existing.qty), after: null, tardio });
       }
     } else if (existing) {
       if (existing.qty !== qty) {
-        cambios.push({ itemName: nombre, kind: "CANTIDAD", before: String(existing.qty), after: String(qty) });
+        cambios.push({ itemName: nombre, kind: "CANTIDAD", before: String(existing.qty), after: String(qty), tardio });
       }
       if ((existing.note ?? null) !== note) {
-        cambios.push({ itemName: nombre, kind: "NOTA", before: existing.note, after: note });
+        cambios.push({ itemName: nombre, kind: "NOTA", before: existing.note, after: note, tardio });
       }
       // Si no cambió ni la cantidad ni la nota, se guarda igual pero no se avisa:
       // abrir un pedido y volver a guardarlo no es una modificación.
@@ -75,7 +81,7 @@ export async function setLine(input: {
       await tx.orderLine.create({
         data: { eventId: input.eventId, productId: input.productId, qty, note },
       });
-      cambios.push({ itemName: nombre, kind: "AGREGADO", before: null, after: String(qty) });
+      cambios.push({ itemName: nombre, kind: "AGREGADO", before: null, after: String(qty), tardio });
     }
 
     return cambios;
@@ -139,16 +145,22 @@ export async function setCustomQty(lineId: string, qty: number): Promise<OrderRe
   // cantidad de un ítem cuyo evento ya estaba en la papelera.
   const antes = await prisma.orderLine.findFirst({
     where: { id: lineId, event: EVENTO_VIVO },
-    select: { qty: true, customName: true, product: { select: { name: true } } },
+    select: { qty: true, productId: true, customName: true, product: { select: { name: true } } },
   });
   if (!antes) return { ok: false, error: "El ítem o su evento ya no está disponible." };
-  const line = await prisma.orderLine.update({ where: { id: lineId }, data: { qty: q }, select: { eventId: true } });
+  const { eventId, tardio } = await prisma.$transaction(async (tx) => {
+    const line = await tx.orderLine.update({ where: { id: lineId }, data: { qty: q }, select: { eventId: true } });
+    // ¿El depósito ya lo tildó? Se pregunta en la misma transacción que escribe.
+    const tardio = await estaTildado(tx, line.eventId, claveDeLinea({ id: lineId, productId: antes.productId }));
+    return { eventId: line.eventId, tardio };
+  });
   if (antes.qty !== q) {
-    await notifyOrderChange(user, line.eventId, {
+    await notifyOrderChange(user, eventId, {
       itemName: antes.customName ?? antes.product?.name ?? "Ítem",
       kind: "CANTIDAD",
       before: String(antes.qty),
       after: String(q),
+      tardio,
     });
   }
   revalidatePath("/");
@@ -161,15 +173,19 @@ export async function deleteLine(lineId: string): Promise<OrderResult> {
   if (!user) return { ok: false, error: permiso! };
   const line = await prisma.orderLine.findFirst({
     where: { id: lineId, event: EVENTO_VIVO },
-    select: { eventId: true, qty: true, customName: true, product: { select: { name: true } } },
+    select: { eventId: true, qty: true, productId: true, customName: true, product: { select: { name: true } } },
   });
   if (!line) return { ok: false, error: "El ítem o su evento ya no está disponible." };
-  await prisma.orderLine.deleteMany({ where: { id: lineId } });
+  const tardio = await prisma.$transaction(async (tx) => {
+    await tx.orderLine.deleteMany({ where: { id: lineId } });
+    return estaTildado(tx, line.eventId, claveDeLinea({ id: lineId, productId: line.productId }));
+  });
   await notifyOrderChange(user, line.eventId, {
     itemName: line.customName ?? line.product?.name ?? "Ítem",
     kind: "QUITADO",
     before: String(line.qty),
     after: null,
+    tardio,
   });
   revalidatePath("/");
   return { ok: true };
@@ -198,28 +214,30 @@ export async function copyOrderFromEvent(targetEventId: string, sourceEventId: s
   // un toque en el evento equivocado borraba un pedido sin vuelta atrás.
   if (habia > 0) await saveRecoverableVersion(target.periodId, "PRE_COPIA", user);
 
-  await prisma.$transaction([
-    prisma.orderLine.deleteMany({ where: { eventId: targetEventId } }),
-    ...sourceLines.map((l) =>
-      prisma.orderLine.create({
-        data: {
-          eventId: targetEventId,
-          productId: l.productId,
-          customName: l.customName,
-          customCategory: l.customCategory,
-          customUnit: l.customUnit,
-          qty: l.qty,
-          note: l.note,
-        },
-      })
-    ),
-  ]);
+  const tardio = await prisma.$transaction(async (tx) => {
+    // Si algo de este pedido ya estaba preparado, copiar encima lo cambia todo.
+    const tardio = await hayTildados(tx, targetEventId);
+    await tx.orderLine.deleteMany({ where: { eventId: targetEventId } });
+    await tx.orderLine.createMany({
+      data: sourceLines.map((l) => ({
+        eventId: targetEventId,
+        productId: l.productId,
+        customName: l.customName,
+        customCategory: l.customCategory,
+        customUnit: l.customUnit,
+        qty: l.qty,
+        note: l.note,
+      })),
+    });
+    return tardio;
+  });
 
   await notifyOrderChange(user, targetEventId, {
     itemName: "Todo el pedido",
     kind: "COPIADO",
     before: habia > 0 ? `${habia} ${habia === 1 ? "producto" : "productos"}` : "pedido vacío",
     after: `${sourceLines.length} ${sourceLines.length === 1 ? "producto" : "productos"} copiados de ${source.lugar}`,
+    tardio,
   });
   revalidatePath("/");
   revalidatePath(`/evento/${targetEventId}`);

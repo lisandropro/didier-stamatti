@@ -639,6 +639,39 @@ test("un cambio que llega justo cuando el barrido cierra la tanda abre una tanda
   for (const x of nuevos) assert.equal(x.body, "Vasos 1→2\n— Ana");
 });
 
+const tandas = (recipientId: string, type: string) =>
+  prisma.notification.findMany({ where: { recipientId, type }, orderBy: { createdAt: "desc" } });
+
+test("un cambio tardío va a su propia tanda, que abre la pantalla de preparar", async () => {
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, {
+    itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true,
+  });
+  const [t] = await tandas(ids.logistica, "CAMBIO_TARDIO");
+  assert.ok(t, "no abrió la tanda de cambio tardío");
+  assert.equal(t.linkUrl, `/preparar/${ids.evento}`);
+  assert.match(t.message, /ya preparado/);
+  assert.equal((await tandas(ids.logistica, "ORDER_EDIT")).length, 0, "lo tardío no va además a la tanda común");
+  const [c] = await prisma.orderChange.findMany({ where: { itemName: "Copa de agua" } });
+  assert.equal(c.tardio, true);
+});
+
+test("un guardado con cambios tardíos y comunes abre una tanda de cada una", async () => {
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, [
+    { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true },
+    { itemName: "Servilletas", kind: "AGREGADO", before: null, after: "50" },
+  ]);
+  assert.equal((await tandas(ids.logistica, "CAMBIO_TARDIO"))[0]?.changeCount, 1);
+  assert.equal((await tandas(ids.logistica, "ORDER_EDIT"))[0]?.changeCount, 1);
+});
+
+test("'Qué cambió' de la tanda común no muestra los cambios tardíos", async () => {
+  const [comun] = await tandas(ids.logistica, "ORDER_EDIT");
+  const cambios = await notify.cambiosDeLaTanda(comun);
+  assert.deepEqual(cambios.map((c) => c.itemName), ["Servilletas"]);
+});
+
 test("un evento que no existe no rompe el guardado del pedido", async () => {
   await assert.doesNotReject(() =>
     notify.notifyOrderChange(ACTOR(), "id-que-no-existe", { itemName: "x", kind: "CANTIDAD", after: "1" })

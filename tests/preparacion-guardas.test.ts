@@ -62,3 +62,33 @@ test("ninguna acción de preparación escribe sin comprobar permiso y evento viv
     assert.ok(permiso > -1 && escritura > permiso, `${cortes[i][1]} escribe sin comprobar antes`);
   }
 });
+
+test("cada acción del pedido marca si el cambio es tardío antes de avisar", () => {
+  const s = fuente("app/actions/order.ts");
+  const cuerpo = (nombre: string) => {
+    const desde = s.indexOf(`export async function ${nombre}`);
+    const resto = s.slice(desde + 10);
+    const hasta = resto.search(/^export async function /m);
+    return s.slice(desde, hasta === -1 ? s.length : desde + 10 + hasta);
+  };
+  for (const [nombre, pregunta] of [
+    ["setLine", "estaTildado("],
+    ["setCustomQty", "estaTildado("],
+    ["deleteLine", "estaTildado("],
+    ["copyOrderFromEvent", "hayTildados("],
+  ] as const) {
+    const c = cuerpo(nombre);
+    const marca = c.indexOf(pregunta);
+    const aviso = c.indexOf("notifyOrderChange(");
+    assert.ok(marca > -1 && aviso > marca, `${nombre} avisa sin saber si es tardío`);
+    assert.match(c, /tardio/, `${nombre} no pasa la marca`);
+  }
+  const addCustom = cuerpo("addCustomLine");
+  assert.doesNotMatch(addCustom, /tardio: true|estaTildado\(/, "un suelto nuevo nunca es tardío");
+});
+
+test("descartar y restaurar avisan como tardío a los eventos que tenían algo tildado", () => {
+  const s = fuente("app/actions/snapshot.ts");
+  assert.match(s, /preparaciones: \{ some: \{\} \}/);
+  assert.match(s, /kind: "RESTAURADO"[\s\S]*tardio: true/);
+});

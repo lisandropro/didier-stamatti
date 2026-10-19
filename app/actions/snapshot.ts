@@ -5,6 +5,9 @@ import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { applySnapshotData, buildSnapshotData, saveRecoverableVersion } from "@/lib/snapshot";
 import { canManagePeriods } from "@/lib/permissions";
+import { notifyOrderChange } from "@/lib/notify";
+import { estadoDelEvento } from "@/lib/preparacion-db";
+import { cambiosParaAplicar } from "@/lib/preparacion";
 
 export type SnapshotResult = {
   ok: boolean;
@@ -18,6 +21,28 @@ function revalidar(periodId: string) {
   revalidatePath("/");
   revalidatePath(`/periodo/${periodId}`);
   revalidatePath("/historial");
+}
+
+/**
+ * Descartar o restaurar reemplaza los pedidos de todo el período. A cada evento
+ * que tenía algo tildado y quedó con algo para rehacer se le avisa como cambio
+ * tardío: el depósito tiene que revisar lo que ya juntó.
+ *
+ * Acá no se decide "dentro de la transacción que escribe", como en las acciones
+ * del pedido: `applySnapshotData` es una transacción en lote y no puede leer en
+ * el medio. Se compara después contra lo tildado, que da lo mismo: lo que cuenta
+ * es si quedó algo distinto de lo que se preparó. Un evento que la versión dejó
+ * igual no recibe un aviso vacío.
+ */
+async function avisarATildados(periodId: string, actor: { id: string; name: string }, que: string) {
+  const eventos = await prisma.event.findMany({
+    where: { periodId, deletedAt: null, preparaciones: { some: {} } },
+    select: { id: true },
+  });
+  for (const e of eventos) {
+    if (cambiosParaAplicar(await estadoDelEvento(e.id)).length === 0) continue;
+    await notifyOrderChange(actor, e.id, { itemName: "Todo el pedido", kind: "RESTAURADO", before: null, after: que, tardio: true });
+  }
 }
 
 /** Guarda (o actualiza) la "versión segura" de los pedidos de un período.
@@ -59,6 +84,7 @@ export async function discardPeriodChanges(periodId: string): Promise<SnapshotRe
   // pisa nada: es preferible no descartar a descartar sin poder volver.
   const resguardo = await saveRecoverableVersion(periodId, "PRE_DESCARTE", user);
   const restauradas = await applySnapshotData(periodId, snap.data);
+  await avisarATildados(periodId, user, "Se descartaron los cambios del pedido");
 
   revalidar(periodId);
   return { ok: true, takenAt: snap.takenAt.toISOString(), guardadas: resguardo.lineCount, restauradas };
@@ -76,6 +102,7 @@ export async function restorePeriodVersion(versionId: string): Promise<SnapshotR
 
   const resguardo = await saveRecoverableVersion(version.periodId, "PRE_RESTAURACION", user);
   const restauradas = await applySnapshotData(version.periodId, version.data);
+  await avisarATildados(version.periodId, user, "Se restauró una versión anterior del pedido");
   await prisma.periodVersion.update({ where: { id: versionId }, data: { restoredAt: new Date() } });
 
   revalidar(version.periodId);
