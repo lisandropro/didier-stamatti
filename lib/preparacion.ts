@@ -111,7 +111,8 @@ export function textoDeAccion(i: ItemPreparacion): string {
     case "SACAR":
       return `Sacá ${i.tildado?.qty ?? 0} ${i.itemName}`;
     case "NOTA":
-      return i.note ? `${i.itemName}: nota "${recortar(i.note, 40)}"` : `${i.itemName}: sin nota`;
+      // Una nota de puros espacios es una nota borrada (ver mismaNota).
+      return i.note?.trim() ? `${i.itemName}: nota "${recortar(i.note.trim(), 40)}"` : `${i.itemName}: sin nota`;
     default:
       return i.itemName;
   }

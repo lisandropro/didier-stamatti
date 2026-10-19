@@ -78,6 +78,18 @@ test("un renglón en cero no es un pedido", () => {
   assert.deepEqual(estadoDeItems([L("a", 0)], []), []);
 });
 
+test("tildado y con el renglón en cero: también hay que sacarlo", () => {
+  const i = uno([L("a", 0)], [T("a", 3)]);
+  assert.equal(i.estado, "SACAR");
+  assert.equal(i.accion, "Sacá 3 · ya no va");
+});
+
+test("el texto de las acciones que faltaban: bajar, nota borrada, nota de espacios", () => {
+  assert.equal(textoDeAccion(uno([L("a", 4)], [T("a", 10)])), "Sacá 6 Item a");
+  assert.equal(textoDeAccion(uno([L("a", 3, null)], [T("a", 3, "largos")])), "Item a: sin nota");
+  assert.equal(estadoDeItems([L("a", 3, "  largos ")], [T("a", 3, "largos")])[0].estado, "PREPARADO", "los espacios de más no cambian la nota");
+});
+
 test("la clave es el producto, o custom:<renglón> para los sueltos", () => {
   assert.equal(claveDeLinea({ id: "l1", productId: "p1" }), "p1");
   assert.equal(claveDeLinea({ id: "l1", productId: null }), "custom:l1");
