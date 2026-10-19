@@ -97,3 +97,15 @@ test("descartar y restaurar avisan como tardío a los eventos que tenían algo t
   assert.match(s, /preparaciones: \{ some: \{\} \}/);
   assert.match(s, /kind: "RESTAURADO"[\s\S]*tardio: true/);
 });
+
+test("las pantallas de preparar comprueban su permiso; tildar se ofrece solo a quien puede", () => {
+  for (const archivo of ["app/(app)/preparar/page.tsx", "app/(app)/preparar/[eventId]/page.tsx"]) {
+    assert.match(fuente(archivo), /canVerPreparacion\(sesion\.role\)\) notFound\(\)/, archivo);
+  }
+  assert.match(fuente("app/(app)/preparar/[eventId]/page.tsx"), /puedeTildar: canPreparar\(sesion\.role\)/);
+  assert.match(fuente("components/Preparar.tsx"), /if \(!data\.puedeTildar/);
+});
+
+test("'Qué cambió' manda a Preparar a quien no ve el editor", () => {
+  assert.match(fuente("app/(app)/aviso/[id]/page.tsx"), /canVerStock\(user\.role\)[\s\S]*\/preparar\//);
+});

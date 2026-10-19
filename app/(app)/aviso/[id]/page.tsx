@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { canVerStock } from "@/lib/permissions";
 import { fmtDateTime } from "@/lib/format";
 import { cambiosDeLaTanda } from "@/lib/notify";
 
@@ -70,7 +71,10 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
         <div className="spacer" />
         <Link className="btn ghost" href="/notificaciones">Volver a los avisos</Link>
         {aviso.eventId && !evento?.deletedAt && (
-          <Link className="btn primary" href={`/evento/${aviso.eventId}`}>Abrir el pedido</Link>
+          // Quien no ve el editor (el depósito) va a la preparación del evento.
+          canVerStock(user.role)
+            ? <Link className="btn primary" href={`/evento/${aviso.eventId}`}>Abrir el pedido</Link>
+            : <Link className="btn primary" href={`/preparar/${aviso.eventId}`}>Ver en Preparar</Link>
         )}
       </div>
 

@@ -2239,3 +2239,45 @@ tbody tr:hover{background:var(--surface-2)}
 /* Dispositivos: lo que hay que resolver se lee en rojo, no solo con un punto. */
 .disp-lista{display:flex; flex-direction:column; gap:var(--sp-4)}
 .disp-alarma{color:var(--crit); font-weight:600}
+/* Preparar: pensado para el teléfono del depósito. Filas grandes para tocar
+   con una mano, la cantidad bien visible y la nota siempre a la vista. */
+.prep-lista{display:flex; flex-direction:column; gap:var(--sp-3)}
+.prep-card{display:block; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-4); color:var(--ink); text-decoration:none}
+.prep-card-top{display:flex; align-items:center; gap:var(--sp-2); font-size:var(--t-lg)}
+.prep-card-cuando{color:var(--muted); font-size:var(--t-sm); margin-top:2px}
+.prep-dia{font-size:var(--t-xs); font-weight:700; padding:2px var(--sp-2); border-radius:var(--r-pill); background:var(--surface-2); border:1px solid var(--hair)}
+.prep-dia.hoy{background:var(--crit); color:#fff; border-color:var(--crit)}
+.prep-alerta{margin-top:var(--sp-2); color:var(--warn); font-weight:700}
+.prep-avance{display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-3)}
+.prep-chip{font-size:var(--t-sm); padding:2px var(--sp-2); border-radius:var(--r-pill); background:var(--surface-2); border:1px solid var(--hair)}
+.prep-chip.ok{color:var(--ok); border-color:var(--ok)}
+.prep-cabecera{position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-2) var(--sp-4); background:var(--ground); border-bottom:1px solid var(--hair)}
+.prep-volver{font-size:var(--t-xl); text-decoration:none; color:var(--ink); min-width:var(--tap); min-height:var(--tap); display:flex; align-items:center; justify-content:center}
+.prep-titulo{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--muted); font-size:var(--t-sm)}
+.prep-titulo b{color:var(--ink); font-size:var(--t-md)}
+.prep-hoy{color:var(--crit); font-weight:800}
+.prep-faltan{color:var(--crit); font-weight:700; text-decoration:none; white-space:nowrap}
+.prep-contenido{display:flex; flex-direction:column; gap:var(--sp-5)}
+.prep-seccion h2{display:flex; align-items:center; gap:var(--sp-2); font-size:var(--t-lg); margin:0 0 var(--sp-2)}
+.prep-sector-btn{margin-left:auto}
+.count-pill.ok{color:var(--ok); border-color:var(--ok)}
+.prep-aplicar{background:var(--surface); border:2px solid var(--warn); border-radius:var(--radius); padding:var(--sp-3)}
+.prep-fila{display:flex; align-items:center; gap:var(--sp-3); width:100%; min-height:56px; padding:var(--sp-3); background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); margin-bottom:var(--sp-2); text-align:left; color:var(--ink); font:inherit; cursor:pointer}
+.prep-fila:disabled{cursor:default; opacity:1}
+.prep-fila.ocupada{opacity:.6}
+.prep-check{flex:0 0 auto; width:44px; height:44px; border:2px solid var(--muted); border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:var(--t-xl)}
+.prep-fila.estado-preparado .prep-check{background:var(--ok); border-color:var(--ok); color:#fff}
+.prep-fila.estado-cambio, .prep-fila.estado-nota, .prep-fila.estado-sacar{border-color:var(--warn)}
+.prep-item{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
+.prep-nombre{font-weight:600}
+.prep-accion{color:var(--warn); font-weight:700}
+.prep-nota{font-size:var(--t-sm); color:var(--ink)}
+.prep-nota.vieja{color:var(--muted); text-decoration:line-through}
+.prep-fila.estado-nota .prep-nota:not(.vieja){background:var(--warn-soft); border-radius:var(--r-sm); padding:0 var(--sp-1)}
+.prep-por{font-size:var(--t-xs); color:var(--muted)}
+.prep-cantidad{flex:0 0 auto; font-size:var(--t-2xl); font-weight:700; text-align:right}
+.prep-cantidad small{font-size:var(--t-sm); font-weight:400; color:var(--muted)}
+.prep-fila.estado-sacar .prep-cantidad{color:var(--crit)}
+.prep-faltantes{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2); font-size:var(--t-sm)}
+.prep-falta{color:var(--crit); font-weight:700}
+.prep-nada{color:var(--muted); margin:0}
