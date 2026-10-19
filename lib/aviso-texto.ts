@@ -80,7 +80,7 @@ export function consolidarCambios(cambios: Cambio[]): Cambio[] {
  * enteros: partir un emoji por la mitad deja un carácter suelto que el
  * teléfono muestra como un cuadradito.
  */
-function recortar(s: string, n: number): string {
+export function recortar(s: string, n: number): string {
   if (n <= 0) return "";
   if (s.length <= n) return s;
   if (n === 1) return "…";
