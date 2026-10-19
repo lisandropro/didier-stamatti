@@ -86,23 +86,32 @@ self.addEventListener("notificationclick", (event) => {
   const url = datos.url || "/";
   event.waitUntil(
     (async () => {
-      if (datos.d) {
-        // Que quede registrado que se abrió, y el aviso leído. Si falla, se
-        // abre igual: no saberlo no puede impedir llegar a la pantalla.
-        await fetch("/api/notifications/abierto", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ d: datos.d }),
-        }).catch(() => {});
-      }
-      const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      for (const client of list) {
-        if ("focus" in client) {
-          if ("navigate" in client) await client.navigate(url).catch(() => {});
-          return client.focus();
+      // Que quede registrado que se abrió, y el aviso leído. Arranca ya pero NO
+      // se espera antes de abrir: el navegador solo deja abrir una ventana poco
+      // después del toque, y en un teléfono lento o recién despertado un pedido
+      // sin tope dejaba el toque sin hacer nada. Si falla, se abre igual: no
+      // saberlo no puede impedir llegar a la pantalla.
+      const aviso = datos.d
+        ? fetch("/api/notifications/abierto", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ d: datos.d }),
+          }).catch(() => {})
+        : null;
+      try {
+        const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const client of list) {
+          if ("focus" in client) {
+            if ("navigate" in client) await client.navigate(url).catch(() => {});
+            return await client.focus();
+          }
         }
+        if (self.clients.openWindow) return await self.clients.openWindow(url);
+      } finally {
+        // Recién al final, y aun si abrir falló: el service worker no se apaga
+        // antes de que el pedido termine.
+        if (aviso) await aviso;
       }
-      if (self.clients.openWindow) return self.clients.openWindow(url);
     })()
   );
 });
@@ -124,11 +133,14 @@ self.addEventListener("pushsubscriptionchange", (event) => {
         const nueva =
           event.newSubscription ||
           (await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: clave }));
-        await fetch("/api/notifications/subscribe", {
+        const alta = await fetch("/api/notifications/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(nueva.toJSON()),
         });
+        // Si la nueva no quedó anotada, la vieja no se toca: mejor un endpoint
+        // de más que quedarse sin ninguno.
+        if (!alta.ok) return;
         if (vieja && vieja.endpoint !== nueva.endpoint) {
           await fetch("/api/notifications/subscribe", {
             method: "DELETE",

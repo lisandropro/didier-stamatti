@@ -17,6 +17,8 @@ function urlB64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 
 const PUB_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 
+const MANDANDO = "Mandando…";
+
 export function EnableNotifications() {
   const [state, setState] = useState<State>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +90,8 @@ export function EnableNotifications() {
   }
 
   async function disable() {
+    // El resultado de una prueba vieja no tiene que reaparecer al reactivar.
+    setPrueba(null);
     setState("working");
     try {
       const reg = await navigator.serviceWorker.ready;
@@ -108,7 +112,7 @@ export function EnableNotifications() {
   }
 
   async function probar() {
-    setPrueba("Mandando…");
+    setPrueba(MANDANDO);
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
@@ -131,7 +135,7 @@ export function EnableNotifications() {
       {state === "enabled" ? (
         <>
           <span className="notif-enable-ok">🔔 Notificaciones activadas en este dispositivo</span>
-          <button className="btn ghost" onClick={probar}>Probar en este teléfono</button>
+          <button className="btn ghost" onClick={probar} disabled={prueba === MANDANDO}>Probar en este teléfono</button>
           <button className="btn ghost" onClick={disable}>Desactivar</button>
           {prueba && <span className="notif-enable-note">{prueba}</span>}
         </>
