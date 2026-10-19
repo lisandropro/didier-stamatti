@@ -23,11 +23,14 @@ export async function POST(req: Request) {
   const subscription = parsePushSubscription(body);
   if (!subscription) return NextResponse.json({ ok: false, error: "Suscripción inválida." }, { status: 400 });
   const { endpoint, p256dh, auth } = subscription;
+  // De qué navegador viene, para mostrarlo en Dispositivos. Se renueva en cada
+  // apertura de la app (PushSubscriptionSync).
+  const userAgent = req.headers.get("user-agent")?.slice(0, 300) ?? null;
 
   await prisma.pushSubscription.upsert({
     where: { endpoint },
-    update: { userId: user.id, p256dh, auth },
-    create: { userId: user.id, endpoint, p256dh, auth },
+    update: { userId: user.id, p256dh, auth, userAgent },
+    create: { userId: user.id, endpoint, p256dh, auth, userAgent },
   });
 
   return NextResponse.json({ ok: true });
