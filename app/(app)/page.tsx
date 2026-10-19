@@ -129,6 +129,16 @@ export default async function Home({
     }),
   ]);
 
+  // Lo que el depósito ya tildó, por período: descartar o restaurar lo pisa, y
+  // la confirmación lo tiene que decir. Son pocas filas (los eventos que vienen).
+  const preparadosPorPeriodo = new Map<string, number>();
+  for (const f of await prisma.preparacion.findMany({
+    where: { event: { deletedAt: null, period: { deletedAt: null } } },
+    select: { event: { select: { periodId: true } } },
+  })) {
+    preparadosPorPeriodo.set(f.event.periodId, (preparadosPorPeriodo.get(f.event.periodId) ?? 0) + 1);
+  }
+
   // Lo que ya se hizo se pliega abajo; arriba queda solo lo que falta.
   const { porHacer, pasados } = selected
     ? separarPorFecha(selected.events, today)
@@ -163,6 +173,7 @@ export default async function Home({
           rangeLabel: fmtRangoDias(selected.startDay, selected.endDay),
           isPast,
           snapshotTakenAt,
+          preparados: preparadosPorPeriodo.get(selected.id) ?? 0,
           // Los que ya se hicieron van aparte: en la pantalla se pliegan, así
           // quien arma un pedido no lee fechas para saber qué le falta.
           events: porHacer.map(tarjetaDeEvento),
@@ -195,6 +206,7 @@ export default async function Home({
         lineCount: v.lineCount,
         actorName: v.actorName,
         atLabel: fmtMomento(v.createdAt),
+        preparados: preparadosPorPeriodo.get(v.periodId) ?? 0,
       })),
     },
   };

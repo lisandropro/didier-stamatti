@@ -29,6 +29,8 @@ export default async function EventoPage({
 
   // Líneas ya cargadas de ESTE evento
   const myLines = await prisma.orderLine.findMany({ where: { eventId: id } });
+  // Lo que el depósito ya tildó de este pedido: el editor avisa antes de cambiarlo.
+  const tildados = await prisma.preparacion.findMany({ where: { eventId: id }, select: { clave: true, qty: true } });
 
   // Catálogo, ordenado como el Excel.
   //
@@ -112,6 +114,7 @@ export default async function EventoPage({
       periodLabel: nombreDe(e.period),
       lineCount: e._count.lines,
     })),
+    preparados: Object.fromEntries(tildados.map((t) => [t.clave, t.qty])),
   };
 
   // Quien no puede editar pedidos ve una pantalla de solo lectura, no el

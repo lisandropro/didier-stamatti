@@ -50,6 +50,8 @@ type Data = {
   products: ProductRow[];
   customLines: CustomLine[];
   sourceEvents: SourceEvent[];
+  /** Lo que el depósito ya tildó de este pedido: clave del ítem -> cantidad tildada. */
+  preparados: Record<string, number>;
 };
 
 
@@ -163,7 +165,31 @@ export function OrderBuilder({ data }: { data: Data }) {
     queue.schedule(key, pending);
   }
   function forgetSave(key: string) { drafts.delete(key); keepDrafts(); }
+  // Cambiar algo que el depósito ya preparó obliga a rehacerlo. Se pregunta en
+  // la fila, una vez por ítem y por sesión: confirmado, el ajuste fino sigue
+  // sin trabas. Un aviso que se repite en cada tecla se deja de leer.
+  // Un ref y no un estado: se lee y se escribe solo desde los manejadores.
+  const confirmados = useRef(new Set<string>());
+  const [porConfirmar, setPorConfirmar] = useState<{ clave: string; aplicar: () => void } | null>(null);
+  function conConfirmacion(clave: string, aplicar: () => void) {
+    if (data.preparados[clave] !== undefined && !confirmados.current.has(clave)) {
+      setPorConfirmar({ clave, aplicar });
+      return;
+    }
+    aplicar();
+  }
+  function confirmarCambio() {
+    if (!porConfirmar) return;
+    confirmados.current.add(porConfirmar.clave);
+    const aplicar = porConfirmar.aplicar;
+    setPorConfirmar(null);
+    aplicar();
+  }
+
   function updateItem(id: string, patch: Partial<ProductRow>) {
+    conConfirmacion(id, () => aplicarCambio(id, patch));
+  }
+  function aplicarCambio(id: string, patch: Partial<ProductRow>) {
     const previous = currentItems.current.find((p) => p.id === id);
     if (!previous) return;
     const next = { ...previous, ...patch };
@@ -302,6 +328,11 @@ export function OrderBuilder({ data }: { data: Data }) {
             scheduleSave={scheduleSave}
             forgetSave={forgetSave}
             onError={setError}
+            preparados={data.preparados}
+            conConfirmacion={conConfirmacion}
+            porConfirmar={porConfirmar?.clave ?? null}
+            onConfirmar={confirmarCambio}
+            onCancelar={() => setPorConfirmar(null)}
           />
         ) : (
           <div className="olist">
@@ -334,6 +365,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                     <div className="pname">
                       {p.name}
                       {p.deBaja && <span className="chip crit chip-baja">Dado de baja</span>}
+                      {data.preparados[p.id] !== undefined && <span className="chip ok chip-prep">Preparado</span>}
                     </div>
                     <div className="rubro">
                       {searching ? `${CATS.find((c) => c.v === p.category)?.l ?? p.category} · ` : ""}
@@ -396,6 +428,15 @@ export function OrderBuilder({ data }: { data: Data }) {
                     <button className="qbtn" onClick={() => stepQty(p.id, 1)} aria-label="Sumar uno">+</button>
                     <button className="qbtn wide" onClick={() => stepQty(p.id, 10)} aria-label="Sumar diez">+10</button>
                   </div>
+                  {porConfirmar?.clave === p.id && (
+                    <div className="prep-aviso-fila" role="alert">
+                      <span>
+                        Ya está preparado ({data.preparados[p.id]}). Si lo cambiás, el depósito tiene que rehacerlo.
+                      </span>
+                      <button className="btn primary" onClick={confirmarCambio}>Cambiar igual</button>
+                      <button className="btn ghost" onClick={() => setPorConfirmar(null)}>Cancelar</button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -420,6 +461,7 @@ export function OrderBuilder({ data }: { data: Data }) {
           targetEventId={data.event.id}
           hasLines={inOrderCount > 0}
           sourceEvents={data.sourceEvents}
+          preparadosCount={Object.keys(data.preparados).length}
           onClose={() => setShowCopy(false)}
         />
       )}
@@ -444,11 +486,13 @@ function CopyOrderModal({
   targetEventId,
   hasLines,
   sourceEvents,
+  preparadosCount,
   onClose,
 }: {
   targetEventId: string;
   hasLines: boolean;
   sourceEvents: SourceEvent[];
+  preparadosCount: number;
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState<SourceEvent | null>(null);
@@ -489,6 +533,9 @@ function CopyOrderModal({
               Vas a traer el pedido de <b>{selected.lugar}</b> ({selected.dateLabel}, {selected.lineCount} producto
               {selected.lineCount === 1 ? "" : "s"}) a este evento.
               {hasLines && <> <b>Reemplaza</b> lo que ya cargaste en este evento.</>}
+              {preparadosCount > 0 && (
+                <> <b>{preparadosCount} {preparadosCount === 1 ? "ítem ya está preparado y va a cambiar" : "ítems ya están preparados y van a cambiar"}:</b> el depósito va a tener que rehacerlos.</>
+              )}
             </div>
             {error && <div className="login-error">{error}</div>}
             <div className="modal-actions">
@@ -543,6 +590,11 @@ function ExtrasPanel({
   scheduleSave,
   forgetSave,
   onError,
+  preparados,
+  conConfirmacion,
+  porConfirmar,
+  onConfirmar,
+  onCancelar,
 }: {
   eventId: string;
   customs: CustomLine[];
@@ -552,6 +604,11 @@ function ExtrasPanel({
   scheduleSave: (key: string, value: OrderSave) => void;
   forgetSave: (key: string) => void;
   onError: (error: string | null) => void;
+  preparados: Record<string, number>;
+  conConfirmacion: (clave: string, aplicar: () => void) => void;
+  porConfirmar: string | null;
+  onConfirmar: () => void;
+  onCancelar: () => void;
 }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -613,6 +670,15 @@ function ExtrasPanel({
     finally { setSaving(false); marcarGuardado(); }
   }
 
+  // Las dos entradas a cambiar un suelto pasan por la misma pregunta que los
+  // productos del catálogo.
+  function pedirCambio(id: string, next: number) {
+    conConfirmacion(`custom:${id}`, () => changeQty(id, next));
+  }
+  function pedirQuitar(id: string) {
+    conConfirmacion(`custom:${id}`, () => void remove(id));
+  }
+
   return (
     <>
       <div className="extras-form">
@@ -661,19 +727,28 @@ function ExtrasPanel({
               <span className="chip neutral">Sin control de stock</span>
             </div>
             <div className="ocol-qty">
-              <button className="qbtn" onClick={() => changeQty(c.id, c.qty - 1)} aria-label="Restar uno">−</button>
+              <button className="qbtn" onClick={() => pedirCambio(c.id, c.qty - 1)} aria-label="Restar uno">−</button>
               <input
                 className="qinput"
                 type="number"
                 inputMode="numeric"
                 min={1}
                 value={c.qty}
-                onChange={(e) => changeQty(c.id, Math.round(Number(e.target.value)) || 1)}
+                onChange={(e) => pedirCambio(c.id, Math.round(Number(e.target.value)) || 1)}
                 aria-label={`Cantidad de ${c.name}`}
               />
-              <button className="qbtn" onClick={() => changeQty(c.id, c.qty + 1)} aria-label="Sumar uno">+</button>
-              <button className="qbtn danger" onClick={() => remove(c.id)} aria-label={`Borrar ${c.name}`}>{IconTrash}</button>
+              <button className="qbtn" onClick={() => pedirCambio(c.id, c.qty + 1)} aria-label="Sumar uno">+</button>
+              <button className="qbtn danger" onClick={() => pedirQuitar(c.id)} aria-label={`Borrar ${c.name}`}>{IconTrash}</button>
             </div>
+            {porConfirmar === `custom:${c.id}` && (
+              <div className="prep-aviso-fila" role="alert">
+                <span>
+                  Ya está preparado ({preparados[`custom:${c.id}`]}). Si lo cambiás, el depósito tiene que rehacerlo.
+                </span>
+                <button className="btn primary" onClick={onConfirmar}>Cambiar igual</button>
+                <button className="btn ghost" onClick={onCancelar}>Cancelar</button>
+              </div>
+            )}
           </div>
         ))}
       </div>

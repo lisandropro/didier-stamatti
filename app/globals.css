@@ -2300,3 +2300,9 @@ tbody tr:hover{background:var(--surface-2)}
 .prep-faltantes{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2); font-size:var(--t-sm)}
 .prep-falta{color:var(--crit); font-weight:700}
 .prep-nada{color:var(--muted); margin:0}
+
+/* ===== Aviso de lo ya preparado, en el editor de pedidos ============== */
+.prep-aviso-fila{grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin-top:var(--sp-2); padding:var(--sp-2) var(--sp-3); border:1px solid var(--warn); border-radius:var(--radius); background:var(--surface-2); font-size:var(--t-sm)}
+.prep-aviso-fila span{flex:1 1 220px}
+.chip-prep{margin-left:var(--sp-2); font-size:var(--t-xs)}
+.prep-ojo{color:var(--warn); font-weight:700}

@@ -134,3 +134,18 @@ test("las pantallas de preparar comprueban su permiso; tildar se ofrece solo a q
 test("'Qué cambió' manda a Preparar a quien no ve el editor", () => {
   assert.match(fuente("app/(app)/aviso/[id]/page.tsx"), /canVerStock\(user\.role\)[\s\S]*\/preparar\//);
 });
+
+test("el editor pide confirmación antes de cambiar algo ya preparado, en la fila", () => {
+  const s = fuente("components/OrderBuilder.tsx");
+  const update = s.slice(s.indexOf("function updateItem"), s.indexOf("function stepQty"));
+  assert.match(update, /conConfirmacion\(/, "updateItem cambia sin preguntar");
+  assert.match(s, /Ya está preparado/);
+  assert.match(s, /Cambiar igual/);
+  assert.match(fuente("app/(app)/evento/[id]/page.tsx"), /preparacion\.findMany/);
+});
+
+test("copiar y descartar avisan cuántos ítems preparados van a cambiar", () => {
+  assert.match(fuente("components/OrderBuilder.tsx"), /ya están preparados y van a cambiar/);
+  assert.match(fuente("components/PeriodHub.tsx"), /ya están preparados y van a cambiar/);
+  assert.match(fuente("components/PeriodHub.tsx"), /v\.preparados > 0/);
+});
