@@ -95,3 +95,18 @@ export async function eventShortages(eventId: string): Promise<{
   rows.sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name));
   return { lugar: ev.lugar, periodLabel: nombreDe(ev.period), rows };
 }
+
+/** Lo que falta en todo un período: lo pedido entre todos sus eventos contra
+ *  el stock. Es lo que mira el depósito: no le importa qué evento "causó" el
+ *  faltante, sino cuánto tiene que conseguir. */
+export async function periodShortages(periodId: string): Promise<ShortageRow[]> {
+  const { products, totalPorProducto } = await cargarPeriodo(periodId);
+  const rows: ShortageRow[] = [];
+  for (const p of products) {
+    const requested = totalPorProducto.get(p.id) ?? 0;
+    const row = computeShortage({ ...p, productId: p.id, requested, otherRequested: 0 });
+    if (row) rows.push(row);
+  }
+  rows.sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name));
+  return rows;
+}
