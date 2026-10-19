@@ -46,6 +46,11 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
     await prisma.notification.update({ where: { id }, data: { read: true } });
   }
 
+  // "Qué cambió" es solo de los cambios de pedido. Los avisos del sistema
+  // anteriores a que existiera `linkUrl` también llegan acá, y mostrarles una
+  // tabla de cambios vacía (o los cambios de otra cosa) confunde.
+  if (aviso.type !== "ORDER_EDIT") redirect(aviso.linkUrl ?? "/notificaciones");
+
   const evento = aviso.eventId
     ? await prisma.event.findUnique({ where: { id: aviso.eventId }, select: { lugar: true, deletedAt: true } })
     : null;

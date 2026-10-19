@@ -147,6 +147,20 @@ test("sin red: error reintentable, sin código", async () => {
   assert.match(e?.error ?? "", /socket hang up/);
 });
 
+test("si el teléfono pasó a otra persona, el reintento no le muestra el aviso ajeno", async () => {
+  // El alta de la suscripción reasigna el dispositivo a quien entra en ese
+  // teléfono. El reintento de un envío a Pablo no puede salir para Enrique.
+  const sub = await suscribir(usuario, "x1");
+  respuesta = 500;
+  await push.sendPushToUser(usuario, PAYLOAD, { kind: "ORDER_EDIT" });
+  await prisma.pushSubscription.update({ where: { id: sub.id }, data: { userId: otro } });
+  respuesta = 201;
+  cuerpos.length = 0;
+  assert.equal(await push.reintentarFallidos(), 0);
+  assert.equal(cuerpos.length, 0, "el aviso de Pablo salió al teléfono que ahora usa Enrique");
+  assert.equal(await prisma.pushDelivery.count({ where: { attempt: 2 } }), 0);
+});
+
 test("un intento viejo de más de una hora no se reintenta", async () => {
   await suscribir(usuario, "v1");
   respuesta = 500;

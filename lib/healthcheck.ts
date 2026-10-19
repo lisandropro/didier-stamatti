@@ -119,6 +119,9 @@ async function checkStockLoaded(): Promise<HealthProblem | null> {
  * Junta los hallazgos por código: tres eventos con el mismo problema son un
  * solo renglón. Conserva el link del primero.
  *
+ * El grupo se queda con la gravedad (y la url) del primer hallazgo: la gravedad
+ * viaja con el hallazgo en vez de aplanarse a una sola para todos los controles.
+ *
  * Antes el agrupado descartaba el link y "Para revisar" mostraba todo como
  * texto suelto, sin forma de ir a arreglarlo.
  */

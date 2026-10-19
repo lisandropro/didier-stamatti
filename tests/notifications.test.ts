@@ -22,7 +22,11 @@ const DB = path.join(os.tmpdir(), `didier-test-avisos-${process.pid}.db`);
 let prisma: import("../app/generated/prisma/client").PrismaClient;
 let notify: typeof import("../lib/notify");
 let ids: { admin: string; logistica: string; armador: string; evento: string };
-const enviadosAlTelefono: { title: string; body: string; url?: string }[] = [];
+// Cada push que "sale", con el teléfono al que iba: hay pruebas que necesitan
+// saber a quién le llegó y a quién no.
+const enviadosAlTelefono: { title: string; body: string; url?: string; tag?: string; endpoint: string }[] = [];
+const TEL_PABLO = "https://fcm.googleapis.com/fcm/send/pablo";
+const TEL_ENRIQUE = "https://fcm.googleapis.com/fcm/send/enrique";
 
 before(async () => {
   fs.rmSync(DB, { force: true });
@@ -44,8 +48,8 @@ before(async () => {
   // push, así que estas pruebas necesitan dispositivos y un transporte que acepte.
   const push = await import("../lib/push");
   push.transporte.listo = () => true;
-  push.transporte.enviar = async (_destino, cuerpo) => {
-    enviadosAlTelefono.push(JSON.parse(cuerpo));
+  push.transporte.enviar = async (destino, cuerpo) => {
+    enviadosAlTelefono.push({ ...JSON.parse(cuerpo), endpoint: destino.endpoint });
     return { statusCode: 201 };
   };
 
@@ -69,10 +73,8 @@ before(async () => {
   });
   ids = { admin: admin.id, logistica: logistica.id, armador: armador.id, evento: ev.id };
 
-  for (const [userId, sufijo] of [[logistica.id, "pablo"], [armador.id, "enrique"]] as const) {
-    await prisma.pushSubscription.create({
-      data: { userId, endpoint: `https://fcm.googleapis.com/fcm/send/${sufijo}`, p256dh: "k", auth: "a" },
-    });
+  for (const [userId, endpoint] of [[logistica.id, TEL_PABLO], [armador.id, TEL_ENRIQUE]] as const) {
+    await prisma.pushSubscription.create({ data: { userId, endpoint, p256dh: "k", auth: "a" } });
   }
 });
 
@@ -146,6 +148,8 @@ test("el aviso nombra a quien lo cambió y el evento", async () => {
   const [a] = await avisos(ids.logistica);
   assert.match(a.message, /Ana/);
   assert.match(a.message, /El Carmen Center/);
+  // El número sale del contador que quedó en la base después de sumar.
+  assert.equal(a.message, "Ana hizo 4 cambios en el pedido de El Carmen Center");
   assert.equal(a.eventId, ids.evento);
 });
 
@@ -304,6 +308,9 @@ test("si el servicio de push no acepta, no cuenta como enviado pero la tanda se 
   // Lo que falló por algo pasajero se reintenta en el barrido siguiente.
   const r2 = await notify.flushPendingOrderPushes();
   assert.equal(r2.reintentos, 2);
+  // Y el reintento llegó de verdad, no solo se intentó.
+  const segundos = await prisma.pushDelivery.findMany({ where: { attempt: 2 } });
+  assert.deepEqual(segundos.map((s) => s.status), ["ACEPTADO", "ACEPTADO"]);
 });
 
 test("una tanda que crece mientras se manda no se cierra y sale con todos sus cambios", async () => {
@@ -341,6 +348,161 @@ test("una tanda que crece mientras se manda no se cierra y sale con todos sus ca
   const nuevos = enviadosAlTelefono.slice(antes);
   assert.equal(nuevos.length, 2);
   assert.ok(nuevos.every((x) => x.body.includes("Hielo") && x.body.includes("Vasos")), "faltó un cambio en el push");
+});
+
+/**
+ * Reemplaza el envío mientras dura `f`: la primera vez que se manda algo, antes
+ * de que salga, corre `aMitad` (un cambio que llega en medio del barrido). El
+ * envío de siempre vuelve aunque la prueba falle.
+ */
+async function conCambioAMitadDelEnvio(aMitad: () => Promise<void>, f: () => Promise<void>) {
+  const push = await import("../lib/push");
+  const aceptando = push.transporte.enviar;
+  let yaPaso = false;
+  push.transporte.enviar = async (destino, cuerpo, urgency) => {
+    if (!yaPaso) {
+      yaPaso = true;
+      await aMitad();
+    }
+    return aceptando(destino, cuerpo, urgency);
+  };
+  try {
+    await f();
+  } finally {
+    push.transporte.enviar = aceptando;
+  }
+}
+
+test("un cambio a mitad del barrido no le manda a los que siguen un push a medias", async () => {
+  // A Pablo (va primero) se le está mandando "Hielo +20" cuando Ana suma Vasos.
+  // A Enrique, que viene después, antes le salía igual "Hielo +20" solo.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  await pasaronMinutos(3);
+  const antes = enviadosAlTelefono.length;
+  await conCambioAMitadDelEnvio(
+    () => notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vasos", kind: "CANTIDAD", before: "1", after: "2" }),
+    async () => {
+      const r = await notify.flushPendingOrderPushes();
+      assert.equal(r.cerrados, 0);
+    },
+  );
+  assert.deepEqual(
+    enviadosAlTelefono.slice(antes).map((x) => x.endpoint),
+    [TEL_PABLO],
+    "a Enrique le salió el push sin los Vasos",
+  );
+
+  // Pasada la próxima quietud, a los dos les llega la tanda entera.
+  await pasaronMinutos(3);
+  const medio = enviadosAlTelefono.length;
+  const r2 = await notify.flushPendingOrderPushes();
+  assert.equal(r2.cerrados, 2);
+  assert.equal(r2.enviados, 2);
+  const completos = enviadosAlTelefono.slice(medio);
+  assert.deepEqual(completos.map((x) => x.endpoint).sort(), [TEL_ENRIQUE, TEL_PABLO].sort());
+  for (const x of completos) assert.equal(x.body, "Hielo +20 · Vasos 1→2\n— Ana");
+});
+
+test("si un cambio a mitad del barrido deshace lo avisado, el teléfono que lo recibió se corrige", async () => {
+  // A Pablo le llega "Hielo +20" y, mientras se le manda, Ana saca el hielo.
+  // Antes: Enrique recibía "Hielo +20" igual, y el barrido siguiente no tenía
+  // nada que mandar (los cambios se compensan), así que los dos teléfonos se
+  // quedaban con un hielo que ya no había que preparar.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  await pasaronMinutos(3);
+  const antes = enviadosAlTelefono.length;
+  await conCambioAMitadDelEnvio(
+    () => notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Hielo", kind: "QUITADO", before: "20", after: null }),
+    async () => {
+      const r = await notify.flushPendingOrderPushes();
+      assert.equal(r.cerrados, 0);
+    },
+  );
+  const viejos = enviadosAlTelefono.slice(antes);
+  assert.deepEqual(viejos.map((x) => x.endpoint), [TEL_PABLO], "a Enrique le salió lo que ya se había deshecho");
+  assert.equal(viejos[0].body, "Hielo +20\n— Ana");
+
+  await pasaronMinutos(3);
+  const medio = enviadosAlTelefono.length;
+  const r2 = await notify.flushPendingOrderPushes();
+  assert.equal(r2.cerrados, 2);
+  const correcciones = enviadosAlTelefono.slice(medio);
+  assert.equal(correcciones.length, 1, "solo se corrige a quien le llegó lo viejo");
+  const [c] = correcciones;
+  assert.equal(c.endpoint, TEL_PABLO);
+  assert.equal(c.title, "El Carmen Center");
+  assert.equal(c.body, "Sin cambios: lo avisado recién se deshizo\n— Ana");
+  // El mismo tag es lo que hace que reemplace a "Hielo +20" en la pantalla.
+  assert.equal(c.tag, viejos[0].tag);
+  assert.equal(c.tag, `order-${ids.evento}`);
+  // Queda en el registro como cualquier aviso de esa tanda, con la prioridad de logística.
+  const [aviso] = await avisos(ids.logistica);
+  const filas = await prisma.pushDelivery.findMany({ where: { notificationId: aviso.id } });
+  assert.equal(filas.length, 2);
+  assert.ok(filas.every((f) => f.kind === "ORDER_EDIT" && f.urgency === "high" && f.status === "ACEPTADO"));
+});
+
+test("una tanda que suma cambios sin que se corra la marca de tiempo tampoco se cierra", async () => {
+  // La última actividad nunca va hacia atrás, así que un cambio puede sumar sin
+  // mover `createdAt`. El contador sí sube siempre, y el cierre lo mira.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  await pasaronMinutos(3);
+  await conCambioAMitadDelEnvio(
+    async () => {
+      await prisma.notification.updateMany({ where: { type: "ORDER_EDIT" }, data: { changeCount: { increment: 1 } } });
+    },
+    async () => {
+      const r = await notify.flushPendingOrderPushes();
+      assert.equal(r.cerrados, 0);
+    },
+  );
+  const [a] = await avisos(ids.logistica);
+  assert.equal(a.pushedAt, null, "se cerró una tanda que había crecido");
+});
+
+test("un barrido no arranca mientras el anterior sigue mandando", async () => {
+  // `setInterval` larga un barrido por minuto aunque el anterior no haya
+  // terminado. Con el servicio de push lento, el segundo volvía a mandar las
+  // mismas tandas todavía abiertas.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  await pasaronMinutos(3);
+
+  const push = await import("../lib/push");
+  const aceptando = push.transporte.enviar;
+  let soltar = () => {};
+  const trabado = new Promise<void>((r) => (soltar = r));
+  let avisarQueEmpezo = () => {};
+  const empezo = new Promise<void>((r) => (avisarQueEmpezo = r));
+  let llamadas = 0;
+  // Solo el primer envío se traba: si el segundo barrido llegara a mandar, lo
+  // haría al toque y la prueba lo vería en vez de quedarse colgada.
+  push.transporte.enviar = async (destino, cuerpo, urgency) => {
+    llamadas++;
+    if (llamadas === 1) {
+      avisarQueEmpezo();
+      await trabado;
+    }
+    return aceptando(destino, cuerpo, urgency);
+  };
+  let primero: ReturnType<typeof notify.flushPendingOrderPushes> | undefined;
+  try {
+    primero = notify.flushPendingOrderPushes();
+    await empezo;
+    const segundo = await notify.flushPendingOrderPushes();
+    assert.deepEqual(segundo, { enviados: 0, cerrados: 0, reintentos: 0 });
+    assert.equal(llamadas, 1, "el segundo barrido volvió a mandar");
+  } finally {
+    soltar();
+    await primero;
+    push.transporte.enviar = aceptando;
+  }
+  const r = await primero;
+  assert.deepEqual(r, { enviados: 2, cerrados: 2, reintentos: 0 });
+  assert.equal(llamadas, 2, "un envío por persona");
 });
 
 test("si falla la lectura para armar el texto, el aviso no se cierra y sale en el barrido siguiente", async () => {
@@ -388,6 +550,49 @@ test("la última actividad de un aviso nunca retrocede", async () => {
   const [a] = await avisos(ids.logistica);
   assert.equal(a.changeCount, 2);
   assert.equal(a.createdAt.getTime(), futuro.getTime());
+});
+
+test("dos guardados a la vez no pierden la cuenta de la tanda", async () => {
+  // El barrido cierra la tanda solo si `changeCount` no cambió mientras
+  // mandaba. Si dos guardados juntos leyeran el mismo número y escribieran el
+  // mismo resultado, un cambio podría colarse sin que el cierre lo note.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+
+  // Se fuerza el peor orden: los dos guardados leen la tanda abierta antes de
+  // que cualquiera de los dos escriba. Sin esto, el orden lo decide el azar.
+  const { prisma: base } = await import("../lib/db");
+  const leer = base.notification.findFirst;
+  let enEspera: (() => void) | null = null;
+  base.notification.findFirst = (async (...args: unknown[]) => {
+    const r = await (leer as (...a: unknown[]) => Promise<unknown>).apply(base.notification, args);
+    if (enEspera) {
+      const otro = enEspera;
+      enEspera = null;
+      otro();
+    } else {
+      // El tope es por si algún día lee uno solo: que la prueba falle, no que se cuelgue.
+      await new Promise<void>((listo) => {
+        enEspera = listo;
+        setTimeout(listo, 1000);
+      });
+    }
+    return r;
+  }) as unknown as typeof leer;
+  try {
+    await Promise.all([
+      notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vasos", kind: "CANTIDAD", before: "1", after: "2" }),
+      notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Copa", kind: "CANTIDAD", before: "3", after: "4" }),
+    ]);
+  } finally {
+    base.notification.findFirst = leer;
+  }
+  for (const quien of [ids.logistica, ids.armador]) {
+    const lista = await avisos(quien);
+    assert.equal(lista.length, 1);
+    assert.equal(lista[0].changeCount, 3);
+    assert.equal(lista[0].message, "Ana hizo 3 cambios en el pedido de El Carmen Center");
+  }
 });
 
 test("un evento que no existe no rompe el guardado del pedido", async () => {

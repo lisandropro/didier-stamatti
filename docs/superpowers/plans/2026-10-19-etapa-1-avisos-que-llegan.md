@@ -12,6 +12,8 @@
 
 **Una desviación deliberada de la spec:** la spec marcaba la apertura agregando `?d=<deliveryId>` a la URL del aviso. El plan manda `d` dentro del contenido del push, y el service worker lo informa con `POST /api/notifications/abierto` antes de abrir la pantalla. El resultado es el mismo (`openedAt` y el aviso leído), y además las URLs de la app no cargan un parámetro que ninguna pantalla usa, y la marca no queda en el historial del navegador.
 
+**Una segunda desviación:** `sendPushToUser` devuelve `{ intentos, aceptados }` y no una lista por dispositivo, porque nadie necesita el resultado de cada uno: el detalle por dispositivo ya queda en `PushDelivery`.
+
 ## Global Constraints
 
 - **Esto NO es el Next.js que conocés.** Antes de tocar una API de Next, leé la guía en `node_modules/next/dist/docs/` (ver `AGENTS.md`).

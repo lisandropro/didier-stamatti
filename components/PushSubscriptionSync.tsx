@@ -19,7 +19,9 @@ import { useEffect } from "react";
  * si cambió. Es barato y se arregla solo, también después de actualizar la PWA.
  *
  * No pide permisos ni crea suscripciones nuevas: si esta persona nunca activó
- * los avisos, no hace absolutamente nada.
+ * los avisos, no manda nada al servidor. Lo que sí hace siempre, para todos, es
+ * registrar o poner al día el service worker: sin él no llega ningún push, y
+ * así está listo el día que alguien active los avisos.
  */
 export function PushSubscriptionSync() {
   useEffect(() => {

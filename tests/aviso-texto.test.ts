@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { consolidarCambios, describirCambio, textoDePush, type Cambio } from "../lib/aviso-texto";
+import { consolidarCambios, describirCambio, textoDeLoDeshecho, textoDePush, type Cambio } from "../lib/aviso-texto";
 
 /**
  * El texto del push: lo que el depósito tiene que hacer, no cuántas veces se
@@ -88,6 +88,15 @@ test("un nombre de 600 caracteres se recorta a 60 y el cuerpo sigue en 500 o men
   assert.ok(t.body.length <= 500);
   assert.ok(t.body.endsWith("\n— " + quien.slice(0, 59) + "…"));
   assert.ok(t.body.startsWith("Copa +5"));
+});
+
+test("la corrección de lo deshecho firma igual que el push normal, con el nombre acotado", () => {
+  assert.deepEqual(textoDeLoDeshecho("El Carmen Center", "Ana"), {
+    title: "El Carmen Center",
+    body: "Sin cambios: lo avisado recién se deshizo\n— Ana",
+  });
+  const quien = "N".repeat(600);
+  assert.ok(textoDeLoDeshecho("X", quien).body.endsWith("\n— " + quien.slice(0, 59) + "…"));
 });
 
 test("muchos ítems largos y un nombre largo no pasan de 500", () => {

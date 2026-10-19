@@ -107,7 +107,7 @@ export async function enviarASuscripcion(
   try {
     listo = transporte.listo();
   } catch (e) {
-    falloDeClaves = `${CLAVES_INVALIDAS}: ${mensajeDe(e).slice(0, 300)}`;
+    falloDeClaves = `${CLAVES_INVALIDAS}: ${mensajeDe(e)}`.slice(0, 300);
   }
 
   if (falloDeClaves) {
@@ -227,7 +227,10 @@ export async function reintentarFallidos(ahora = new Date()): Promise<number> {
           data: { retriedAt: ahora },
         });
         if (marcado.count === 0 || !f.subscriptionId) continue;
-        const sub = await prisma.pushSubscription.findUnique({ where: { id: f.subscriptionId } });
+        // El dispositivo tiene que seguir siendo de la misma persona. Si en ese
+        // teléfono entró otra, el alta de la suscripción le pasó el dispositivo,
+        // y reenviar le mostraría el aviso de alguien más.
+        const sub = await prisma.pushSubscription.findFirst({ where: { id: f.subscriptionId, userId: f.userId } });
         if (!sub) continue;
         const payload = JSON.parse(f.payload) as PushPayload;
         await enviarASuscripcion(

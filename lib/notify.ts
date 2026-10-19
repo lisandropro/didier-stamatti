@@ -1,6 +1,7 @@
+import type { Notification } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { reintentarFallidos, sendPushToUser } from "@/lib/push";
-import { textoDePush } from "@/lib/aviso-texto";
+import { textoDeLoDeshecho, textoDePush } from "@/lib/aviso-texto";
 import { ROLES, isPriorityRecipient, sortByNotificationPriority } from "@/lib/permissions";
 
 // Mientras la persona sigue editando, los cambios se van sumando a un mismo
@@ -110,18 +111,28 @@ export async function notifyOrderChange(
       });
 
       if (abierto) {
-        const n = abierto.changeCount + cambios.length;
-        await prisma.notification.update({
+        const actualizado = await prisma.notification.update({
           where: { id: abierto.id },
           // `createdAt` se corre a ahora: es la marca de "última actividad". Nunca
           // hacia atrás: dos guardados de la misma persona desde dos aparatos
           // pueden llegar desordenados, y si la marca retrocediera, el resumen
           // de la tanda (que llega hasta `createdAt`) dejaría afuera un cambio.
+          //
+          // El contador se incrementa en la base y no se escribe "lo leído + estos
+          // cambios": el barrido cierra la tanda solo si `changeCount` sigue igual,
+          // y es la única marca que se mueve siempre: `createdAt` puede quedarse
+          // quieta (si ya estaba adelante, porque nunca retrocede). Y con la suma
+          // hecha acá, dos guardados juntos leían el mismo número y dejaban uno solo.
           data: {
             createdAt: abierto.createdAt > ahora ? abierto.createdAt : ahora,
-            changeCount: n,
-            message: resumen(actor.name, ev.lugar, n),
+            changeCount: { increment: cambios.length },
           },
+        });
+        // El mensaje dice el total que quedó en la base. Solo si nadie sumó en el
+        // medio: si otro guardado ya sumó, ése escribe su número, que es el nuevo.
+        await prisma.notification.updateMany({
+          where: { id: abierto.id, changeCount: actualizado.changeCount },
+          data: { message: resumen(actor.name, ev.lugar, actualizado.changeCount) },
         });
       } else {
         await prisma.notification.create({
@@ -167,10 +178,18 @@ export async function cambiosDeLaTanda(aviso: {
   });
 }
 
+// Un barrido a la vez. `setInterval` larga el siguiente al minuto aunque el
+// anterior siga mandando, y con el servicio de push lento (reintentos, esperas
+// de 10 segundos) pasa: el segundo leía las mismas tandas todavía abiertas, las
+// volvía a mandar y anotaba cada fallo dos veces.
+let barriendo = false;
+
 /** Manda el push de los avisos cuya edición ya se quedó quieta, y reintenta lo
  *  que falló por algo pasajero en el barrido anterior. Corre cada un minuto
  *  desde `instrumentation.ts`. Nunca lanza. */
 export async function flushPendingOrderPushes(): Promise<{ enviados: number; cerrados: number; reintentos: number }> {
+  if (barriendo) return { enviados: 0, cerrados: 0, reintentos: 0 };
+  barriendo = true;
   try {
     const reintentos = await reintentarFallidos();
     const cutoff = new Date(Date.now() - QUIET_MINUTES * 60 * 1000);
@@ -188,7 +207,34 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
 
     let enviados = 0;
     let cerrados = 0;
-    for (const n of pendientes) {
+    for (const foto of pendientes) {
+      // La lista se leyó una sola vez, al principio, y cada envío tarda (segundos,
+      // si el servicio de push anda lento). Se relee cada aviso justo antes de
+      // mandarlo. Antes, si llegaba un cambio a mitad del barrido, a quien venía
+      // después en la lista le salía igual el push a medias; y si ese cambio
+      // deshacía lo avisado, el barrido siguiente no tenía nada que mandar y el
+      // teléfono se quedaba con lo viejo.
+      //
+      // Si la relectura falla no se cierra nada, por lo mismo que con el texto.
+      let fresco: Notification | null;
+      try {
+        fresco = await prisma.notification.findUnique({ where: { id: foto.id } });
+      } catch (e) {
+        console.error("[avisos] no se pudo releer el aviso, se reintenta en el próximo barrido", foto.id, mensajeDe(e));
+        continue;
+      }
+      // Se borró, ya salió, o siguió creciendo: en ese caso sale pasada la
+      // próxima quietud, con todos sus cambios.
+      if (
+        !fresco ||
+        fresco.pushedAt !== null ||
+        fresco.createdAt.getTime() !== foto.createdAt.getTime() ||
+        fresco.changeCount !== foto.changeCount
+      ) {
+        continue;
+      }
+      const n = { ...fresco, role: foto.role };
+
       // Si ya lo vio en la app, no tiene sentido hacerle sonar el teléfono.
       if (!n.read) {
         // Armar el texto lee la base. Si eso falla (base ocupada, por ejemplo)
@@ -201,12 +247,23 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
             ? await prisma.event.findUnique({ where: { id: n.eventId }, select: { lugar: true } })
             : null;
           texto = textoDePush(ev?.lugar ?? "Pedido", n.actorName, await cambiosDeLaTanda(n));
+          // `null`: los cambios se compensaron. En el depósito no hay nada que
+          // hacer, así que normalmente el teléfono no suena; el aviso queda en la
+          // app. Salvo que esta tanda ya haya llegado a un teléfono a medias (un
+          // cambio entró mientras se mandaba): ese teléfono sigue mostrando lo que
+          // se deshizo, y el depósito lo prepararía. Se lo corrige con el mismo
+          // `tag`, que reemplaza al push anterior en la pantalla.
+          if (!texto) {
+            const yaLlego = await prisma.pushDelivery.findFirst({
+              where: { notificationId: n.id, status: "ACEPTADO" },
+              select: { id: true },
+            });
+            if (yaLlego) texto = textoDeLoDeshecho(ev?.lugar ?? "Pedido", n.actorName);
+          }
         } catch (e) {
           console.error("[avisos] no se pudo armar el texto del aviso, se reintenta en el próximo barrido", n.id, mensajeDe(e));
           continue;
         }
-        // `null`: los cambios se compensaron. En el depósito no hay nada que
-        // hacer, así que el teléfono no suena; el aviso queda en la app.
         if (texto) {
           // sendPushToUser nunca lanza, y un fallo del envío ya queda escrito
           // en el registro: acá no hay nada que reintentar. El try/catch es por
@@ -228,12 +285,14 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
       // en la app, y el reintento de un fallo pasajero lo hace `reintentarFallidos`.
       //
       // Solo si nadie tocó el aviso mientras se mandaba: cada cambio nuevo corre
-      // su `createdAt`. Si cambió, la tanda siguió creciendo y quedó afuera de lo
-      // que se acaba de avisar, así que se deja abierta: sale con todos sus
-      // cambios pasada la próxima quietud.
+      // su `createdAt` y suma a `changeCount`. Se miran las dos porque la marca
+      // de tiempo puede no moverse (nunca va hacia atrás), el contador sí. Si
+      // cambió, la tanda siguió creciendo y quedó afuera de lo que se acaba de
+      // avisar, así que se deja abierta: sale con todos sus cambios pasada la
+      // próxima quietud.
       try {
         const cierre = await prisma.notification.updateMany({
-          where: { id: n.id, createdAt: n.createdAt },
+          where: { id: n.id, createdAt: n.createdAt, changeCount: n.changeCount },
           data: { pushedAt: new Date() },
         });
         cerrados += cierre.count;
@@ -245,5 +304,7 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
   } catch (e) {
     console.error("[avisos] falló el barrido", mensajeDe(e));
     return { enviados: 0, cerrados: 0, reintentos: 0 };
+  } finally {
+    barriendo = false;
   }
 }

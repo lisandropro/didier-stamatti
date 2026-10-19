@@ -127,6 +127,11 @@ export function describirCambio(c: Cambio): string {
   }
 }
 
+/** La firma del final del cuerpo: quién lo hizo, con el nombre acotado. */
+function pieDe(actorName: string): string {
+  return `\n— ${recortar(actorName, MAX_QUIEN)}`;
+}
+
 /**
  * Título y cuerpo del push de una tanda de cambios. `null` si los cambios se
  * compensaron: no hay nada que hacer en el depósito y el teléfono no suena.
@@ -140,9 +145,19 @@ export function textoDePush(
   if (netos.length === 0) return null;
   const visibles = netos.slice(0, MAX_EN_EL_PUSH).map(describirCambio).join(" · ");
   const resto = netos.length > MAX_EN_EL_PUSH ? ` · y ${netos.length - MAX_EN_EL_PUSH} más` : "";
-  const pie = `\n— ${recortar(actorName, MAX_QUIEN)}`;
+  const pie = pieDe(actorName);
   // Se recorta solo el detalle: el "y N más" y el pie dicen cuántos cambios hay
   // y quién los hizo, y son lo último que se puede perder.
   const detalle = recortar(visibles, MAX_CUERPO - pie.length - resto.length);
   return { title: lugar, body: detalle + resto + pie };
+}
+
+/**
+ * El push que corrige a uno ya mandado cuando lo que avisaba se deshizo (se
+ * agregó Hielo, salió el aviso, y enseguida lo sacaron). Sin esto el teléfono
+ * se quedaba con "Hielo +20" y el depósito lo preparaba igual. Va con el mismo
+ * `tag` que el anterior para que lo reemplace en la pantalla.
+ */
+export function textoDeLoDeshecho(lugar: string, actorName: string): { title: string; body: string } {
+  return { title: lugar, body: `Sin cambios: lo avisado recién se deshizo${pieDe(actorName)}` };
 }
