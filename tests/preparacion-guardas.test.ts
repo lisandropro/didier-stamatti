@@ -18,6 +18,16 @@ function fuente(rel: string): string {
   throw new Error(`no se encontró ${rel}`);
 }
 
+/** El cuerpo de una acción exportada: desde su `export async function` hasta la
+ *  siguiente (o el final del archivo). */
+function cuerpoDe(s: string, nombre: string): string {
+  const desde = s.indexOf(`export async function ${nombre}`);
+  assert.ok(desde > -1, `no existe ${nombre}`);
+  const resto = s.slice(desde + 10);
+  const hasta = resto.search(/^export async function /m);
+  return s.slice(desde, hasta === -1 ? s.length : desde + 10 + hasta);
+}
+
 test("la portada lleva al depósito a Preparar en vez de dar 404", () => {
   const s = fuente("app/(app)/page.tsx");
   assert.match(s, /canVerPreparacion\(session\.role\)\) redirect\("\/preparar"\)/);
@@ -70,12 +80,7 @@ test("ninguna acción de preparación escribe sin comprobar permiso y evento viv
 
 test("cada acción del pedido marca si el cambio es tardío antes de avisar", () => {
   const s = fuente("app/actions/order.ts");
-  const cuerpo = (nombre: string) => {
-    const desde = s.indexOf(`export async function ${nombre}`);
-    const resto = s.slice(desde + 10);
-    const hasta = resto.search(/^export async function /m);
-    return s.slice(desde, hasta === -1 ? s.length : desde + 10 + hasta);
-  };
+  const cuerpo = (nombre: string) => cuerpoDe(s, nombre);
   for (const [nombre, pregunta] of [
     ["setLine", "estaTildado("],
     ["setCustomQty", "estaTildado("],
@@ -87,6 +92,11 @@ test("cada acción del pedido marca si el cambio es tardío antes de avisar", ()
     const aviso = c.indexOf("notifyOrderChange(");
     assert.ok(marca > -1 && aviso > marca, `${nombre} avisa sin saber si es tardío`);
     assert.match(c, /tardio/, `${nombre} no pasa la marca`);
+    // La pregunta va con `tx`: dentro de la misma transacción que escribe. Con
+    // `prisma` se podría tildar entre la lectura y la escritura, y el cambio
+    // saldría como común cuando el depósito ya lo había preparado.
+    const enLaTransaccion = pregunta === "estaTildado(" ? "estaTildado(tx," : "hayTildados(tx,";
+    assert.ok(c.includes(enLaTransaccion), `${nombre} no pregunta por lo tildado dentro de la transacción (${enLaTransaccion})`);
   }
   const addCustom = cuerpo("addCustomLine");
   assert.doesNotMatch(addCustom, /tardio: true|estaTildado\(/, "un suelto nuevo nunca es tardío");
@@ -96,6 +106,21 @@ test("descartar y restaurar avisan como tardío a los eventos que tenían algo t
   const s = fuente("app/actions/snapshot.ts");
   assert.match(s, /preparaciones: \{ some: \{\} \}/);
   assert.match(s, /kind: "RESTAURADO"[\s\S]*tardio: true/);
+  // El aviso va DESPUÉS de aplicar: antes no habría nada que avisar. Y en la
+  // restauración, después de marcar la versión como restaurada, para que un
+  // fallo al avisar no se lleve esa marca por delante.
+  for (const nombre of ["discardPeriodChanges", "restorePeriodVersion"]) {
+    const c = cuerpoDe(s, nombre);
+    const aplica = c.indexOf("applySnapshotData(");
+    const aviso = c.indexOf("avisarATildados(");
+    assert.ok(aplica > -1 && aviso > aplica, `${nombre} avisa antes de aplicar la versión`);
+    // La foto de lo pendiente se saca antes de aplicar: después ya no hay con qué comparar.
+    const foto = c.indexOf("pendientesPorEvento(");
+    assert.ok(foto > -1 && foto < aplica, `${nombre} no saca la foto de lo pendiente antes de aplicar`);
+  }
+  const restaurar = cuerpoDe(s, "restorePeriodVersion");
+  const restaurada = restaurar.indexOf("restoredAt");
+  assert.ok(restaurada > -1 && restaurar.indexOf("avisarATildados(") > restaurada, "restorePeriodVersion avisa antes de marcar la versión como restaurada");
 });
 
 test("las pantallas de preparar comprueban su permiso; tildar se ofrece solo a quien puede", () => {

@@ -7,7 +7,7 @@ import { applySnapshotData, buildSnapshotData, saveRecoverableVersion } from "@/
 import { canManagePeriods } from "@/lib/permissions";
 import { notifyOrderChange } from "@/lib/notify";
 import { estadoDelEvento } from "@/lib/preparacion-db";
-import { cambiosParaAplicar } from "@/lib/preparacion";
+import { cambiosParaAplicar, type ItemPreparacion } from "@/lib/preparacion";
 
 export type SnapshotResult = {
   ok: boolean;
@@ -23,25 +23,73 @@ function revalidar(periodId: string) {
   revalidatePath("/historial");
 }
 
+const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** Lo que el depósito tiene pendiente en un evento, como un texto comparable:
+ *  qué ítems quedaron para rehacer, en qué estado y con qué cantidad y nota. */
+const firmaDePendientes = (items: ItemPreparacion[]): string =>
+  cambiosParaAplicar(items)
+    .map((i) => `${i.clave}:${i.estado}:${i.qty}:${i.note ?? ""}`)
+    .sort()
+    .join("|");
+
 /**
- * Descartar o restaurar reemplaza los pedidos de todo el período. A cada evento
- * que tenía algo tildado y quedó con algo para rehacer se le avisa como cambio
- * tardío: el depósito tiene que revisar lo que ya juntó.
+ * Descartar o restaurar reemplaza los pedidos de todo el período. El depósito
+ * tiene que revisar lo que ya juntó, así que a cada evento con algo tildado se
+ * le avisa como cambio tardío, pero solo si la restauración le cambió lo que
+ * había para rehacer.
  *
- * Acá no se decide "dentro de la transacción que escribe", como en las acciones
- * del pedido: `applySnapshotData` es una transacción en lote y no puede leer en
- * el medio. Se compara después contra lo tildado, que da lo mismo: lo que cuenta
- * es si quedó algo distinto de lo que se preparó. Un evento que la versión dejó
- * igual no recibe un aviso vacío.
+ * Son dos pasos porque `applySnapshotData` es una transacción en lote y no se
+ * puede leer en el medio. `pendientesPorEvento` saca la foto ANTES de aplicar
+ * (por evento tildado, la firma de lo pendiente) y `avisarATildados` la compara
+ * DESPUÉS. Un evento que la versión dejó igual no recibe aviso, aunque tuviera
+ * un cambio tardío viejo sin aplicar; tampoco uno que quedó sin nada pendiente.
+ *
+ * Ninguno de los dos lanza: el primero corre antes de tocar nada y el segundo
+ * con la restauración ya hecha, y un fallo al avisar no puede hacerle creer al
+ * usuario que no se restauró. Si la foto de antes falla queda vacía, y entonces
+ * el segundo paso no puede comparar: avisa a todo evento tildado que haya
+ * quedado con algo pendiente (mejor un aviso de más que un depósito sin
+ * enterarse).
  */
-async function avisarATildados(periodId: string, actor: { id: string; name: string }, que: string) {
-  const eventos = await prisma.event.findMany({
-    where: { periodId, deletedAt: null, preparaciones: { some: {} } },
-    select: { id: true },
-  });
-  for (const e of eventos) {
-    if (cambiosParaAplicar(await estadoDelEvento(e.id)).length === 0) continue;
-    await notifyOrderChange(actor, e.id, { itemName: "Todo el pedido", kind: "RESTAURADO", before: null, after: que, tardio: true });
+async function pendientesPorEvento(periodId: string): Promise<Map<string, string>> {
+  try {
+    const eventos = await prisma.event.findMany({
+      where: { periodId, deletedAt: null, preparaciones: { some: {} } },
+      select: { id: true },
+    });
+    const antes = new Map<string, string>();
+    for (const e of eventos) antes.set(e.id, firmaDePendientes(await estadoDelEvento(e.id)));
+    return antes;
+  } catch (e) {
+    console.error("[avisos] no se pudo leer lo pendiente del depósito antes de restaurar, se avisa a todo evento tildado", periodId, mensajeDe(e));
+    return new Map();
+  }
+}
+
+/** Segundo paso: compara contra la foto de `pendientesPorEvento` y avisa
+ *  `RESTAURADO` (tardío) a los eventos cuyo pendiente cambió y no quedó vacío. */
+async function avisarATildados(
+  periodId: string,
+  antes: Map<string, string>,
+  actor: { id: string; name: string },
+  que: string,
+): Promise<void> {
+  try {
+    const eventos = await prisma.event.findMany({
+      where: { periodId, deletedAt: null, preparaciones: { some: {} } },
+      select: { id: true },
+    });
+    for (const e of eventos) {
+      const despues = firmaDePendientes(await estadoDelEvento(e.id));
+      if (despues === "") continue;
+      // `antes` vacío = no hay con qué comparar (falló la foto, o no había nada
+      // tildado): ahí se avisa a todo el que tenga algo pendiente.
+      if (antes.size > 0 && despues === (antes.get(e.id) ?? "")) continue;
+      await notifyOrderChange(actor, e.id, { itemName: "Todo el pedido", kind: "RESTAURADO", before: null, after: que, tardio: true });
+    }
+  } catch (e) {
+    console.error("[avisos] no se pudo avisar al depósito de la restauración, que ya se aplicó", periodId, mensajeDe(e));
   }
 }
 
@@ -83,8 +131,9 @@ export async function discardPeriodChanges(periodId: string): Promise<SnapshotRe
   // Primero el resguardo, después el descarte. Si el resguardo fallara, no se
   // pisa nada: es preferible no descartar a descartar sin poder volver.
   const resguardo = await saveRecoverableVersion(periodId, "PRE_DESCARTE", user);
+  const antes = await pendientesPorEvento(periodId);
   const restauradas = await applySnapshotData(periodId, snap.data);
-  await avisarATildados(periodId, user, "Se descartaron los cambios del pedido");
+  await avisarATildados(periodId, antes, user, "Se descartaron los cambios del pedido");
 
   revalidar(periodId);
   return { ok: true, takenAt: snap.takenAt.toISOString(), guardadas: resguardo.lineCount, restauradas };
@@ -101,9 +150,11 @@ export async function restorePeriodVersion(versionId: string): Promise<SnapshotR
   if (!version) return { ok: false, error: "No se encontró esa versión, o su período está en la papelera." };
 
   const resguardo = await saveRecoverableVersion(version.periodId, "PRE_RESTAURACION", user);
+  const antes = await pendientesPorEvento(version.periodId);
   const restauradas = await applySnapshotData(version.periodId, version.data);
-  await avisarATildados(version.periodId, user, "Se restauró una versión anterior del pedido");
   await prisma.periodVersion.update({ where: { id: versionId }, data: { restoredAt: new Date() } });
+  // Al final: el aviso no puede frenar la marca de "restaurada" ni el revalidar.
+  await avisarATildados(version.periodId, antes, user, "Se restauró una versión anterior del pedido");
 
   revalidar(version.periodId);
   return { ok: true, guardadas: resguardo.lineCount, restauradas };

@@ -672,6 +672,19 @@ test("'Qué cambió' de la tanda común no muestra los cambios tardíos", async 
   assert.deepEqual(cambios.map((c) => c.itemName), ["Servilletas"]);
 });
 
+// Va después de "'Qué cambió'..." y no pegada a "un guardado con cambios tardíos
+// y comunes...": esa prueba lee la tanda ORDER_EDIT que dejó el guardado, y este
+// test empieza con limpiar().
+test("un segundo cambio tardío de la misma persona se suma a la misma tanda abierta", async () => {
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true });
+  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Brasero", kind: "QUITADO", before: "3", after: null, tardio: true });
+  const tardias = await tandas(ids.logistica, "CAMBIO_TARDIO");
+  assert.equal(tardias.length, 1, "abrió una tanda por cada cambio tardío");
+  assert.equal(tardias[0].changeCount, 2);
+  assert.equal(tardias[0].message, "Ana cambió 2 ítems ya preparados de El Carmen Center");
+});
+
 test("un evento que no existe no rompe el guardado del pedido", async () => {
   await assert.doesNotReject(() =>
     notify.notifyOrderChange(ACTOR(), "id-que-no-existe", { itemName: "x", kind: "CANTIDAD", after: "1" })

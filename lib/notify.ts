@@ -202,8 +202,9 @@ export async function notifyOrderChange(
     const tardios = cambios.length - comunes;
 
     for (const r of recipients) {
-      if (comunes > 0) await sumarATanda("ORDER_EDIT", r.id, actor, eventId, ev.lugar, comunes, ahora, batchCutoff);
+      // La tardía primero: si una tanda falla, que no sea la urgente la que se pierda.
       if (tardios > 0) await sumarATanda("CAMBIO_TARDIO", r.id, actor, eventId, ev.lugar, tardios, ahora, batchCutoff);
+      if (comunes > 0) await sumarATanda("ORDER_EDIT", r.id, actor, eventId, ev.lugar, comunes, ahora, batchCutoff);
     }
   } catch {
     // Un fallo de notificación no debe romper el guardado del pedido.
