@@ -48,14 +48,14 @@ export default async function CambiosTardiosPage({ searchParams }: { searchParam
             <p>Aparecen cuando alguien cambia un ítem que el depósito ya había tildado como preparado.</p>
           </div>
         ) : (
-          <>
+          <div className="disp-lista">
             <section className="settings-card">
               <h2>Por persona</h2>
               <ul className="revision-list">
                 {r.personas.map((x) => (
                   <li key={x.actorName} className="revision-item">
                     <b>{x.actorName}</b>: {x.total} {x.total === 1 ? "cambio" : "cambios"} en {x.eventos} {x.eventos === 1 ? "evento" : "eventos"}
-                    {x.mismoDia > 0 ? ` · ${x.mismoDia} el mismo día del evento` : ""}
+                    {x.mismoDia > 0 ? ` · ${x.mismoDia} el día del evento o después` : ""}
                   </li>
                 ))}
               </ul>
@@ -66,7 +66,7 @@ export default async function CambiosTardiosPage({ searchParams }: { searchParam
                 <details key={e.eventId} className="tardio-evento">
                   <summary>
                     <b>{e.lugar}</b> · {fmtEvento(e.date)} · {e.total} {e.total === 1 ? "cambio" : "cambios"}
-                    {e.mismoDia > 0 && <span className="disp-alarma"> · {e.mismoDia} el mismo día</span>}
+                    {e.mismoDia > 0 && <span className="disp-alarma"> · {e.mismoDia} el día del evento o después</span>}
                   </summary>
                   <ul className="revision-list">
                     {e.cambios.map((c) => (
@@ -75,10 +75,13 @@ export default async function CambiosTardiosPage({ searchParams }: { searchParam
                       </li>
                     ))}
                   </ul>
+                  {e.total > e.cambios.length && (
+                    <p className="notif-enable-note">Se listan los últimos {e.cambios.length} de {e.total}.</p>
+                  )}
                 </details>
               ))}
             </section>
-          </>
+          </div>
         )}
       </div>
     </>

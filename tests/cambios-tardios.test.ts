@@ -53,3 +53,15 @@ test("se filtra por período", async () => {
   assert.equal(r.total, 1);
   assert.deepEqual(r.eventos.map((e) => e.lugar), ["Hípico"]);
 });
+
+test("un evento en la papelera no cuenta: no se ve en ningún otro lado", async () => {
+  const tirado = await prisma.event.create({
+    data: { periodId: ids.p1, lugar: "Tirado", date: instanteDe("2026-10-24", "21:00"), deletedAt: new Date() },
+  });
+  await prisma.orderChange.create({
+    data: { eventId: tirado.id, actorName: "Enrique", itemName: "Copa", kind: "CANTIDAD", before: "1", after: "2", tardio: true },
+  });
+  const r = await registro.registroTardio();
+  assert.equal(r.total, 4);
+  assert.ok(!r.eventos.some((e) => e.lugar === "Tirado"));
+});
