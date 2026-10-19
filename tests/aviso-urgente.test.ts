@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { avisoDe, type HealthProblem } from "../lib/healthcheck";
+import { avisoDe, agruparHallazgos, type HealthProblem } from "../lib/healthcheck";
 
 /**
  * A quién se interrumpe, y por qué.
@@ -80,4 +80,19 @@ test("la firma no depende del orden", () => {
 
 test("sin problemas no hay aviso", () => {
   assert.equal(avisoDe([]), null);
+});
+
+test("al agrupar se conserva el link del primer hallazgo", () => {
+  const r = agruparHallazgos([
+    { code: "evento-sin-invitados", message: "La Pachita no tiene invitados", gravedad: "media", url: "/evento/1" },
+    { code: "evento-sin-invitados", message: "Hípico no tiene invitados", gravedad: "media", url: "/evento/2" },
+  ]);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].url, "/evento/1");
+  assert.match(r[0].message, /^2 avisos: La Pachita/);
+});
+
+test("un hallazgo sin link sigue sin link", () => {
+  const [r] = agruparHallazgos([{ code: "x", message: "m", gravedad: "media" }]);
+  assert.equal(r.url, undefined);
 });

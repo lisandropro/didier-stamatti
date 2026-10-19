@@ -46,3 +46,10 @@ test("probar un teléfono exige sesión y prueba solo los propios", () => {
   assert.ok(sesion > -1 && envio > sesion, "tiene que pedir la sesión antes de probar");
   assert.match(cuerpo, /enviarPrueba\(user\.id,/);
 });
+
+test("borrar un usuario borra sus dispositivos en la misma transacción", () => {
+  const s = fuente("app/actions/users.ts");
+  const cuerpo = s.slice(s.indexOf("export async function deleteUser"));
+  const transaccion = cuerpo.slice(cuerpo.indexOf("$transaction("), cuerpo.indexOf("revalidatePath"));
+  assert.match(transaccion, /pushSubscription\.deleteMany\(\{ where: \{ userId \} \}\)/);
+});

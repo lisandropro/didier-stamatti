@@ -104,8 +104,11 @@ export async function deleteUser(userId: string): Promise<UserResult> {
 
   // Los movimientos de stock guardan quién los hizo; al borrar el usuario,
   // se desvinculan (quedan en el historial sin nombre) en vez de bloquear el borrado.
+  // Sus dispositivos se van con él: si no, el teléfono de alguien que ya no
+  // está seguiría anotado y contando como "dispositivo sin dueño".
   await prisma.$transaction([
     prisma.stockMovement.updateMany({ where: { userId }, data: { userId: null } }),
+    prisma.pushSubscription.deleteMany({ where: { userId } }),
     prisma.user.delete({ where: { id: userId } }),
   ]);
   revalidatePath("/usuarios");

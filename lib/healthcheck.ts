@@ -26,7 +26,7 @@ const BACKUP_MAX_AGE_HOURS = 30;
  * El campo no es nuevo: `checks.ts` ya lo asignaba hallazgo por hallazgo y solo
  * lo usaba para ordenar. Acá pasa a significar algo.
  */
-export type HealthProblem = { code: string; message: string; gravedad: Gravedad };
+export type HealthProblem = { code: string; message: string; gravedad: Gravedad; url?: string };
 
 export type Gravedad = "alta" | "media" | "baja";
 
@@ -116,6 +116,30 @@ async function checkStockLoaded(): Promise<HealthProblem | null> {
 }
 
 /**
+ * Junta los hallazgos por código: tres eventos con el mismo problema son un
+ * solo renglón. Conserva el link del primero.
+ *
+ * Antes el agrupado descartaba el link y "Para revisar" mostraba todo como
+ * texto suelto, sin forma de ir a arreglarlo.
+ */
+export function agruparHallazgos(
+  hallazgos: { code: string; message: string; gravedad: Gravedad; url?: string }[],
+): HealthProblem[] {
+  const porCodigo = new Map<string, { mensajes: string[]; gravedad: Gravedad; url?: string }>();
+  for (const h of hallazgos) {
+    const previo = porCodigo.get(h.code);
+    if (previo) previo.mensajes.push(h.message);
+    else porCodigo.set(h.code, { mensajes: [h.message], gravedad: h.gravedad, url: h.url });
+  }
+  return [...porCodigo].map(([code, { mensajes, gravedad, url }]) => ({
+    code,
+    gravedad,
+    url,
+    message: mensajes.length === 1 ? mensajes[0] : `${mensajes.length} avisos: ${mensajes[0]} (y ${mensajes.length - 1} más)`,
+  }));
+}
+
+/**
  * Todos los problemas del sistema, no solo los que interrumpen.
  *
  * `verificarRestauracion: false` saltea la bajada del respaldo. Lo usa la
@@ -154,22 +178,7 @@ export async function collectProblems(
   // aviso — la revisión diaria no puede convertirse en algo que se ignora.
   try {
     const { revisarTodo } = await import("@/lib/checks");
-    const hallazgos = await revisarTodo();
-    // La gravedad viaja con el hallazgo en vez de perderse acá. Antes se
-    // aplanaba a nada y todo terminaba pesando lo mismo en el aviso.
-    const porCodigo = new Map<string, { mensajes: string[]; gravedad: Gravedad }>();
-    for (const h of hallazgos) {
-      const previo = porCodigo.get(h.code);
-      if (previo) previo.mensajes.push(h.message);
-      else porCodigo.set(h.code, { mensajes: [h.message], gravedad: h.gravedad });
-    }
-    for (const [code, { mensajes, gravedad }] of porCodigo) {
-      base.push({
-        code,
-        gravedad,
-        message: mensajes.length === 1 ? mensajes[0] : `${mensajes.length} avisos: ${mensajes[0]} (y ${mensajes.length - 1} más)`,
-      });
-    }
+    base.push(...agruparHallazgos(await revisarTodo()));
   } catch {
     // Un control que falla no puede tumbar la revisión entera.
   }
