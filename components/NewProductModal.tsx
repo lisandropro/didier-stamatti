@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createProduct, listRubros } from "@/app/actions/products";
 
 import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
+import { intentar } from "@/lib/actualizacion";
 
 // Unidades que ya se usan en el catálogo, para no inventar variantes nuevas.
 const UNITS = ["Unidad", "Juego", "Módulo", "Caja", "Cajón", "Pack", "Paquete", "Bolsa", "Botella", "Lata", "Litro", "Kg"];
@@ -54,7 +55,7 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
     if (!valido) return;
     setSaving(true);
     setError(null);
-    const res = await createProduct({
+    const res = await intentar(() => createProduct({
       name,
       description,
       category,
@@ -62,7 +63,7 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
       type,
       unit,
       stock: llevaStock ? parsed : 0,
-    });
+    }));
     setSaving(false);
     if (!res.ok) return setError(res.error ?? "No se pudo crear el producto.");
     onCreated();

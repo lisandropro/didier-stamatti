@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { setEventResponsable } from "@/app/actions/period";
+import { intentar } from "@/lib/actualizacion";
 
 const IconPerson = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -32,7 +33,7 @@ export function ResponsableEditor({
   async function guardar() {
     setGuardando(true);
     setError(null);
-    const res = await setEventResponsable(eventId, valor);
+    const res = await intentar(() => setEventResponsable(eventId, valor));
     setGuardando(false);
     if (!res.ok) return setError(res.error ?? "No se pudo guardar.");
     setEditando(false);

@@ -8,6 +8,8 @@ import { nombreDe } from "@/lib/period-fit";
 
 export const dynamic = "force-dynamic";
 
+const MAX_MOVIMIENTOS = 500;
+
 export default async function HistorialPage() {
   // Estas pantallas son del stock. La sesion ya la exige el layout, pero el rol
   // no lo comprobaba nadie: quien recibe mercaderia o quien paga podia escribir
@@ -22,27 +24,36 @@ export default async function HistorialPage() {
     where: { endDay: { lt: today }, deletedAt: null },
     orderBy: { startDay: "desc" },
     include: {
-      events: { select: { id: true } },
+      // Los eventos en la papelera no cuentan, igual que en la portada.
+      _count: { select: { events: { where: { deletedAt: null } } } },
       snapshot: { select: { takenAt: true } },
     },
   });
 
-  const movements = await prisma.stockMovement.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      product: { select: { name: true, unit: true } },
-      user: { select: { name: true } },
-    },
-  });
+  // Los últimos MAX_MOVIMIENTOS, no todos: la lista se filtra en el navegador y
+  // crece con cada ajuste de stock. El total viaja aparte para que la pantalla
+  // diga cuántos quedaron afuera en vez de presentar lo cargado como el todo.
+  const [movements, totalMovimientos] = await Promise.all([
+    prisma.stockMovement.findMany({
+      orderBy: { createdAt: "desc" },
+      take: MAX_MOVIMIENTOS,
+      include: {
+        product: { select: { name: true, unit: true } },
+        user: { select: { name: true } },
+      },
+    }),
+    prisma.stockMovement.count(),
+  ]);
 
   const data = {
     periodos: periodosPasados.map((w) => ({
       id: w.id,
       label: nombreDe(w),
       rangeLabel: fmtRangoDias(w.startDay, w.endDay),
-      eventCount: w.events.length,
+      eventCount: w._count.events,
       hasSnapshot: !!w.snapshot,
     })),
+    totalMovimientos,
     movements: movements.map((m) => ({
       id: m.id,
       productName: m.product.name,

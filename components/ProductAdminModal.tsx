@@ -23,6 +23,7 @@ export type AdminProduct = {
 };
 
 import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
+import { intentar } from "@/lib/actualizacion";
 const UNITS = ["Unidad", "Juego", "Módulo", "Caja", "Cajón", "Pack", "Paquete", "Bolsa", "Botella", "Lata", "Litro", "Kg"];
 
 function fecha(iso: string) {
@@ -84,7 +85,7 @@ export function ProductAdminModal({
     if (cambioDeTipo && confirmar !== "tipo") return setConfirmar("tipo");
     setSaving(true);
     setError(null);
-    const res = await updateProduct({ id: product.id, name, description, category, rubro, type, unit });
+    const res = await intentar(() => updateProduct({ id: product.id, name, description, category, rubro, type, unit }));
     setSaving(false);
     setConfirmar(null);
     if (!res.ok) return setError(res.error ?? "No se pudo guardar.");
@@ -94,7 +95,7 @@ export function ProductAdminModal({
   async function alternarEstado() {
     setSaving(true);
     setError(null);
-    const res = await setProductActive(product.id, !product.active);
+    const res = await intentar(() => setProductActive(product.id, !product.active));
     setSaving(false);
     if (!res.ok) return setError(res.error ?? "No se pudo cambiar el estado.");
     onChanged();
@@ -103,7 +104,7 @@ export function ProductAdminModal({
   async function eliminar() {
     setSaving(true);
     setError(null);
-    const res = await deleteProduct(product.id);
+    const res = await intentar(() => deleteProduct(product.id));
     setSaving(false);
     if (!res.ok) return setError(res.error ?? "No se pudo eliminar.");
     if (res.baja === "logica") {

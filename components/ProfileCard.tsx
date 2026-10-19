@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { updateName } from "@/app/actions/account";
+import { intentar } from "@/lib/actualizacion";
 
 export function ProfileCard({ name, email }: { name: string; email: string }) {
   const router = useRouter();
@@ -17,7 +18,7 @@ export function ProfileCard({ name, email }: { name: string; email: string }) {
     setSaving(true);
     setError(null);
     setDone(false);
-    const res = await updateName(value);
+    const res = await intentar(() => updateName(value));
     setSaving(false);
     if (res.ok) {
       setDone(true);

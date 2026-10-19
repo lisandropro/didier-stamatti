@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { llaveDeCliente } from "@/lib/llave-cliente";
 import { createSuggestion } from "@/app/actions/suggestions";
 import { SUGGESTION_KINDS, KIND_LABEL, LIMITS, screenLabel } from "@/lib/suggestions";
+import { intentar } from "@/lib/actualizacion";
 
 /**
  * El formulario de sugerencias, en un modal.
@@ -73,14 +74,14 @@ function Formulario({ pathname, onClose }: { pathname: string; onClose: () => vo
     if (!title.trim()) return setError("Poné un título corto.");
 
     setEnviando(true);
-    const r = await createSuggestion({
+    const r = await intentar(() => createSuggestion({
       kind,
       title,
       body,
       contextNote,
       screen: pantalla,
       clientKey: llave(),
-    });
+    }));
     setEnviando(false);
     if (!r.ok) return setError(r.error ?? "No se pudo enviar.");
     setListo(true);

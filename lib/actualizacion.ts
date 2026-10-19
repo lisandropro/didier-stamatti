@@ -102,3 +102,29 @@ export function avisarDeFalloAlGuardar(e: unknown): void {
   // Un respiro para que se alcance a leer el aviso antes de que la pantalla salte.
   setTimeout(() => window.location.reload(), 1500);
 }
+
+/**
+ * Corre una acción del servidor y, si LANZA, la convierte en un resultado
+ * fallido común y corriente.
+ *
+ * Las acciones devuelven `{ ok: false, error }` cuando el problema es de datos,
+ * pero lanzan cuando falla la red o la pestaña quedó vieja. Las pantallas
+ * hacían `setGuardando(true)`, `await acción`, `setGuardando(false)`: si la
+ * acción lanzaba, el `false` no corría nunca y la ventana quedaba en
+ * "Guardando…" para siempre, sin error y sin poder cerrarse. El 13/10 se
+ * arreglaron así dos ventanas; quedaban más de quince.
+ *
+ * Con esto el resto del manejo no cambia: el error llega por `res.error`, como
+ * cualquier otro, y si fue por versión vieja la app se recarga sola.
+ *
+ * El `as T` es a sabiendas: los resultados de las acciones tienen `ok` y
+ * `error`, y todo lo demás es opcional.
+ */
+export async function intentar<T extends { ok: boolean; error?: string }>(accion: () => Promise<T>): Promise<T> {
+  try {
+    return await accion();
+  } catch (e) {
+    avisarDeFalloAlGuardar(e);
+    return { ok: false, error: mensajeDeFallo(e) } as T;
+  }
+}

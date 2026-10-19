@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { updatePeriod } from "@/app/actions/period";
+import { intentar } from "@/lib/actualizacion";
 
 /**
  * Editar las fechas y el nombre de un período operativo.
@@ -40,7 +41,7 @@ export function EditPeriodModal({
     if (saving) return;
     setSaving(true);
     setError(null);
-    const r = await updatePeriod({ periodId: periodo.id, label, startDay, endDay: hasta, permitirDuplicado });
+    const r = await intentar(() => updatePeriod({ periodId: periodo.id, label, startDay, endDay: hasta, permitirDuplicado }));
     setSaving(false);
     if (r.duplicado) return setDuplicado({ nombre: r.duplicado.nombre });
     if (r.eventosFuera && r.rangoSugerido) return setFuera({ eventos: r.eventosFuera, sugerido: r.rangoSugerido });

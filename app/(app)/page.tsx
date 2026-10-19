@@ -21,19 +21,33 @@ export default async function Home({
   if (!canVerStock(session.role)) notFound();
 
   // Lo que está en la papelera no aparece en ningún lado ni suma al stock.
+  //
+  // De los períodos alcanza con la cabecera y cuántos eventos tienen: los
+  // eventos se traen solo del que se está mirando. Antes venían los de todos
+  // los períodos de la historia para mostrar uno, y eso crece cada semana.
   const periodos = await prisma.operationalPeriod.findMany({
     where: { deletedAt: null },
     orderBy: { startDay: "desc" },
-    include: {
-      events: {
-        where: { deletedAt: null },
-        orderBy: { date: "asc" },
-        include: { _count: { select: { lines: true } } },
-      },
+    select: {
+      id: true,
+      label: true,
+      startDay: true,
+      endDay: true,
+      _count: { select: { events: { where: { deletedAt: null } } } },
     },
   });
 
-  const selected = periodos.find((w) => w.id === sp.w) ?? periodos[0] ?? null;
+  const elegido = periodos.find((w) => w.id === sp.w) ?? periodos[0] ?? null;
+  const selected = elegido
+    ? {
+        ...elegido,
+        events: await prisma.event.findMany({
+          where: { periodId: elegido.id, deletedAt: null },
+          orderBy: { date: "asc" },
+          include: { _count: { select: { lines: true } } },
+        }),
+      }
+    : null;
 
   const today = hoy();
   // El selector de "Período" solo muestra los actuales/próximos —
@@ -132,7 +146,7 @@ export default async function Home({
       id: w.id,
       label: nombreDe(w),
       rangeLabel: fmtRangoDias(w.startDay, w.endDay),
-      eventCount: w.events.length,
+      eventCount: w._count.events,
     })),
     selected: selected
       ? {

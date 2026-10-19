@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { setSuggestionStatus, replyToSuggestion } from "@/app/actions/suggestions";
 import { SUGGESTION_STATUSES, STATUS_LABEL, LIMITS } from "@/lib/suggestions";
+import { intentar } from "@/lib/actualizacion";
 
 /** Los controles de la administradora: estado y respuesta. Solo se renderiza
  *  para quien puede gestionar — y aun así el servidor lo vuelve a comprobar. */
@@ -26,7 +27,7 @@ export function SuggestionAdmin({
     setError(null);
     setOk(null);
     setGuardando(true);
-    const r = await setSuggestionStatus(id, nuevo);
+    const r = await intentar(() => setSuggestionStatus(id, nuevo));
     setGuardando(false);
     if (!r.ok) return setError(r.error ?? "No se pudo cambiar el estado.");
     setOk(`Estado: ${STATUS_LABEL[nuevo] ?? nuevo}`);
@@ -39,7 +40,7 @@ export function SuggestionAdmin({
     setOk(null);
     if (!texto.trim()) return setError("La respuesta no puede quedar vacía.");
     setGuardando(true);
-    const r = await replyToSuggestion(id, texto);
+    const r = await intentar(() => replyToSuggestion(id, texto));
     setGuardando(false);
     if (!r.ok) return setError(r.error ?? "No se pudo guardar la respuesta.");
     setOk("Respuesta enviada. Le llega un aviso a quien la mandó.");

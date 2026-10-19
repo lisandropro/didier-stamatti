@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { avisarDeFalloAlGuardar, mensajeDeFallo } from "@/lib/actualizacion";
+import { avisarDeFalloAlGuardar, mensajeDeFallo, intentar } from "@/lib/actualizacion";
 import { clearDraft, readDraft } from "@/lib/session-draft";
 import { useSessionDraft } from "@/components/useSessionDraft";
 import {
@@ -188,7 +188,7 @@ export function PeriodHub({ data }: { data: HubData }) {
   async function updateSnapshot() {
     if (!selected) return;
     setSavingSnapshot(true);
-    await savePeriodSnapshot(selected.id);
+    await intentar(() => savePeriodSnapshot(selected.id));
     setSavingSnapshot(false);
     router.refresh();
   }
@@ -330,7 +330,7 @@ export function PeriodHub({ data }: { data: HubData }) {
             {totalEventos === 0 ? (
               <div className="empty-card">
                 <p className="empty-title">Este período no tiene eventos todavía</p>
-                <button className="btn primary" onClick={() => setShowEvent(true)}>{IconPlus} Agregar evento</button>
+                {canManage && <button className="btn primary" onClick={() => setShowEvent(true)}>{IconPlus} Agregar evento</button>}
               </div>
             ) : selected.events.length === 0 ? (
               // El período sigue abierto pero ya se hizo todo lo que tenía.
@@ -468,7 +468,7 @@ function ConfirmDeleteEvent({
   async function confirm() {
     setSaving(true);
     setErr(null);
-    const res = await deleteEvent(event.id);
+    const res = await intentar(() => deleteEvent(event.id));
     setSaving(false);
     if (!res.ok) return setErr(res.error ?? "No se pudo borrar.");
     onDeleted();
@@ -514,12 +514,12 @@ function TrashModal({
     // Recuperar un finde o un evento lleva al finde recuperado; restaurar una
     // versión de pedidos deja donde estás, porque el finde no se movió.
     if (kind === "version") {
-      const res = await restorePeriodVersion(id);
+      const res = await intentar(() => restorePeriodVersion(id));
       setBusy(null);
       if (!res.ok) return setErr(res.error ?? "No se pudo restaurar.");
       return onRestored();
     }
-    const res = kind === "period" ? await restorePeriod(id) : await restoreEvent(id);
+    const res = await intentar(() => (kind === "period" ? restorePeriod(id) : restoreEvent(id)));
     setBusy(null);
     if (!res.ok) return setErr(res.error ?? "No se pudo recuperar.");
     onRestored(res.id);
@@ -569,7 +569,7 @@ function TrashModal({
               <div>
                 <b>Pedidos de {v.periodLabel}</b>
                 <div className="trash-meta">
-                  {v.kind === "PRE_DESCARTE" ? "Antes de descartar cambios" : "Antes de restaurar otra versión"} ·{" "}
+                  {v.kind === "PRE_DESCARTE" ? "Antes de descartar cambios" : v.kind === "PRE_COPIA" ? "Antes de copiar un pedido encima" : "Antes de restaurar otra versión"} ·{" "}
                   {v.lineCount} {v.lineCount === 1 ? "producto" : "productos"} · {v.actorName} · {v.atLabel}
                 </div>
               </div>
@@ -611,7 +611,7 @@ function ConfirmDiscardChanges({
   async function confirm() {
     setSaving(true);
     setError(null);
-    const res = await discardPeriodChanges(id);
+    const res = await intentar(() => discardPeriodChanges(id));
     setSaving(false);
     if (res.ok) onDiscarded();
     else setError(res.error ?? "No se pudo descartar los cambios.");
@@ -672,7 +672,7 @@ function ConfirmDeletePeriod({
   async function confirm() {
     setSaving(true);
     setError(null);
-    const res = await deletePeriod(id);
+    const res = await intentar(() => deletePeriod(id));
     setSaving(false);
     if (res.ok) onDeleted();
     else setError(res.error ?? "No se pudo borrar.");
@@ -687,7 +687,7 @@ function ConfirmDeletePeriod({
           {eventCount > 0
             ? ` junto con sus ${eventCount} evento${eventCount > 1 ? "s" : ""} y todos sus pedidos`
             : ""}
-          . Esta acción no se puede deshacer.
+          . Va a la papelera: lo podés recuperar hasta que se vacíe, el lunes.
         </div>
         {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
         <div className="modal-actions">

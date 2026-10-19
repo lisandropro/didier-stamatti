@@ -36,7 +36,19 @@ export async function ensurePeriodSnapshot(periodId: string) {
   const existing = await prisma.periodSnapshot.findUnique({ where: { periodId } });
   if (existing) return existing;
   const { data } = await buildSnapshotData(periodId);
-  return prisma.periodSnapshot.create({ data: { periodId, data } });
+  try {
+    return await prisma.periodSnapshot.create({ data: { periodId, data } });
+  } catch (e) {
+    // Dos cargas a la vez del mismo período pasado —el navegador precarga la
+    // portada dos veces seguidas— llegan las dos a `create`. La segunda choca
+    // con la clave única y antes terminaba en un error 500. Si la otra ganó, la
+    // versión ya existe y es la que vale: la primera vista del período.
+    if ((e as { code?: string }).code === "P2002") {
+      const ganadora = await prisma.periodSnapshot.findUnique({ where: { periodId } });
+      if (ganadora) return ganadora;
+    }
+    throw e;
+  }
 }
 
 /** Guarda una copia recuperable del estado ACTUAL antes de pisarlo, y devuelve
@@ -44,7 +56,7 @@ export async function ensurePeriodSnapshot(periodId: string) {
  *  de un finde tiene que pasar por acá primero. */
 export async function saveRecoverableVersion(
   periodId: string,
-  kind: "PRE_DESCARTE" | "PRE_RESTAURACION",
+  kind: "PRE_DESCARTE" | "PRE_RESTAURACION" | "PRE_COPIA",
   actor: { id: string; name: string }
 ): Promise<{ id: string; lineCount: number }> {
   const { data, lineCount } = await buildSnapshotData(periodId);

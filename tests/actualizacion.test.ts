@@ -153,3 +153,33 @@ test("el texto del error se saca venga como venga", async () => {
   assert.equal(textoDelError("roto"), "roto");
   assert.equal(textoDelError(null), "");
 });
+
+// --- intentar: que una ventana no quede trabada en "Guardando…" ---------------
+
+test("intentar devuelve el resultado de la acción tal cual", async () => {
+  const { intentar } = await import("../lib/actualizacion");
+  const r = await intentar(async () => ({ ok: true, id: "x" }));
+  assert.deepEqual(r, { ok: true, id: "x" });
+  const fallo = await intentar(async () => ({ ok: false, error: "dato inválido" }));
+  assert.deepEqual(fallo, { ok: false, error: "dato inválido" });
+});
+
+test("si la acción LANZA, intentar no lanza: devuelve un fallo con mensaje", async () => {
+  // Es el caso que dejaba las ventanas trabadas: sin conexión, `await acción`
+  // lanzaba y el `setGuardando(false)` de la línea siguiente no corría nunca.
+  const { intentar } = await import("../lib/actualizacion");
+  const r = await intentar<{ ok: boolean; error?: string }>(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? "", /conexión/);
+});
+
+test("si lanza por versión vieja, el mensaje lo dice", async () => {
+  const { intentar } = await import("../lib/actualizacion");
+  const r = await intentar<{ ok: boolean; error?: string }>(async () => {
+    throw new Error('Server Action "abc" was not found on the server.');
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? "", /desactualizada/);
+});

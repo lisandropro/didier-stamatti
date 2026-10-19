@@ -64,6 +64,7 @@ model Notification {
   @@index([recipientId, read])
   @@index([recipientId, createdAt])
   @@index([type, pushedAt])
+  @@index([eventId])
 }
 
 // Una sugerencia del equipo sobre la app: algo que falta, algo que molesta,
@@ -159,6 +160,9 @@ model StockMovement {
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([createdAt])
 }
 
 // Un período operativo agrupa los eventos que comparten la misma vajilla y el
@@ -194,7 +198,7 @@ model PeriodVersion {
   id         String            @id @default(cuid())
   periodId   String
   period     OperationalPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  kind       String // PRE_DESCARTE | PRE_RESTAURACION
+  kind       String // PRE_DESCARTE | PRE_RESTAURACION | PRE_COPIA
   data       String // JSON de las líneas, mismo formato que PeriodSnapshot
   lineCount  Int               @default(0)
   actorId    String?
@@ -249,6 +253,7 @@ model Event {
   changes     OrderChange[]
 
   @@index([periodId, deletedAt])
+  @@index([date])
 }
 
 // Una línea de pedido dentro de un evento.
@@ -269,4 +274,5 @@ model OrderLine {
   note           String?
 
   @@unique([eventId, productId])
+  @@index([productId])
 }

@@ -363,7 +363,12 @@ export async function updateEvent(input: {
 export async function setEventStatus(eventId: string, status: "LISTO" | "NO_LISTO"): Promise<ActionResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
-  await prisma.event.update({ where: { id: eventId }, data: { status } });
+  // Solo un evento vivo: antes se podía marcar LISTO uno que estaba en la papelera.
+  const r = await prisma.event.updateMany({
+    where: { id: eventId, deletedAt: null, period: { deletedAt: null } },
+    data: { status },
+  });
+  if (r.count === 0) return { ok: false, error: "El evento ya no está disponible." };
   revalidatePath("/");
   return { ok: true };
 }

@@ -50,6 +50,8 @@ export async function discardPeriodChanges(periodId: string): Promise<SnapshotRe
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
   if (!canManagePeriods(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
 
+  const vivo = await prisma.operationalPeriod.findFirst({ where: { id: periodId, deletedAt: null }, select: { id: true } });
+  if (!vivo) return { ok: false, error: "El período está en la papelera: recuperalo primero." };
   const snap = await prisma.periodSnapshot.findUnique({ where: { periodId } });
   if (!snap) return { ok: false, error: "Todavía no hay una versión guardada para este período." };
 
@@ -69,8 +71,8 @@ export async function restorePeriodVersion(versionId: string): Promise<SnapshotR
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
   if (!canManagePeriods(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
 
-  const version = await prisma.periodVersion.findUnique({ where: { id: versionId } });
-  if (!version) return { ok: false, error: "No se encontró esa versión." };
+  const version = await prisma.periodVersion.findFirst({ where: { id: versionId, period: { deletedAt: null } } });
+  if (!version) return { ok: false, error: "No se encontró esa versión, o su período está en la papelera." };
 
   const resguardo = await saveRecoverableVersion(version.periodId, "PRE_RESTAURACION", user);
   const restauradas = await applySnapshotData(version.periodId, version.data);

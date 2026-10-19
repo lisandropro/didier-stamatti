@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateEvent } from "@/app/actions/period";
+import { intentar } from "@/lib/actualizacion";
 
 /**
  * Corregir el nombre, la fecha y los invitados de un evento que ya tiene el
@@ -52,7 +53,7 @@ export function EditEventModal({
     if (guardando) return;
     setGuardando(true);
     setError(null);
-    const r = await updateEvent({ eventId: evento.id, lugar, date, guests: invitados, ...opciones });
+    const r = await intentar(() => updateEvent({ eventId: evento.id, lugar, date, guests: invitados, ...opciones }));
     setGuardando(false);
 
     if (r.elegirPeriodo) return setElegir(r.elegirPeriodo);

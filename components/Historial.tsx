@@ -20,7 +20,8 @@ type MovementRow = {
   userName: string | null;
   dateLabel: string;
 };
-type Data = { periodos: PeriodRow[]; movements: MovementRow[] };
+/** `movements` son los últimos; `totalMovimientos`, cuántos hay en total. */
+type Data = { periodos: PeriodRow[]; movements: MovementRow[]; totalMovimientos: number };
 
 const REASONS = [
   { v: "TODOS", l: "Todos" },
@@ -59,11 +60,11 @@ export function Historial({ data }: { data: Data }) {
             Fines de semana ({data.periodos.length})
           </button>
           <button className={tab === "movements" ? "active" : ""} onClick={() => setTab("movements")}>
-            Movimientos de stock ({data.movements.length})
+            Movimientos de stock ({data.totalMovimientos})
           </button>
         </div>
 
-        {tab === "periodos" ? <PeriodosPasados periodos={data.periodos} /> : <Movements movements={data.movements} />}
+        {tab === "periodos" ? <PeriodosPasados periodos={data.periodos} /> : <Movements movements={data.movements} total={data.totalMovimientos} />}
       </div>
     </>
   );
@@ -99,7 +100,7 @@ function PeriodosPasados({ periodos }: { periodos: PeriodRow[] }) {
   );
 }
 
-function Movements({ movements }: { movements: MovementRow[] }) {
+function Movements({ movements, total }: { movements: MovementRow[]; total: number }) {
   const [query, setQuery] = useState("");
   const [reason, setReason] = useState("TODOS");
 
@@ -137,6 +138,7 @@ function Movements({ movements }: { movements: MovementRow[] }) {
 
       <div className="countnote">
         Mostrando {filtered.length} de {movements.length} movimientos
+        {total > movements.length && ` (los ${movements.length} más recientes de ${total}; la búsqueda no llega a los anteriores)`}
       </div>
 
       <div className="tablewrap">

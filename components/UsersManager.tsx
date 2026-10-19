@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createUser, resetUserPassword, setUserRole, deleteUser } from "@/app/actions/users";
 import { ROLES, ROLE_LABEL, ROLE_HELP } from "@/lib/permissions";
+import { intentar } from "@/lib/actualizacion";
 
 type User = { id: string; name: string; email: string; role: string };
 
@@ -131,7 +132,7 @@ function NewUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
   async function save() {
     setSaving(true);
     setError(null);
-    const res = await createUser({ name, email, role, password });
+    const res = await intentar(() => createUser({ name, email, role, password }));
     setSaving(false);
     if (res.ok) onDone();
     else setError(res.error ?? "No se pudo crear.");
@@ -185,7 +186,7 @@ function ResetPasswordModal({ user, onClose, onDone }: { user: User; onClose: ()
   async function save() {
     setSaving(true);
     setError(null);
-    const res = await resetUserPassword(user.id, password);
+    const res = await intentar(() => resetUserPassword(user.id, password));
     setSaving(false);
     if (res.ok) setDone(true);
     else setError(res.error ?? "No se pudo cambiar.");
@@ -245,7 +246,7 @@ function ConfirmModal({
   async function confirm() {
     setSaving(true);
     setError(null);
-    const res = await run();
+    const res = await intentar(() => run());
     setSaving(false);
     if (res.ok) onDone();
     else setError(res.error ?? "No se pudo completar.");

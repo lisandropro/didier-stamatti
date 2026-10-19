@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { changePassword } from "@/app/actions/account";
+import { intentar } from "@/lib/actualizacion";
 
 const EyeIcon = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -66,7 +67,7 @@ export function AccountForm() {
     setSaving(true);
     setError(null);
     setDone(false);
-    const res = await changePassword({ current, next, confirm });
+    const res = await intentar(() => changePassword({ current, next, confirm }));
     setSaving(false);
     if (res.ok) {
       setDone(true);
