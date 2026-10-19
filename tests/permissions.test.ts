@@ -10,6 +10,11 @@ import {
   canManageUsers,
   canSetResponsable,
   canView,
+  canVerStock,
+  canSendSuggestions,
+  canSeeChecks,
+  canVerPreparacion,
+  canPreparar,
   isPriorityRecipient,
   isRole,
   sortByNotificationPriority,
@@ -47,6 +52,16 @@ const MATRIZ = {
     canManageCatalog: false,
     canManageUsers: false,
     canSetResponsable: true,
+  },
+  // Quien prepara físicamente los pedidos: ve y tilda, no toca nada del pedido.
+  DEPOSITO: {
+    canView: true,
+    canEditOrders: false,
+    canManagePeriods: false,
+    canEditStock: false,
+    canManageCatalog: false,
+    canManageUsers: false,
+    canSetResponsable: false,
   },
 } as const;
 
@@ -103,8 +118,10 @@ test("la matriz cubre todos los roles declarados: si se agrega uno, esta prueba 
 
 // --- Prioridad de avisos -----------------------------------------------------
 
-test("solo el encargado de logística es destinatario prioritario", () => {
+test("logística y el depósito son los destinatarios prioritarios", () => {
+  // Son los que salen a conseguir o a juntar las cosas.
   assert.equal(isPriorityRecipient("LOGISTICA"), true);
+  assert.equal(isPriorityRecipient("DEPOSITO"), true);
   assert.equal(isPriorityRecipient("ADMIN"), false);
   assert.equal(isPriorityRecipient("ARMADOR"), false);
 });
@@ -157,11 +174,56 @@ test("un usuario que conserve un rol del módulo financiero no puede nada", asyn
   // El módulo pasó a un sistema de gestión externo. Si quedara guardado alguno
   // de esos roles en la base, no puede ver ni tocar nada: ni siquiera las
   // pantallas del stock, que antes cualquiera con sesión podía mirar.
-  const { canVerStock, canSendSuggestions, canSeeChecks } = await import("../lib/permissions");
   for (const retirado of ["RECEPCION", "PAGOS", "DIRECCION"]) {
     assert.equal(isRole(retirado), false, `${retirado} sigue siendo un rol`);
-    for (const puede of [...Object.values(FN), canVerStock, canSendSuggestions, canSeeChecks]) {
+    for (const puede of [
+      ...Object.values(FN),
+      canVerStock,
+      canSendSuggestions,
+      canSeeChecks,
+      canVerPreparacion,
+      canPreparar,
+    ]) {
       assert.equal(puede(retirado), false, `${retirado} pasa ${puede.name}`);
     }
   }
+});
+
+// --- Preparación en el depósito ------------------------------------------------
+
+const PREPARACION = {
+  ADMIN: { ver: true, tildar: true, stock: true },
+  ARMADOR: { ver: true, tildar: false, stock: true },
+  LOGISTICA: { ver: true, tildar: true, stock: true },
+  DEPOSITO: { ver: true, tildar: true, stock: false },
+} as const;
+
+for (const rol of Object.keys(PREPARACION) as (keyof typeof PREPARACION)[]) {
+  test(`${rol}: ver preparación = ${PREPARACION[rol].ver}, tildar = ${PREPARACION[rol].tildar}, ver stock = ${PREPARACION[rol].stock}`, () => {
+    assert.equal(canVerPreparacion(rol), PREPARACION[rol].ver);
+    assert.equal(canPreparar(rol), PREPARACION[rol].tildar);
+    assert.equal(canVerStock(rol), PREPARACION[rol].stock);
+  });
+}
+
+test("la matriz de preparación cubre todos los roles", () => {
+  assert.deepEqual([...ROLES].sort(), Object.keys(PREPARACION).sort());
+});
+
+test("un rol inventado no ve ni tilda la preparación", () => {
+  assert.equal(canVerPreparacion("SUPERUSUARIO"), false);
+  assert.equal(canPreparar("SUPERUSUARIO"), false);
+  assert.equal(canPreparar(""), false);
+});
+
+test("al depósito se le concede ver, preparar y sugerir; nada más", async () => {
+  // Se barren TODAS las capacidades exportadas, como la prueba de logística en
+  // period-crud.test.ts: si mañana alguien le abre un permiso "para que ayude",
+  // esta prueba obliga a decidirlo en voz alta.
+  const permisos = await import("../lib/permissions");
+  const enTrue = Object.entries(permisos)
+    .filter(([k, f]) => k.startsWith("can") && typeof f === "function" && (f as (r: string) => boolean)("DEPOSITO"))
+    .map(([k]) => k)
+    .sort();
+  assert.deepEqual(enTrue, ["canPreparar", "canSendSuggestions", "canVerPreparacion", "canView"]);
 });

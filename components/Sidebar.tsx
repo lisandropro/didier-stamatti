@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ROLE_LABEL, canSendSuggestions, canManageSuggestions, canVerStock } from "@/lib/permissions";
+import { ROLE_LABEL, canSendSuggestions, canManageSuggestions, canVerStock, canPreparar } from "@/lib/permissions";
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 import { NavPending } from "@/components/NavPending";
 import { usePathname } from "next/navigation";
@@ -48,6 +48,18 @@ const NAV_STOCK = [
   { href: "/historial", label: "Historial", icon: ICONS.historial },
 ];
 const NAV_AVISOS = [{ href: "/notificaciones", label: "Avisos", icon: ICONS.avisos }];
+/** Un portapapeles con un tilde: lo que se junta en el depósito. */
+const NAV_PREPARAR = [
+  {
+    href: "/preparar",
+    label: "Preparar",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1" /><path d="m9 13 2 2 4-4" />
+      </svg>
+    ),
+  },
+];
 /** La bandeja de sugerencias es de quien las gestiona. Los demás tienen el
  *  botón de mandarlas y nada más: para ellos es un buzón, no una sección. */
 const ADMIN_NAV = [
@@ -68,6 +80,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const puedeSugerir = canSendSuggestions(user.role);
   const nav = [
     ...(canVerStock(user.role) ? NAV_STOCK : []),
+    ...(canPreparar(user.role) ? NAV_PREPARAR : []),
     ...NAV_AVISOS,
     ...(canManageSuggestions(user.role) ? ADMIN_NAV : []),
   ];

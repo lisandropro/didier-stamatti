@@ -44,6 +44,7 @@ const ESPERADO = {
   ADMIN: { enviar: true, gestionar: true },
   ARMADOR: { enviar: true, gestionar: false },
   LOGISTICA: { enviar: true, gestionar: false },
+  DEPOSITO: { enviar: true, gestionar: false },
 } as const;
 
 for (const rol of Object.keys(ESPERADO) as (keyof typeof ESPERADO)[]) {

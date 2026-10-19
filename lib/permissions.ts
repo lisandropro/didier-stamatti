@@ -12,13 +12,14 @@
 // módulo financiero que pasó a un sistema de gestión externo. Un usuario que
 // todavía tenga uno de esos roles guardado no pasa `isRole` y no puede nada:
 // cada capacidad de abajo nombra los roles que SÍ pueden.
-export const ROLES = ["ADMIN", "ARMADOR", "LOGISTICA"] as const;
+export const ROLES = ["ADMIN", "ARMADOR", "LOGISTICA", "DEPOSITO"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Administradora",
   ARMADOR: "Armador/a",
   LOGISTICA: "Encargado de logística",
+  DEPOSITO: "Depósito",
 };
 
 /** Descripción corta para la pantalla de Usuarios. */
@@ -26,6 +27,7 @@ export const ROLE_HELP: Record<string, string> = {
   ADMIN: "Control total",
   ARMADOR: "Arma pedidos",
   LOGISTICA: "Mira todo y cambia el responsable de la fiesta",
+  DEPOSITO: "Prepara los pedidos en el teléfono",
 };
 
 export function isRole(value: string): value is Role {
@@ -99,24 +101,37 @@ export function canSeeChecks(role: string): boolean {
   return role === "ADMIN";
 }
 
-/** Ver las pantallas del stock: períodos, inventario e historial.
+/** Ver las pantallas del stock: períodos, inventario, historial y el editor de
+ *  pedidos.
  *
  *  Existe aparte de `canEditOrders` porque el encargado de logística MIRA todo
- *  eso aunque no arme pedidos. Al armar la navegación por permisos se usó
- *  `canEditOrders` y LOGISTICA se quedó sin una sola pantalla — una regresión
- *  sobre un rol que ya existía. */
+ *  eso aunque no arme pedidos. El depósito no: su pantalla es Preparar, que ya
+ *  trae lo que necesita para juntar las cosas, sin el resto. */
 export function canVerStock(role: string): boolean {
   return role === "ADMIN" || role === "ARMADOR" || role === "LOGISTICA";
+}
+
+/** Ver la preparación: los eventos que vienen, qué hay que juntar, qué cambió
+ *  y qué falta en el período. Todos los roles que trabajan con pedidos. */
+export function canVerPreparacion(role: string): boolean {
+  return role === "ADMIN" || role === "ARMADOR" || role === "LOGISTICA" || role === "DEPOSITO";
+}
+
+/** Tildar lo que se preparó. Quien junta las cosas: el depósito, el encargado
+ *  de logística y la administradora. Quien arma el pedido no: si tildara lo que
+ *  pidió, el tilde dejaría de decir que algo está FÍSICAMENTE preparado. */
+export function canPreparar(role: string): boolean {
+  return role === "ADMIN" || role === "LOGISTICA" || role === "DEPOSITO";
 }
 
 // ---------------------------------------------------------------------------
 // Notificaciones
 // ---------------------------------------------------------------------------
 
-/** El encargado del depósito es el que sale a conseguir lo que falta: su aviso
- *  va primero y con la prioridad más alta que admite Web Push. */
+/** Quienes salen a conseguir o a juntar las cosas: el encargado de logística y
+ *  el depósito. Su aviso va primero y con la prioridad más alta de Web Push. */
 export function isPriorityRecipient(role: string): boolean {
-  return role === "LOGISTICA";
+  return role === "LOGISTICA" || role === "DEPOSITO";
 }
 
 /** Ordena los destinatarios dejando primero a los prioritarios. Es estable:

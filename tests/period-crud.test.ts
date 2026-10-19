@@ -53,7 +53,7 @@ import { ROLES, canManagePeriods } from "../lib/permissions";
 // Permisos: la matriz completa, sin base
 // ---------------------------------------------------------------------------
 
-const PUEDE_GESTIONAR_PERIODOS = { ADMIN: true, ARMADOR: true, LOGISTICA: false } as const;
+const PUEDE_GESTIONAR_PERIODOS = { ADMIN: true, ARMADOR: true, LOGISTICA: false, DEPOSITO: false } as const;
 
 for (const rol of Object.keys(PUEDE_GESTIONAR_PERIODOS) as (keyof typeof PUEDE_GESTIONAR_PERIODOS)[]) {
   test(`${rol}: puede crear, editar y borrar períodos = ${PUEDE_GESTIONAR_PERIODOS[rol]}`, () => {
@@ -65,7 +65,7 @@ test("la matriz cubre todos los roles: si mañana se agrega uno, esta prueba fal
   assert.deepEqual([...ROLES].sort(), Object.keys(PUEDE_GESTIONAR_PERIODOS).sort());
 });
 
-test("a LOGISTICA no se le abrió ningún permiso nuevo: sigue teniendo exactamente los tres de siempre", () => {
+test("a LOGISTICA se le abrió solo lo que se decidió: mirar, sugerir, el responsable y preparar", () => {
   // Se barren TODAS las capacidades exportadas, no una lista escrita a mano: si
   // alguien agrega un permiso nuevo y se lo concede al encargado de logística
   // "para que pueda ayudar", esta prueba lo dice. Él mira todo, manda
@@ -76,7 +76,17 @@ test("a LOGISTICA no se le abrió ningún permiso nuevo: sigue teniendo exactame
   // pagos no las usan. Está acá porque el encargado de logística sí las mira —
   // de hecho, usar `canEditOrders` para la nav lo dejó sin ninguna pantalla, y
   // esta prueba es la que obliga a decidirlo en voz alta en vez de deslizarlo.
-  const CONCEDIDOS = ["canSetResponsable", "canView", "canVerStock", "canSendSuggestions"];
+  // `canVerPreparacion` y `canPreparar` (19/10/2026, etapa 2 del depósito): el
+  // encargado de logística también junta las cosas, así que ve la preparación
+  // y tilda. Sigue sin tocar nada del pedido: `canEditOrders` queda en false.
+  const CONCEDIDOS = [
+    "canSetResponsable",
+    "canView",
+    "canVerStock",
+    "canSendSuggestions",
+    "canVerPreparacion",
+    "canPreparar",
+  ];
   const capacidades = Object.keys(permisos)
     .filter((k) => k.startsWith("can") && typeof (permisos as Record<string, unknown>)[k] === "function")
     .sort();

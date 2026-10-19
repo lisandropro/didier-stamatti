@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { NotifBadge } from "@/components/NotifBadge";
 import { NavPending } from "@/components/NavPending";
-import { canSendSuggestions, canVerStock } from "@/lib/permissions";
+import { canPreparar, canSendSuggestions, canVerStock } from "@/lib/permissions";
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 
 /** Los tres primeros son las pantallas del stock: solo con un rol que las vea. */
@@ -57,6 +57,18 @@ const ITEMS = [
   },
 ];
 
+/** Lo que se junta en el depósito: solo para quien tilda. Va aparte de ITEMS
+ *  porque se intercala después del stock y antes de Avisos. */
+const PREPARAR = {
+  href: "/preparar",
+  label: "Preparar",
+  icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1" /><path d="m9 13 2 2 4-4" />
+    </svg>
+  ),
+};
+
 export function MobileNav({ role }: { role: string }) {
   const pathname = usePathname();
   // Se suma un lugar más, no un botón flotante: un flotante se pone encima de
@@ -65,14 +77,19 @@ export function MobileNav({ role }: { role: string }) {
   const [abierta, setAbierta] = useState(false);
   const SUGERIR = { href: "", label: "Sugerir", icon: IconSuggest, accion: abrirSugerencia };
 
-  const items = [...(canVerStock(role) ? ITEMS.slice(0, 3) : []), ...ITEMS.slice(3)];
+  const items = [
+    ...(canVerStock(role) ? ITEMS.slice(0, 3) : []),
+    ...(canPreparar(role) ? [PREPARAR] : []),
+    ...ITEMS.slice(3),
+  ];
 
   // La barra tiene lugar para seis. No es un numero elegido: abajo de 860px la
   // pantalla mas angosta que se usa son 360px, y a seis entradas cada una queda
   // en 60px — el ancho minimo para que la etiqueta se lea entera.
   //
-  // Hoy la cuenta da seis justas (cinco secciones y Sugerir). Si mañana se
-  // suma una séptima, el sobrante va a una hoja, no se esconde.
+  // Con Preparar, a la administradora y a logística la cuenta les da siete: el
+  // sobrante va a la hoja de "Más". Al depósito le quedan cuatro: Preparar,
+  // Avisos, Cuenta y Sugerir.
   const CUPO = 6;
   const todos = [...items, ...(puedeSugerir ? [SUGERIR] : [])];
   const hayDesborde = todos.length > CUPO;

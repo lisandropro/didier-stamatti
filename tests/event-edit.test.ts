@@ -38,7 +38,7 @@ import {
 // Permisos
 // ---------------------------------------------------------------------------
 
-const PUEDE_CORREGIR = { ADMIN: true, ARMADOR: true, LOGISTICA: false } as const;
+const PUEDE_CORREGIR = { ADMIN: true, ARMADOR: true, LOGISTICA: false, DEPOSITO: false } as const;
 
 for (const rol of Object.keys(PUEDE_CORREGIR) as (keyof typeof PUEDE_CORREGIR)[]) {
   test(`${rol}: puede corregir un evento = ${PUEDE_CORREGIR[rol]}`, () => {

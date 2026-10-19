@@ -6,7 +6,7 @@ import { nombreDe, separarPorFecha } from "@/lib/period-fit";
 import { ensurePeriodSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
 import { getSessionUser } from "@/lib/auth";
-import { canManagePeriods, canEditOrders, canVerStock } from "@/lib/permissions";
+import { canManagePeriods, canEditOrders, canVerStock, canVerPreparacion } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,12 @@ export default async function Home({
   const sp = await searchParams;
   const session = await getSessionUser();
   if (!session) redirect("/login");
-  if (!canVerStock(session.role)) notFound();
+  if (!canVerStock(session.role)) {
+    // El depósito no ve la portada del stock: su pantalla es Preparar. Sin esto,
+    // al iniciar sesión caería en un "no encontrado".
+    if (canVerPreparacion(session.role)) redirect("/preparar");
+    notFound();
+  }
 
   // Lo que está en la papelera no aparece en ningún lado ni suma al stock.
   //
