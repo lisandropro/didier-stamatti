@@ -122,8 +122,12 @@ export async function tildarSector(eventId: string, category: string, actor: { i
     let n = 0;
     for (const l of lineas) {
       if (!claves.has(l.clave)) continue;
-      await tx.preparacion.create({
-        data: {
+      // upsert y no create: si dos teléfonos tildan el mismo sector a la vez, el
+      // segundo encuentra la fila hecha y no la pisa ni choca con la clave única.
+      await tx.preparacion.upsert({
+        where: { eventId_clave: { eventId, clave: l.clave } },
+        update: {},
+        create: {
           eventId,
           clave: l.clave,
           itemName: l.itemName,
