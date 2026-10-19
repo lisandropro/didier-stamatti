@@ -27,12 +27,19 @@ model User {
 
 // Suscripción de un dispositivo a las notificaciones push (una por celular/navegador).
 model PushSubscription {
-  id        String   @id @default(cuid())
-  userId    String
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  createdAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  userId      String
+  endpoint    String    @unique
+  p256dh      String
+  auth        String
+  createdAt   DateTime  @default(now())
+  // Para mostrar "Chrome · Android" en Dispositivos. Se toma al suscribir y en
+  // cada apertura de la app; las suscripciones viejas lo completan solas.
+  userAgent   String?
+  // Último envío aceptado y último fallido: lo que dice si a este teléfono le
+  // llegan los avisos, sin tener que recorrer el registro.
+  lastOkAt    DateTime?
+  lastErrorAt DateTime?
 
   @@index([userId])
 }
@@ -275,4 +282,35 @@ model OrderLine {
 
   @@unique([eventId, productId])
   @@index([productId])
+}
+
+/// Un intento de mandar un push a UN dispositivo.
+///
+/// Sin claves foráneas a propósito: el dispositivo o el aviso pueden borrarse,
+/// y el registro tiene que quedar para poder decir qué pasó.
+model PushDelivery {
+  id             String    @id @default(cuid())
+  notificationId String?
+  userId         String
+  subscriptionId String?
+  // ORDER_EDIT | CAMBIO_TARDIO | FALTANTE | PEDIDO_VACIO | SISTEMA | SUGERENCIA | PRUEBA
+  kind           String
+  // ACEPTADO | CADUCADO | RECHAZADO | ERROR
+  status         String
+  statusCode     Int?
+  error          String?
+  attempt        Int       @default(1)
+  // 429, 5xx o red: vale la pena un segundo intento. El resto, no.
+  reintentable   Boolean   @default(false)
+  retriedAt      DateTime?
+  // Lo que se mandó, sin la marca de entrega: hace falta para reintentar.
+  payload        String
+  urgency        String    @default("normal")
+  createdAt      DateTime  @default(now())
+  openedAt       DateTime?
+
+  @@index([userId, createdAt])
+  @@index([subscriptionId, createdAt])
+  @@index([status, reintentable, retriedAt])
+  @@index([createdAt])
 }
