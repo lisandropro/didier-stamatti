@@ -53,6 +53,9 @@ test("ninguna acción de preparación escribe sin comprobar permiso y evento viv
   const guarda = s.slice(s.indexOf("async function requerirPreparar"), s.indexOf("export async function"));
   assert.match(guarda, /canPreparar\(user\.role\)/);
   assert.match(guarda, /deletedAt: null, period: \{ deletedAt: null \}/);
+  // El permiso se mira antes de tocar la base: a quien no puede no se le dice
+  // ni si el evento existe.
+  assert.ok(guarda.indexOf("canPreparar(") < guarda.indexOf("prisma.event.findFirst"), "consulta la base antes del permiso");
   const cortes = [...s.matchAll(/^export async function (\w+)/gm)];
   assert.equal(cortes.length, 3);
   for (let i = 0; i < cortes.length; i++) {
@@ -60,6 +63,8 @@ test("ninguna acción de preparación escribe sin comprobar permiso y evento viv
     const permiso = cuerpo.indexOf("requerirPreparar(");
     const escritura = cuerpo.search(/\b(tildar|destildar|tildarSector)\(eventId/);
     assert.ok(permiso > -1 && escritura > permiso, `${cortes[i][1]} escribe sin comprobar antes`);
+    // Llamar a la guarda no alcanza: hay que cortar si no dejó pasar.
+    assert.match(cuerpo.slice(permiso, escritura), /if \(!user\) return/, `${cortes[i][1]} ignora lo que dijo la guarda`);
   }
 });
 
