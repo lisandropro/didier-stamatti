@@ -47,3 +47,18 @@ test("el depósito no pasa ninguna guarda de las acciones que escriben pedidos, 
   // El catálogo no usa una capacidad sino el rol exacto.
   assert.match(fuente("app/actions/products.ts"), /user\.role !== "ADMIN"/);
 });
+
+test("ninguna acción de preparación escribe sin comprobar permiso y evento vivo antes", () => {
+  const s = fuente("app/actions/preparacion.ts");
+  const guarda = s.slice(s.indexOf("async function requerirPreparar"), s.indexOf("export async function"));
+  assert.match(guarda, /canPreparar\(user\.role\)/);
+  assert.match(guarda, /deletedAt: null, period: \{ deletedAt: null \}/);
+  const cortes = [...s.matchAll(/^export async function (\w+)/gm)];
+  assert.equal(cortes.length, 3);
+  for (let i = 0; i < cortes.length; i++) {
+    const cuerpo = s.slice(cortes[i].index!, i + 1 < cortes.length ? cortes[i + 1].index! : s.length);
+    const permiso = cuerpo.indexOf("requerirPreparar(");
+    const escritura = cuerpo.search(/\b(tildar|destildar|tildarSector)\(eventId/);
+    assert.ok(permiso > -1 && escritura > permiso, `${cortes[i][1]} escribe sin comprobar antes`);
+  }
+});
