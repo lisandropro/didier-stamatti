@@ -6,6 +6,7 @@ import {
   claveDeLinea,
   clavesParaTildarSector,
   estadoDeItems,
+  seccionesDePantalla,
   textoDeAccion,
   type LineaPedido,
   type Tildado,
@@ -127,4 +128,66 @@ test("tildar un sector entero toma solo lo pendiente de ese sector", () => {
     [T("camb", 2), T("sacar", 3)],
   );
   assert.deepEqual(clavesParaTildarSector(items, "ENSERES").sort(), ["p1", "p2"]);
+});
+
+test("la pantalla reparte: arriba lo que hay que aplicar, y cada sector sin repetir esas filas", () => {
+  const items = estadoDeItems(
+    [L("pend", 1), L("prep", 2), L("camb", 5), L("nota", 3, "x"), L("m1", 1, null, "MOBILIARIO")],
+    [T("prep", 2), T("camb", 2), T("nota", 3), T("sacar", 7)],
+  );
+  const { paraAplicar, sectores } = seccionesDePantalla(items);
+  assert.deepEqual(paraAplicar.map((i) => i.clave).sort(), ["camb", "nota", "sacar"]);
+  assert.deepEqual(sectores.map((s) => s.category), ["ENSERES", "MOBILIARIO"]);
+  const enseres = sectores[0];
+  assert.equal(enseres.label, "Enseres");
+  assert.deepEqual(enseres.filas.map((i) => i.clave).sort(), ["pend", "prep"], "lo de arriba no se repite en el sector");
+  assert.deepEqual(sectores[1].filas.map((i) => i.clave), ["m1"]);
+});
+
+test("la pantalla cuenta todo el sector, también lo que está arriba en 'Cambios para aplicar'", () => {
+  const items = estadoDeItems(
+    [L("pend", 1), L("prep", 2), L("camb", 5), L("nota", 3, "x")],
+    [T("prep", 2), T("camb", 2), T("nota", 3), T("sacar", 7)],
+  );
+  const [enseres] = seccionesDePantalla(items).sectores;
+  assert.equal(enseres.total, 5, "pendiente + preparado + cambio + nota + sacar");
+  assert.equal(enseres.listos, 1);
+  assert.equal(enseres.pendientes, 1);
+  assert.equal(enseres.filas.length, 2);
+});
+
+test("un sector con todo en 'Cambios para aplicar' sigue existiendo, sin filas propias", () => {
+  const [solo] = seccionesDePantalla(estadoDeItems([L("camb", 5)], [T("camb", 2)])).sectores;
+  assert.equal(solo.total, 1);
+  assert.equal(solo.listos, 0);
+  assert.deepEqual(solo.filas, []);
+});
+
+test("una categoría desconocida sale como sector propio, al final y con su nombre", () => {
+  const items = estadoDeItems(
+    [L("v", 1, null, "VAJILLA_VIEJA"), L("e", 1), L("b", 1, null, "BEBIDA")],
+    [],
+  );
+  const { sectores } = seccionesDePantalla(items);
+  assert.deepEqual(sectores.map((s) => s.category), ["ENSERES", "BEBIDA", "VAJILLA_VIEJA"]);
+  const vieja = sectores[2];
+  assert.equal(vieja.label, "VAJILLA_VIEJA");
+  assert.deepEqual(vieja.filas.map((i) => i.clave), ["v"], "se ve y se puede tildar");
+});
+
+test("los sectores salen en el orden de la lista de categorías, no en el de los ítems", () => {
+  const items = estadoDeItems(
+    [L("b", 1, null, "BEBIDA"), L("mo", 1, null, "MOBILIARIO"), L("ma", 1, null, "MANTELERIA"), L("e", 1)],
+    [],
+  );
+  assert.deepEqual(seccionesDePantalla(items).sectores.map((s) => s.category), ["ENSERES", "MANTELERIA", "MOBILIARIO", "BEBIDA"]);
+});
+
+test("las categorías desconocidas van al final en orden alfabético, siempre igual", () => {
+  const items = estadoDeItems([L("z", 1, null, "ZETA"), L("a", 1, null, "ALFA"), L("e", 1)], []);
+  assert.deepEqual(seccionesDePantalla(items).sectores.map((s) => s.category), ["ENSERES", "ALFA", "ZETA"]);
+});
+
+test("sin ítems no hay nada que repartir", () => {
+  assert.deepEqual(seccionesDePantalla([]), { paraAplicar: [], sectores: [] });
 });

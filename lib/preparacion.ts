@@ -7,6 +7,7 @@
 // pueda quedar desactualizado.
 
 import { recortar } from "@/lib/aviso-texto";
+import { nombreDeCategoria, ordenDeCategoria } from "@/lib/categories";
 
 export type EstadoItem = "PENDIENTE" | "PREPARADO" | "CAMBIO" | "NOTA" | "SACAR";
 
@@ -99,6 +100,56 @@ const PARA_APLICAR: ReadonlySet<EstadoItem> = new Set(["CAMBIO", "NOTA", "SACAR"
 /** Lo que cambió después de preparar y todavía nadie aplicó en lo físico. */
 export function cambiosParaAplicar(items: ItemPreparacion[]): ItemPreparacion[] {
   return items.filter((i) => PARA_APLICAR.has(i.estado));
+}
+
+/** Un sector tal como lo dibuja la pantalla de preparar. */
+export type SectorDePantalla<T> = {
+  category: string;
+  label: string;
+  /** Todo lo del sector, esté donde esté en la pantalla. */
+  total: number;
+  listos: number;
+  pendientes: number;
+  /** Las filas que se dibujan en el sector: sin lo que ya está arriba, en "Cambios para aplicar". */
+  filas: T[];
+};
+
+/**
+ * Cómo se reparten los ítems en la pantalla de preparar: arriba lo que hay que
+ * aplicar, después un bloque por sector.
+ *
+ * El avance de cada sector cuenta todo (preparados sobre todo lo que hay que
+ * mover), pero lo que ya está arriba no se repite en `filas`: dos filas del
+ * mismo ítem hacen dudar de si se tildó dos veces.
+ *
+ * Los sectores salen de los propios ítems, no de la lista de categorías: un
+ * ítem con una categoría vieja o desconocida tiene que verse y poder tildarse,
+ * no desaparecer de la pantalla del depósito. Esos van al final
+ * (`ordenDeCategoria`), en orden alfabético para que siempre salgan igual.
+ *
+ * Es genérica porque la pantalla trabaja con la versión serializada del ítem
+ * (sin fechas), que no es un `ItemPreparacion` pero tiene lo que acá se mira.
+ */
+export function seccionesDePantalla<T extends { category: string; estado: EstadoItem }>(
+  items: T[],
+): { paraAplicar: T[]; sectores: SectorDePantalla<T>[] } {
+  const porSector = new Map<string, T[]>();
+  for (const i of items) {
+    const del = porSector.get(i.category);
+    if (del) del.push(i);
+    else porSector.set(i.category, [i]);
+  }
+  const sectores = [...porSector.entries()]
+    .sort(([a], [b]) => ordenDeCategoria(a) - ordenDeCategoria(b) || a.localeCompare(b))
+    .map(([category, delSector]) => ({
+      category,
+      label: nombreDeCategoria(category),
+      total: delSector.length,
+      listos: delSector.filter((i) => i.estado === "PREPARADO").length,
+      pendientes: delSector.filter((i) => i.estado === "PENDIENTE").length,
+      filas: delSector.filter((i) => !PARA_APLICAR.has(i.estado)),
+    }));
+  return { paraAplicar: items.filter((i) => PARA_APLICAR.has(i.estado)), sectores };
 }
 
 /** Una acción como la lee el que prepara en el push: "Sumá 14 Copas de agua",
