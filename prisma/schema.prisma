@@ -130,8 +130,12 @@ model OrderChange {
   before    String?
   after     String?
   createdAt DateTime @default(now())
+  // El ítem ya estaba tildado como preparado cuando se cambió: el depósito tiene
+  // que rehacer algo físico. Alimenta el aviso CAMBIO_TARDIO y su registro.
+  tardio    Boolean  @default(false)
 
   @@index([eventId, createdAt])
+  @@index([tardio, createdAt])
 }
 
 model Product {
@@ -258,6 +262,7 @@ model Event {
   deletedAt   DateTime?
   lines       OrderLine[]
   changes     OrderChange[]
+  preparaciones Preparacion[]
 
   @@index([periodId, deletedAt])
   @@index([date])
@@ -313,4 +318,31 @@ model PushDelivery {
   @@index([subscriptionId, createdAt])
   @@index([status, reintentable, retriedAt])
   @@index([createdAt])
+}
+
+/// Lo que el depósito tildó como preparado en un evento: una fila por ÍTEM.
+///
+/// La clave es el ítem y no el renglón del pedido (`productId`, o
+/// `custom:<orderLineId>` para los sueltos): si el renglón se borra, lo tildado
+/// queda, y eso es justamente lo que le dice al depósito "sacá esto". Se copian
+/// nombre, unidad y sector para que esa fila se pueda leer sola.
+///
+/// `qty` y `note` son lo que había en el pedido EN EL MOMENTO de tildar. El
+/// estado (pendiente, preparado, cambió...) no se guarda: se calcula comparando
+/// esto con el pedido de ahora (lib/preparacion.ts).
+model Preparacion {
+  id       String   @id @default(cuid())
+  eventId  String
+  event    Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  clave    String
+  itemName String
+  unit     String
+  category String
+  qty      Int
+  note     String?
+  porId    String?
+  porName  String
+  at       DateTime @default(now())
+
+  @@unique([eventId, clave])
 }
