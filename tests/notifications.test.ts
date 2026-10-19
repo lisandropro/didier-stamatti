@@ -685,6 +685,52 @@ test("un segundo cambio tardío de la misma persona se suma a la misma tanda abi
   assert.equal(tardias[0].message, "Ana cambió 2 ítems ya preparados de El Carmen Center");
 });
 
+test("el aviso tardío dice qué rehacer, abre Preparar y sale con prioridad para todos", async () => {
+  await limpiar();
+  const copa = await prisma.product.create({ data: { name: "Copa de agua", category: "ENSERES", type: "REUTILIZABLE", stock: 500 } });
+  await prisma.orderLine.create({ data: { eventId: ids.evento, productId: copa.id, qty: 24 } });
+  await prisma.preparacion.create({
+    data: { eventId: ids.evento, clave: copa.id, itemName: "Copa de agua", unit: "Unidad", category: "ENSERES", qty: 10, porName: "Pablo" },
+  });
+  const antes = enviadosAlTelefono.length;
+  await notify.notifyOrderChange(ACTOR(), ids.evento, {
+    itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true,
+  });
+  await pasaronMinutos(3);
+  const r = await notify.flushPendingOrderPushes();
+  assert.equal(r.enviados, 2);
+  const nuevos = enviadosAlTelefono.slice(antes);
+  assert.equal(nuevos.length, 2);
+  for (const p of nuevos) {
+    assert.match(p.title, /⚠ Cambio en pedido ya preparado · El Carmen Center$/);
+    assert.equal(p.body, "Sumá 14 Copa de agua\n— Ana");
+    assert.equal(p.url, `/preparar/${ids.evento}`);
+  }
+  const entregas = await prisma.pushDelivery.findMany({ where: { kind: "CAMBIO_TARDIO" } });
+  assert.ok(entregas.length > 0 && entregas.every((e) => e.urgency === "high"), "el tardío sale con prioridad alta para todos");
+  await prisma.preparacion.deleteMany({});
+  await prisma.orderLine.deleteMany({ where: { productId: copa.id } });
+});
+
+test("si el depósito ya lo aplicó antes de que salga el aviso, no suena", async () => {
+  await limpiar();
+  const vaso = await prisma.product.create({ data: { name: "Vaso", category: "ENSERES", type: "REUTILIZABLE", stock: 500 } });
+  await prisma.orderLine.create({ data: { eventId: ids.evento, productId: vaso.id, qty: 30 } });
+  await prisma.preparacion.create({
+    data: { eventId: ids.evento, clave: vaso.id, itemName: "Vaso", unit: "Unidad", category: "ENSERES", qty: 20, porName: "Pablo" },
+  });
+  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vaso", kind: "CANTIDAD", before: "20", after: "30", tardio: true });
+  // El depósito vuelve a tildar con la cantidad nueva: ya no queda nada para aplicar.
+  await prisma.preparacion.updateMany({ where: { clave: vaso.id }, data: { qty: 30 } });
+  await pasaronMinutos(3);
+  const antes = enviadosAlTelefono.length;
+  const r = await notify.flushPendingOrderPushes();
+  assert.equal(r.enviados, 0);
+  assert.equal(enviadosAlTelefono.length, antes);
+  await prisma.preparacion.deleteMany({});
+  await prisma.orderLine.deleteMany({ where: { productId: vaso.id } });
+});
+
 test("un evento que no existe no rompe el guardado del pedido", async () => {
   await assert.doesNotReject(() =>
     notify.notifyOrderChange(ACTOR(), "id-que-no-existe", { itemName: "x", kind: "CANTIDAD", after: "1" })

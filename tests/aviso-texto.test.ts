@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { consolidarCambios, describirCambio, textoDeLoDeshecho, textoDePush, type Cambio } from "../lib/aviso-texto";
+import {
+  consolidarCambios,
+  describirCambio,
+  textoDeLoDeshecho,
+  textoDePush,
+  textoSinPendientes,
+  textoTardio,
+  type Cambio,
+} from "../lib/aviso-texto";
 
 /**
  * El texto del push: lo que el depósito tiene que hacer, no cuántas veces se
@@ -228,4 +236,34 @@ test("describirCambio no escribe 'null' cuando un dato del evento quedó vacío"
   assert.equal(describirCambio(c("Evento", "FECHA", "sáb 24/10", null)), "Fecha: (sin dato)");
   assert.equal(describirCambio(c("Evento", "INVITADOS", "100", null)), "Invitados: (sin dato)");
   assert.equal(describirCambio(c("Evento", "PERIODO", "mañana", null)), "Período: (sin dato)");
+});
+
+test("aviso tardío: título con el lugar, las acciones y quién", () => {
+  const t = textoTardio("El Carmen", "Enrique", ["Sumá 14 Copas de agua", "Sacá 3 Braseros"], false);
+  assert.deepEqual(t, {
+    title: "⚠ Cambio en pedido ya preparado · El Carmen",
+    body: "Sumá 14 Copas de agua · Sacá 3 Braseros\n— Enrique",
+  });
+});
+
+test("aviso tardío de un evento de hoy: el título lo dice primero", () => {
+  assert.match(textoTardio("El Carmen", "Enrique", ["Sumá 1 Copa"], true)!.title, /^HOY · ⚠ Cambio en pedido ya preparado/);
+});
+
+test("aviso tardío: tres acciones y cuántas más, sin pasar de 500", () => {
+  const acciones = Array.from({ length: 6 }, (_, i) => `Sumá ${i} ${"x".repeat(200)}`);
+  const t = textoTardio("X", "Enrique", acciones, false)!;
+  assert.ok(t.body.length <= 500);
+  assert.ok(t.body.endsWith(" · y 3 más\n— Enrique"));
+});
+
+test("sin acciones pendientes no hay aviso tardío", () => {
+  assert.equal(textoTardio("X", "Enrique", [], false), null);
+});
+
+test("la corrección cuando ya no queda nada para aplicar", () => {
+  assert.deepEqual(textoSinPendientes("El Carmen", "Enrique"), {
+    title: "Pedido ya preparado · El Carmen",
+    body: "Ya no hay cambios para aplicar\n— Enrique",
+  });
 });

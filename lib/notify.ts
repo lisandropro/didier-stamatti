@@ -1,7 +1,10 @@
 import type { Notification } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { reintentarFallidos, sendPushToUser } from "@/lib/push";
-import { textoDeLoDeshecho, textoDePush } from "@/lib/aviso-texto";
+import { textoDeLoDeshecho, textoDePush, textoSinPendientes, textoTardio } from "@/lib/aviso-texto";
+import { estadoDelEvento } from "@/lib/preparacion-db";
+import { cambiosParaAplicar, textoDeAccion } from "@/lib/preparacion";
+import { diaDe, hoy } from "@/lib/dates";
 import { ROLES, isPriorityRecipient, sortByNotificationPriority } from "@/lib/permissions";
 
 // Mientras la persona sigue editando, los cambios se van sumando a un mismo
@@ -243,9 +246,10 @@ export async function cambiosDeLaTanda(aviso: {
 // volvía a mandar y anotaba cada fallo dos veces.
 let barriendo = false;
 
-/** Manda el push de los avisos cuya edición ya se quedó quieta, y reintenta lo
- *  que falló por algo pasajero en el barrido anterior. Corre cada un minuto
- *  desde `instrumentation.ts`. Nunca lanza. */
+/** Manda el push de los avisos cuya edición ya se quedó quieta (los dos tipos de
+ *  tanda: cambios comunes y cambios tardíos), y reintenta lo que falló por algo
+ *  pasajero en el barrido anterior. Corre cada un minuto desde
+ *  `instrumentation.ts`. Nunca lanza. */
 export async function flushPendingOrderPushes(): Promise<{ enviados: number; cerrados: number; reintentos: number }> {
   if (barriendo) return { enviados: 0, cerrados: 0, reintentos: 0 };
   barriendo = true;
@@ -253,7 +257,7 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
     const reintentos = await reintentarFallidos();
     const cutoff = new Date(Date.now() - QUIET_MINUTES * 60 * 1000);
     const pendientesCrudos = await prisma.notification.findMany({
-      where: { type: "ORDER_EDIT", pushedAt: null, createdAt: { lte: cutoff } },
+      where: { type: { in: ["ORDER_EDIT", "CAMBIO_TARDIO"] }, pushedAt: null, createdAt: { lte: cutoff } },
       take: 100,
       orderBy: { createdAt: "asc" },
       include: { recipient: { select: { role: true } } },
@@ -300,24 +304,34 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
         // NO se cierra la tanda: no se mandó nada, no quedó fila en el registro
         // de envíos, y cerrarla perdería el aviso sin dejar rastro. Sin cerrar,
         // el barrido del minuto siguiente la reintenta.
+        const tardio = n.type === "CAMBIO_TARDIO";
         let texto: ReturnType<typeof textoDePush>;
         try {
           const ev = n.eventId
-            ? await prisma.event.findUnique({ where: { id: n.eventId }, select: { lugar: true } })
+            ? await prisma.event.findUnique({ where: { id: n.eventId }, select: { lugar: true, date: true } })
             : null;
-          texto = textoDePush(ev?.lugar ?? "Pedido", n.actorName, await cambiosDeLaTanda(n));
+          const lugar = ev?.lugar ?? "Pedido";
+          if (tardio) {
+            // El texto no sale de los cambios sino de lo que hay que hacer AHORA:
+            // si el depósito ya lo aplicó, o el cambio se deshizo, no queda nada.
+            const acciones = n.eventId ? cambiosParaAplicar(await estadoDelEvento(n.eventId)).map(textoDeAccion) : [];
+            texto = textoTardio(lugar, n.actorName, acciones, ev ? diaDe(ev.date) === hoy() : false);
+          } else {
+            texto = textoDePush(lugar, n.actorName, await cambiosDeLaTanda(n));
+          }
           // `null`: los cambios se compensaron. En el depósito no hay nada que
           // hacer, así que normalmente el teléfono no suena; el aviso queda en la
           // app. Salvo que esta tanda ya haya llegado a un teléfono a medias (un
           // cambio entró mientras se mandaba): ese teléfono sigue mostrando lo que
           // se deshizo, y el depósito lo prepararía. Se lo corrige con el mismo
-          // `tag`, que reemplaza al push anterior en la pantalla.
+          // `tag`, que reemplaza al push anterior en la pantalla. En una tanda
+          // tardía `null` es que ya no queda nada por aplicar, con el mismo criterio.
           if (!texto) {
             const yaLlego = await prisma.pushDelivery.findFirst({
               where: { notificationId: n.id, status: "ACEPTADO" },
               select: { id: true },
             });
-            if (yaLlego) texto = textoDeLoDeshecho(ev?.lugar ?? "Pedido", n.actorName);
+            if (yaLlego) texto = tardio ? textoSinPendientes(lugar, n.actorName) : textoDeLoDeshecho(lugar, n.actorName);
           }
         } catch (e) {
           console.error("[avisos] no se pudo armar el texto del aviso, se reintenta en el próximo barrido", n.id, mensajeDe(e));
@@ -330,9 +344,15 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
           try {
             const r = await sendPushToUser(
               n.recipientId,
-              { title: texto.title, body: texto.body, url: `/aviso/${n.id}`, tag: `order-${n.eventId ?? n.id}` },
-              { kind: "ORDER_EDIT", notificationId: n.id },
-              { urgency: isPriorityRecipient(n.role) ? "high" : "normal" }
+              {
+                title: texto.title,
+                body: texto.body,
+                url: tardio ? `/preparar/${n.eventId}` : `/aviso/${n.id}`,
+                tag: `${tardio ? "tardio" : "order"}-${n.eventId ?? n.id}`,
+              },
+              { kind: tardio ? "CAMBIO_TARDIO" : "ORDER_EDIT", notificationId: n.id },
+              // Lo tardío sale con prioridad para todos: obliga a rehacer algo físico.
+              { urgency: tardio || isPriorityRecipient(n.role) ? "high" : "normal" }
             );
             if (r.aceptados > 0) enviados++;
           } catch (e) {

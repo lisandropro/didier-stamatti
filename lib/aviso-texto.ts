@@ -134,6 +134,15 @@ function pieDe(actorName: string): string {
   return `\n— ${recortar(actorName, MAX_QUIEN)}`;
 }
 
+/** Hasta tres partes, "y N más" y la firma, sin pasar de MAX_CUERPO. Se recorta
+ *  solo el detalle: el "y N más" y la firma son lo último que se puede perder. */
+function cuerpoConTope(partes: string[], actorName: string): string {
+  const visibles = partes.slice(0, MAX_EN_EL_PUSH).join(" · ");
+  const resto = partes.length > MAX_EN_EL_PUSH ? ` · y ${partes.length - MAX_EN_EL_PUSH} más` : "";
+  const pie = pieDe(actorName);
+  return recortar(visibles, MAX_CUERPO - pie.length - resto.length) + resto + pie;
+}
+
 /**
  * Título y cuerpo del push de una tanda de cambios. `null` si los cambios se
  * compensaron: no hay nada que hacer en el depósito y el teléfono no suena.
@@ -145,13 +154,9 @@ export function textoDePush(
 ): { title: string; body: string } | null {
   const netos = consolidarCambios(cambios);
   if (netos.length === 0) return null;
-  const visibles = netos.slice(0, MAX_EN_EL_PUSH).map(describirCambio).join(" · ");
-  const resto = netos.length > MAX_EN_EL_PUSH ? ` · y ${netos.length - MAX_EN_EL_PUSH} más` : "";
-  const pie = pieDe(actorName);
   // Se recorta solo el detalle: el "y N más" y el pie dicen cuántos cambios hay
   // y quién los hizo, y son lo último que se puede perder.
-  const detalle = recortar(visibles, MAX_CUERPO - pie.length - resto.length);
-  return { title: lugar, body: detalle + resto + pie };
+  return { title: lugar, body: cuerpoConTope(netos.map(describirCambio), actorName) };
 }
 
 /**
@@ -162,4 +167,29 @@ export function textoDePush(
  */
 export function textoDeLoDeshecho(lugar: string, actorName: string): { title: string; body: string } {
   return { title: lugar, body: `Sin cambios: lo avisado recién se deshizo${pieDe(actorName)}` };
+}
+
+/**
+ * El aviso de un cambio sobre algo ya preparado: no qué se tocó, sino qué hay
+ * que hacer en el depósito. `null` si no queda nada por aplicar (alguien ya lo
+ * aplicó, o el cambio se deshizo). Si el evento es hoy, el título lo dice
+ * primero: es el que más urge.
+ */
+export function textoTardio(
+  lugar: string,
+  actorName: string,
+  acciones: string[],
+  esHoy: boolean,
+): { title: string; body: string } | null {
+  if (acciones.length === 0) return null;
+  return {
+    title: `${esHoy ? "HOY · " : ""}⚠ Cambio en pedido ya preparado · ${lugar}`,
+    body: cuerpoConTope(acciones, actorName),
+  };
+}
+
+/** Corrige un aviso tardío ya mandado cuando ya no queda nada por aplicar. Va
+ *  con el mismo `tag` para reemplazarlo en la pantalla del teléfono. */
+export function textoSinPendientes(lugar: string, actorName: string): { title: string; body: string } {
+  return { title: `Pedido ya preparado · ${lugar}`, body: `Ya no hay cambios para aplicar${pieDe(actorName)}` };
 }
