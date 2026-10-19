@@ -2235,3 +2235,7 @@ tbody tr:hover{background:var(--surface-2)}
    un precio creyendo que es exacta. */
 .ing-margen{display:block; font-size:var(--t-sm); color:var(--ink); font-variant-numeric:tabular-nums}
 .ing-aprox{color:var(--muted)}
+
+/* Dispositivos: lo que hay que resolver se lee en rojo, no solo con un punto. */
+.disp-lista{display:flex; flex-direction:column; gap:var(--sp-4)}
+.disp-alarma{color:var(--crit); font-weight:600}

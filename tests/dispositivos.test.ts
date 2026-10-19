@@ -1,0 +1,72 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { crearBaseDescartable } from "./helpers/base-descartable";
+
+/**
+ * A quién le llegan los avisos y a quién no.
+ *
+ * Al 18/10/2026 Aldana no tenía ningún dispositivo y nadie lo sabía: los
+ * avisos de seis semanas se perdieron sin que ninguna pantalla lo dijera.
+ */
+
+const base = crearBaseDescartable("dispositivos");
+let prisma: typeof import("../lib/db").prisma;
+let disp: typeof import("../lib/dispositivos");
+
+before(async () => {
+  ({ prisma } = await import("../lib/db"));
+  disp = await import("../lib/dispositivos");
+});
+
+after(async () => {
+  await prisma?.$disconnect();
+  base.borrar();
+});
+
+test("noLeLlega: tres fracasos seguidos sí, dos no, y uno bueno lo corta", () => {
+  const f = { status: "ERROR" };
+  const ok = { status: "ACEPTADO" };
+  assert.equal(disp.noLeLlega([f, f, f]), true);
+  assert.equal(disp.noLeLlega([f, f]), false);
+  assert.equal(disp.noLeLlega([ok, f, f]), false);
+  assert.equal(disp.noLeLlega([]), false);
+});
+
+test("primero quien no tiene ningún teléfono, después a quien no le llega, después el resto", async () => {
+  const mk = (name: string, role: string) =>
+    prisma.user.create({ data: { name, email: `${name}@t.local`, role, passwordHash: "x" } });
+  const aldana = await mk("Aldana", "ARMADOR");
+  const pablo = await mk("Pablo", "LOGISTICA");
+  const enrique = await mk("Enrique", "ARMADOR");
+  await mk("Contable", "PAGOS"); // rol retirado: no aparece
+
+  const subPablo = await prisma.pushSubscription.create({
+    data: {
+      userId: pablo.id,
+      endpoint: "https://fcm.googleapis.com/fcm/send/p",
+      p256dh: "k",
+      auth: "a",
+      userAgent: "Mozilla/5.0 (Linux; Android 14) Chrome/130",
+    },
+  });
+  const subEnrique = await prisma.pushSubscription.create({
+    data: { userId: enrique.id, endpoint: "https://fcm.googleapis.com/fcm/send/e", p256dh: "k", auth: "a" },
+  });
+  for (let i = 0; i < 3; i++) {
+    await prisma.pushDelivery.create({
+      data: { userId: pablo.id, subscriptionId: subPablo.id, kind: "ORDER_EDIT", status: "ERROR", payload: "{}" },
+    });
+  }
+  await prisma.pushDelivery.create({
+    data: { userId: enrique.id, subscriptionId: subEnrique.id, kind: "ORDER_EDIT", status: "ACEPTADO", payload: "{}" },
+  });
+
+  const r = await disp.estadoDeDispositivos();
+  assert.deepEqual(r.map((p) => p.name), ["Aldana", "Pablo", "Enrique"]);
+  assert.equal(r[0].dispositivos.length, 0);
+  assert.equal(r[1].dispositivos[0].noLeLlega, true);
+  assert.equal(r[1].dispositivos[0].descripcion, "Chrome · Android");
+  assert.equal(r[2].dispositivos[0].noLeLlega, false);
+  assert.equal(r[2].dispositivos[0].descripcion, "Desconocido", "sin userAgent todavía");
+  assert.equal(r.some((p) => p.id === aldana.id), true);
+});

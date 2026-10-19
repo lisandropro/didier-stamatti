@@ -1,10 +1,11 @@
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { NotificationsList } from "@/components/NotificationsList";
 import { EnableNotifications } from "@/components/EnableNotifications";
 import { ParaRevisar } from "@/components/ParaRevisar";
-import { canSeeChecks } from "@/lib/permissions";
+import { canManageUsers, canSeeChecks } from "@/lib/permissions";
 import { collectProblems } from "@/lib/healthcheck";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,12 @@ export default async function NotificacionesPage() {
       <div className="content">
         <ParaRevisar hallazgos={hallazgos} />
         <EnableNotifications />
+        {/* En el celular la barra lateral no existe: desde acá se llega igual. */}
+        {canManageUsers(user.role) && (
+          <p className="notif-enable-note">
+            <Link href="/dispositivos">Ver a quién le llegan los avisos →</Link>
+          </p>
+        )}
         <NotificationsList items={items} />
       </div>
     </>
