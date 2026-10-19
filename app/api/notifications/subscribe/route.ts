@@ -2,14 +2,14 @@ import { parsePushSubscription, validPushEndpoint } from "@/lib/push-subscriptio
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { mismoOrigen } from "@/lib/mismo-origen";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Guarda (o actualiza) la suscripción push de este dispositivo para el usuario actual.
 export async function POST(req: Request) {
-  const origin = req.headers.get("origin");
-  if (origin && origin !== new URL(req.url).origin) return NextResponse.json({ ok: false }, { status: 403 });
+  if (!mismoOrigen(req.headers)) return NextResponse.json({ ok: false }, { status: 403 });
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false, error: "No autorizado." }, { status: 401 });
 
@@ -35,8 +35,7 @@ export async function POST(req: Request) {
 
 // Quita la suscripción de este dispositivo (al desactivar las notificaciones).
 export async function DELETE(req: Request) {
-  const origin = req.headers.get("origin");
-  if (origin && origin !== new URL(req.url).origin) return NextResponse.json({ ok: false }, { status: 403 });
+  if (!mismoOrigen(req.headers)) return NextResponse.json({ ok: false }, { status: 403 });
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
   let body: { endpoint?: string };
