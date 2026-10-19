@@ -6,6 +6,7 @@ import {
   claveDeLinea,
   clavesParaTildarSector,
   estadoDeItems,
+  pideConfirmacion,
   seccionesDePantalla,
   textoDeAccion,
   type LineaPedido,
@@ -190,4 +191,22 @@ test("las categorías desconocidas van al final en orden alfabético, siempre ig
 
 test("sin ítems no hay nada que repartir", () => {
   assert.deepEqual(seccionesDePantalla([]), { paraAplicar: [], sectores: [] });
+});
+
+test("lo que pide confirmar es lo que hay que aplicar, y nada más", () => {
+  // Lo decide el estado: si una fila con "sumá 14" se dibujara en otro lado,
+  // tiene que seguir pidiendo confirmación.
+  for (const estado of ["CAMBIO", "NOTA", "SACAR"] as const) assert.equal(pideConfirmacion(estado), true, estado);
+  for (const estado of ["PENDIENTE", "PREPARADO"] as const) assert.equal(pideConfirmacion(estado), false, estado);
+});
+
+test("el avance de la pantalla es el mismo número que el de la lista de eventos", () => {
+  const items = estadoDeItems(
+    [L("a", 1), L("b", 2), L("c", 3, null, "BEBIDA"), L("x", 1, null, "VIEJA")],
+    [T("a", 1), T("b", 5), T("z", 4)],
+  );
+  const avance = avancePorSector(items);
+  for (const s of seccionesDePantalla(items).sectores) {
+    assert.deepEqual({ listos: s.listos, total: s.total }, avance.get(s.category), s.category);
+  }
 });

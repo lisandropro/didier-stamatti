@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { destildarItem, tildarItem, tildarSectorEntero } from "@/app/actions/preparacion";
 import { intentar } from "@/lib/actualizacion";
-import { seccionesDePantalla, type EstadoItem } from "@/lib/preparacion";
+import { pideConfirmacion, seccionesDePantalla, type EstadoItem } from "@/lib/preparacion";
+import { esCategoria } from "@/lib/categories";
 
 type Item = {
   clave: string;
@@ -138,15 +139,15 @@ export function Preparar({ data }: { data: Data }) {
   // no puede reaparecer con una pregunta abierta que nadie hizo.
   if (armada !== null && !paraAplicar.some((i) => i.clave === armada)) setArmada(null);
 
-  const fila = (i: Item, pideConfirmar: boolean) => (
+  const fila = (i: Item) => (
     <Fila
       key={i.clave}
       item={i}
       puedeTildar={data.puedeTildar}
       ocupada={enVuelo.has(i.clave)}
-      pideConfirmar={pideConfirmar}
+      pideConfirmar={pideConfirmacion(i.estado)}
       armada={armada === i.clave}
-      alTocar={() => tocar(i, pideConfirmar)}
+      alTocar={() => tocar(i, pideConfirmacion(i.estado))}
       alConfirmar={() => confirmar(i)}
       alCancelar={() => setArmada(null)}
     />
@@ -182,7 +183,7 @@ export function Preparar({ data }: { data: Data }) {
         {paraAplicar.length > 0 && (
           <section className="prep-seccion prep-aplicar">
             <h2>Cambios para aplicar <span className="count-pill">{paraAplicar.length}</span></h2>
-            {paraAplicar.map((i) => fila(i, true))}
+            {paraAplicar.map((i) => fila(i))}
           </section>
         )}
 
@@ -194,7 +195,9 @@ export function Preparar({ data }: { data: Data }) {
               <h2>
                 {s.label} <span className={`count-pill${s.listos === s.total ? " ok" : ""}`}>{s.listos}/{s.total}</span>
               </h2>
-              {data.puedeTildar && s.pendientes > 0 && (
+              {/* Un sector viejo o desconocido se muestra y se tilda de a uno, pero
+                  la acción de tildar todo solo acepta los sectores vigentes. */}
+              {data.puedeTildar && s.pendientes > 0 && esCategoria(s.category) && (
                 <button
                   type="button"
                   className="btn ghost prep-sector-btn"
@@ -206,7 +209,7 @@ export function Preparar({ data }: { data: Data }) {
                 </button>
               )}
             </div>
-            {s.filas.map((i) => fila(i, false))}
+            {s.filas.map((i) => fila(i))}
             {s.filas.length === 0 && <p className="prep-nada">Lo de este sector está arriba, en &quot;Cambios para aplicar&quot;.</p>}
           </section>
         ))}

@@ -102,6 +102,13 @@ export function cambiosParaAplicar(items: ItemPreparacion[]): ItemPreparacion[] 
   return items.filter((i) => PARA_APLICAR.has(i.estado));
 }
 
+/** Un ítem en este estado no se resuelve de un toque: darlo por hecho sin
+ *  querer borraría la instrucción ("sumá 14"). Lo decide el estado, no el lugar
+ *  de la pantalla donde se dibuja la fila. */
+export function pideConfirmacion(estado: EstadoItem): boolean {
+  return PARA_APLICAR.has(estado);
+}
+
 /** Un sector tal como lo dibuja la pantalla de preparar. */
 export type SectorDePantalla<T> = {
   category: string;
@@ -139,13 +146,18 @@ export function seccionesDePantalla<T extends { category: string; estado: Estado
     if (del) del.push(i);
     else porSector.set(i.category, [i]);
   }
+  // El avance sale de la misma cuenta que usa la lista de eventos: un número
+  // que se calcula no se calcula dos veces de dos maneras.
+  const avance = avancePorSector(items);
   const sectores = [...porSector.entries()]
-    .sort(([a], [b]) => ordenDeCategoria(a) - ordenDeCategoria(b) || a.localeCompare(b))
+    // Comparación de texto simple, no `localeCompare`: el orden tiene que salir
+    // igual en el servidor y en el navegador.
+    .sort(([a], [b]) => ordenDeCategoria(a) - ordenDeCategoria(b) || (a < b ? -1 : a > b ? 1 : 0))
     .map(([category, delSector]) => ({
       category,
       label: nombreDeCategoria(category),
-      total: delSector.length,
-      listos: delSector.filter((i) => i.estado === "PREPARADO").length,
+      total: avance.get(category)?.total ?? 0,
+      listos: avance.get(category)?.listos ?? 0,
       pendientes: delSector.filter((i) => i.estado === "PENDIENTE").length,
       filas: delSector.filter((i) => !PARA_APLICAR.has(i.estado)),
     }));
@@ -171,7 +183,7 @@ export function textoDeAccion(i: ItemPreparacion): string {
 
 /** Por sector: lo preparado y al día, sobre todo lo que hay que mover (lo que
  *  pide el pedido más lo que hay que sacar). */
-export function avancePorSector(items: ItemPreparacion[]): Map<string, { listos: number; total: number }> {
+export function avancePorSector(items: { category: string; estado: EstadoItem }[]): Map<string, { listos: number; total: number }> {
   const out = new Map<string, { listos: number; total: number }>();
   for (const i of items) {
     const a = out.get(i.category) ?? { listos: 0, total: 0 };
