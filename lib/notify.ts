@@ -111,8 +111,12 @@ export async function notifyOrderChange(
       });
 
       if (abierto) {
-        const actualizado = await prisma.notification.update({
-          where: { id: abierto.id },
+        // Solo si sigue abierta. Entre la búsqueda de recién y esta escritura el
+        // barrido la puede cerrar: si se sumara igual, el cambio quedaría adentro
+        // de una tanda ya avisada y no saldría nunca al teléfono. En ese caso no
+        // se suma nada y más abajo se abre una tanda nueva.
+        const sumado = await prisma.notification.updateMany({
+          where: { id: abierto.id, pushedAt: null },
           // `createdAt` se corre a ahora: es la marca de "última actividad". Nunca
           // hacia atrás: dos guardados de la misma persona desde dos aparatos
           // pueden llegar desordenados, y si la marca retrocediera, el resumen
@@ -128,26 +132,40 @@ export async function notifyOrderChange(
             changeCount: { increment: cambios.length },
           },
         });
-        // El mensaje dice el total que quedó en la base. Solo si nadie sumó en el
-        // medio: si otro guardado ya sumó, ése escribe su número, que es el nuevo.
-        await prisma.notification.updateMany({
-          where: { id: abierto.id, changeCount: actualizado.changeCount },
-          data: { message: resumen(actor.name, ev.lugar, actualizado.changeCount) },
-        });
-      } else {
-        await prisma.notification.create({
-          data: {
-            recipientId: r.id,
-            actorName: actor.name,
-            type: "ORDER_EDIT",
-            eventId,
-            message: resumen(actor.name, ev.lugar, cambios.length),
-            changeCount: cambios.length,
-            sinceAt: ahora,
-            createdAt: ahora,
-          },
-        });
+        if (sumado.count > 0) {
+          // El mensaje dice el total que quedó en la base, releído después de
+          // sumar y no calculado con lo leído antes: con dos guardados juntos, lo
+          // leído ya no es el total. Se escribe solo si el contador sigue siendo
+          // ése; si otro guardado sumó en el medio, ése escribe su número, que es
+          // el nuevo. El texto del push no sale de acá sino de los cambios
+          // guardados, así que esto es solo lo que se lee en la lista de avisos.
+          const actual = await prisma.notification.findUnique({
+            where: { id: abierto.id },
+            select: { changeCount: true },
+          });
+          if (actual) {
+            await prisma.notification.updateMany({
+              where: { id: abierto.id, changeCount: actual.changeCount },
+              data: { message: resumen(actor.name, ev.lugar, actual.changeCount) },
+            });
+          }
+          continue;
+        }
       }
+
+      // No había tanda abierta, o se cerró justo antes de sumarle este cambio.
+      await prisma.notification.create({
+        data: {
+          recipientId: r.id,
+          actorName: actor.name,
+          type: "ORDER_EDIT",
+          eventId,
+          message: resumen(actor.name, ev.lugar, cambios.length),
+          changeCount: cambios.length,
+          sinceAt: ahora,
+          createdAt: ahora,
+        },
+      });
     }
   } catch {
     // Un fallo de notificación no debe romper el guardado del pedido.

@@ -595,6 +595,50 @@ test("dos guardados a la vez no pierden la cuenta de la tanda", async () => {
   }
 });
 
+test("un cambio que llega justo cuando el barrido cierra la tanda abre una tanda nueva", async () => {
+  // El guardado encuentra la tanda abierta y, antes de que llegue a sumarle el
+  // cambio, el barrido la cierra. Antes el cambio se sumaba igual a la tanda ya
+  // avisada y nunca salía al teléfono.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  const viejas = new Set((await prisma.notification.findMany()).map((a) => a.id));
+
+  // Se fuerza ese orden: cada vez que el guardado lee una tanda abierta, se la
+  // cierra antes de devolvérsela, como si el barrido hubiera terminado ahí.
+  const { prisma: base } = await import("../lib/db");
+  const leer = base.notification.findFirst;
+  base.notification.findFirst = (async (...args: unknown[]) => {
+    const r = (await (leer as (...a: unknown[]) => Promise<unknown>).apply(base.notification, args)) as { id: string } | null;
+    if (r) await prisma.notification.updateMany({ where: { id: r.id }, data: { pushedAt: new Date() } });
+    return r;
+  }) as unknown as typeof leer;
+  try {
+    await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vasos", kind: "CANTIDAD", before: "1", after: "2" });
+  } finally {
+    base.notification.findFirst = leer;
+  }
+
+  for (const quien of [ids.logistica, ids.armador]) {
+    const lista = await avisos(quien);
+    assert.equal(lista.length, 2, "el cambio se sumó a la tanda ya cerrada");
+    const [nueva] = lista.filter((a) => !viejas.has(a.id));
+    assert.ok(nueva, "no se abrió una tanda nueva");
+    assert.equal(nueva.pushedAt, null);
+    assert.equal(nueva.changeCount, 1);
+    assert.deepEqual((await notify.cambiosDeLaTanda(nueva)).map((c) => c.itemName), ["Vasos"]);
+  }
+
+  // Pasada la quietud, el cambio sale al teléfono.
+  await pasaronMinutos(3);
+  const antes = enviadosAlTelefono.length;
+  const r = await notify.flushPendingOrderPushes();
+  assert.equal(r.cerrados, 2);
+  assert.equal(r.enviados, 2);
+  const nuevos = enviadosAlTelefono.slice(antes);
+  assert.deepEqual(nuevos.map((x) => x.endpoint).sort(), [TEL_ENRIQUE, TEL_PABLO].sort());
+  for (const x of nuevos) assert.equal(x.body, "Vasos 1→2\n— Ana");
+});
+
 test("un evento que no existe no rompe el guardado del pedido", async () => {
   await assert.doesNotReject(() =>
     notify.notifyOrderChange(ACTOR(), "id-que-no-existe", { itemName: "x", kind: "CANTIDAD", after: "1" })
