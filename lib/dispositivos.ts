@@ -49,9 +49,13 @@ export async function estadoDeDispositivos(): Promise<PersonaVista[]> {
     const dispositivos: DispositivoVista[] = [];
     for (const s of subs.filter((x) => x.userId === u.id)) {
       const ultimos = await prisma.pushDelivery.findMany({
-        // attempt 1: el reintento es una fila aparte del mismo envío, y contarlo
-        // dispararía la alarma con dos envíos reales en vez de tres.
-        where: { subscriptionId: s.id, attempt: 1 },
+        // Cada envío real cuenta una vez, por cómo terminó. El reintento es una
+        // fila aparte (attempt 2) y el primer intento queda marcado con
+        // `retriedAt`: se descarta ese primer intento y queda el reintento, así
+        // que fallido+fallido cuenta un fracaso y fallido+aceptado cuenta un
+        // acierto. Un primer intento que todavía espera su reintento no tiene
+        // `retriedAt` y cuenta como el fracaso que es.
+        where: { subscriptionId: s.id, NOT: { attempt: 1, retriedAt: { not: null } } },
         orderBy: { createdAt: "desc" },
         take: FALLOS_PARA_ALARMA,
         select: { status: true },

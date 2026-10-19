@@ -78,7 +78,7 @@ const haceUnaHora = () => new Date(Date.now() - 60 * 60 * 1000);
 
 async function dispositivoConEnvios(
   nombre: string,
-  envios: { status: string; createdAt: Date; attempt?: number }[],
+  envios: { status: string; createdAt: Date; attempt?: number; retriedAt?: Date }[],
 ) {
   const u = await prisma.user.create({
     data: { name: nombre, email: `${nombre}@t.local`, role: "ARMADOR", passwordHash: "x" },
@@ -116,13 +116,37 @@ test("cuenta del más nuevo al más viejo: uno aceptado viejo y tres errores rec
   assert.equal(d.noLeLlega, true);
 });
 
+// El reintento (attempt 2) es otra fila del mismo envío, un minuto después, y
+// `reintentarFallidos` le pone `retriedAt` al primer intento ANTES de reenviar.
+const unMinutoDespues = (d: Date) => new Date(d.getTime() + 60_000);
+
 test("el reintento no es otro envío: dos envíos reales, uno con su reintento fallido, no alcanzan", async () => {
-  // Primer envío (intento 1) + su reintento (intento 2) + un segundo envío:
-  // tres filas fallidas, pero solo dos envíos reales.
+  // Envío A: primer intento fallido + su reintento fallido. Envío B: fallido.
+  // Tres filas fallidas, pero solo dos envíos reales.
+  const a = haceDias(2);
   const d = await dispositivoConEnvios("Reintento", [
-    { status: "ERROR", createdAt: haceDias(2), attempt: 1 },
-    { status: "ERROR", createdAt: haceDias(2), attempt: 2 },
+    { status: "ERROR", createdAt: a, attempt: 1, retriedAt: unMinutoDespues(a) },
+    { status: "ERROR", createdAt: unMinutoDespues(a), attempt: 2 },
     { status: "ERROR", createdAt: haceUnaHora(), attempt: 1 },
   ]);
   assert.equal(d.noLeLlega, false);
+});
+
+test("cada envío cuenta por cómo terminó: tres primeros intentos fallidos que el reintento salvó SÍ le llegan", async () => {
+  // Es el caso que la pantalla no puede contradecir: lastOkAt está fresco.
+  const envios = [haceDias(3), haceDias(2), haceUnaHora()].flatMap((t) => [
+    { status: "ERROR", createdAt: t, attempt: 1, retriedAt: unMinutoDespues(t) },
+    { status: "ACEPTADO", createdAt: unMinutoDespues(t), attempt: 2 },
+  ]);
+  const d = await dispositivoConEnvios("Salvados", envios);
+  assert.equal(d.noLeLlega, false);
+});
+
+test("cada envío cuenta por cómo terminó: tres envíos cuyo reintento también falló NO le llegan", async () => {
+  const envios = [haceDias(3), haceDias(2), haceUnaHora()].flatMap((t) => [
+    { status: "ERROR", createdAt: t, attempt: 1, retriedAt: unMinutoDespues(t) },
+    { status: "ERROR", createdAt: unMinutoDespues(t), attempt: 2 },
+  ]);
+  const d = await dispositivoConEnvios("Perdidos", envios);
+  assert.equal(d.noLeLlega, true);
 });
