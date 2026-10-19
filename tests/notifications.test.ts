@@ -702,9 +702,11 @@ test("el aviso tardío dice qué rehacer, abre Preparar y sale con prioridad par
   const nuevos = enviadosAlTelefono.slice(antes);
   assert.equal(nuevos.length, 2);
   for (const p of nuevos) {
-    assert.match(p.title, /⚠ Cambio en pedido ya preparado · El Carmen Center$/);
+    assert.match(p.title, /^⚠ Cambio en pedido ya preparado · El Carmen Center$/, "sin HOY: el evento no es hoy");
     assert.equal(p.body, "Sumá 14 Copa de agua\n— Ana");
     assert.equal(p.url, `/preparar/${ids.evento}`);
+    // Su propio tag: el aviso urgente no reemplaza en la pantalla al común, ni al revés.
+    assert.equal(p.tag, `tardio-${ids.evento}`);
   }
   const entregas = await prisma.pushDelivery.findMany({ where: { kind: "CAMBIO_TARDIO" } });
   assert.ok(entregas.length > 0 && entregas.every((e) => e.urgency === "high"), "el tardío sale con prioridad alta para todos");
@@ -727,6 +729,10 @@ test("si el depósito ya lo aplicó antes de que salga el aviso, no suena", asyn
   const r = await notify.flushPendingOrderPushes();
   assert.equal(r.enviados, 0);
   assert.equal(enviadosAlTelefono.length, antes);
+  // Se cerró en silencio y no quedó para reintentar: no es que falló al armar el texto.
+  assert.equal(r.cerrados, 2);
+  const tardias = await prisma.notification.findMany({ where: { type: "CAMBIO_TARDIO" } });
+  assert.ok(tardias.length === 2 && tardias.every((t) => t.pushedAt !== null), "las dos tandas tienen que quedar cerradas");
   await prisma.preparacion.deleteMany({});
   await prisma.orderLine.deleteMany({ where: { productId: vaso.id } });
 });
