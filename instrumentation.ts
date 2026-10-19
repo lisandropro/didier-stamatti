@@ -41,14 +41,19 @@ export async function register() {
       if (periodos + eventos + avisos > 0) {
         console.log(`[papelera] vaciada hasta el lunes ${corte}: ${periodos} períodos, ${eventos} eventos, ${avisos} avisos`);
       }
-      // El registro de envíos se guarda 60 días. Va acá porque es una limpieza
-      // diaria por fecha, igual que la papelera.
+    } catch (e) {
+      // Que no se caiga el arranque por esto: la papelera se limpia al día siguiente.
+      console.error(`[papelera] error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // El registro de envíos se guarda 60 días. Va acá porque es una limpieza
+    // diaria por fecha, igual que la papelera, pero con su propio try: que falle
+    // una no puede saltearse la otra ni quedar anotada como si fuera la otra.
+    try {
       const { podarEntregas } = await import("@/lib/push");
       const podadas = await podarEntregas();
       if (podadas > 0) console.log(`[avisos] registro podado: ${podadas} envíos de más de 60 días`);
     } catch (e) {
-      // Que no se caiga el arranque por esto: la papelera se limpia al día siguiente.
-      console.error(`[papelera] error: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(`[avisos] error al podar el registro: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   void vaciar();

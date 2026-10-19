@@ -35,6 +35,8 @@ export type OrderChangeInput = {
   after?: string | null;
 };
 
+const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
 function resumen(actorName: string, lugar: string, n: number): string {
   if (n === 1) return `${actorName} hizo un cambio en el pedido de ${lugar}`;
   return `${actorName} hizo ${n} cambios en el pedido de ${lugar}`;
@@ -111,8 +113,15 @@ export async function notifyOrderChange(
         const n = abierto.changeCount + cambios.length;
         await prisma.notification.update({
           where: { id: abierto.id },
-          // `createdAt` se corre a ahora: es la marca de "última actividad".
-          data: { createdAt: ahora, changeCount: n, message: resumen(actor.name, ev.lugar, n) },
+          // `createdAt` se corre a ahora: es la marca de "última actividad". Nunca
+          // hacia atrás: dos guardados de la misma persona desde dos aparatos
+          // pueden llegar desordenados, y si la marca retrocediera, el resumen
+          // de la tanda (que llega hasta `createdAt`) dejaría afuera un cambio.
+          data: {
+            createdAt: abierto.createdAt > ahora ? abierto.createdAt : ahora,
+            changeCount: n,
+            message: resumen(actor.name, ev.lugar, n),
+          },
         });
       } else {
         await prisma.notification.create({
@@ -178,20 +187,31 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
     );
 
     let enviados = 0;
+    let cerrados = 0;
     for (const n of pendientes) {
       // Si ya lo vio en la app, no tiene sentido hacerle sonar el teléfono.
       if (!n.read) {
-        // sendPushToUser nunca lanza: un fallo con una persona no puede dejar
-        // sin aviso a las demás. El try/catch es por si acaso cambiara eso, o
-        // por si falla la lectura de la tanda.
+        // Armar el texto lee la base. Si eso falla (base ocupada, por ejemplo)
+        // NO se cierra la tanda: no se mandó nada, no quedó fila en el registro
+        // de envíos, y cerrarla perdería el aviso sin dejar rastro. Sin cerrar,
+        // el barrido del minuto siguiente la reintenta.
+        let texto: ReturnType<typeof textoDePush>;
         try {
           const ev = n.eventId
             ? await prisma.event.findUnique({ where: { id: n.eventId }, select: { lugar: true } })
             : null;
-          const texto = textoDePush(ev?.lugar ?? "Pedido", n.actorName, await cambiosDeLaTanda(n));
-          // `null`: los cambios se compensaron. En el depósito no hay nada que
-          // hacer, así que el teléfono no suena; el aviso queda en la app.
-          if (texto) {
+          texto = textoDePush(ev?.lugar ?? "Pedido", n.actorName, await cambiosDeLaTanda(n));
+        } catch (e) {
+          console.error("[avisos] no se pudo armar el texto del aviso, se reintenta en el próximo barrido", n.id, mensajeDe(e));
+          continue;
+        }
+        // `null`: los cambios se compensaron. En el depósito no hay nada que
+        // hacer, así que el teléfono no suena; el aviso queda en la app.
+        if (texto) {
+          // sendPushToUser nunca lanza, y un fallo del envío ya queda escrito
+          // en el registro: acá no hay nada que reintentar. El try/catch es por
+          // si acaso cambiara eso, para no dejar sin aviso a las demás personas.
+          try {
             const r = await sendPushToUser(
               n.recipientId,
               { title: texto.title, body: texto.body, url: `/aviso/${n.id}`, tag: `order-${n.eventId ?? n.id}` },
@@ -199,17 +219,31 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
               { urgency: isPriorityRecipient(n.role) ? "high" : "normal" }
             );
             if (r.aceptados > 0) enviados++;
+          } catch (e) {
+            console.error("[avisos] falló el envío del aviso", n.id, mensajeDe(e));
           }
-        } catch {
-          // se sigue con el resto
         }
       }
-      // Se cierra la tanda aunque el push haya fallado: el aviso ya está en la
-      // app, y el reintento de un fallo pasajero lo hace `reintentarFallidos`.
-      await prisma.notification.update({ where: { id: n.id }, data: { pushedAt: new Date() } }).catch(() => {});
+      // Se cierra la tanda aunque el push no lo hayan aceptado: el aviso ya está
+      // en la app, y el reintento de un fallo pasajero lo hace `reintentarFallidos`.
+      //
+      // Solo si nadie tocó el aviso mientras se mandaba: cada cambio nuevo corre
+      // su `createdAt`. Si cambió, la tanda siguió creciendo y quedó afuera de lo
+      // que se acaba de avisar, así que se deja abierta: sale con todos sus
+      // cambios pasada la próxima quietud.
+      try {
+        const cierre = await prisma.notification.updateMany({
+          where: { id: n.id, createdAt: n.createdAt },
+          data: { pushedAt: new Date() },
+        });
+        cerrados += cierre.count;
+      } catch (e) {
+        console.error("[avisos] no se pudo cerrar la tanda", n.id, mensajeDe(e));
+      }
     }
-    return { enviados, cerrados: pendientes.length, reintentos };
-  } catch {
+    return { enviados, cerrados, reintentos };
+  } catch (e) {
+    console.error("[avisos] falló el barrido", mensajeDe(e));
     return { enviados: 0, cerrados: 0, reintentos: 0 };
   }
 }

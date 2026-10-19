@@ -267,6 +267,129 @@ test("si los cambios se compensaron, el teléfono no suena", async () => {
   assert.equal(enviadosAlTelefono.length, antes);
 });
 
+const HIELO = { itemName: "Hielo", kind: "AGREGADO" as const, before: null, after: "20" };
+
+test("antes de los 2 minutos de quietud no sale nada; pasados, sí", async () => {
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  await pasaronMinutos(1.5);
+  const antes = await notify.flushPendingOrderPushes();
+  assert.equal(antes.cerrados, 0, "a 1,5 minutos todavía puede estar editando");
+  assert.equal(antes.enviados, 0);
+  await pasaronMinutos(1); // 2,5 en total
+  const despues = await notify.flushPendingOrderPushes();
+  assert.equal(despues.cerrados, 2);
+  assert.equal(despues.enviados, 2);
+});
+
+test("si el servicio de push no acepta, no cuenta como enviado pero la tanda se cierra", async () => {
+  await limpiar();
+  const push = await import("../lib/push");
+  const aceptando = push.transporte.enviar;
+  push.transporte.enviar = async () => {
+    throw Object.assign(new Error("el servicio de push está caído"), { statusCode: 500 });
+  };
+  try {
+    await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+    await pasaronMinutos(3);
+    const r = await notify.flushPendingOrderPushes();
+    assert.equal(r.enviados, 0, "un envío no aceptado no cuenta");
+    assert.equal(r.cerrados, 2);
+    assert.equal(await prisma.notification.count({ where: { type: "ORDER_EDIT", pushedAt: null } }), 0);
+    // El fallo no se pierde: queda en el registro de envíos.
+    assert.equal(await prisma.pushDelivery.count({ where: { status: "ERROR", attempt: 1 } }), 2);
+  } finally {
+    push.transporte.enviar = aceptando;
+  }
+  // Lo que falló por algo pasajero se reintenta en el barrido siguiente.
+  const r2 = await notify.flushPendingOrderPushes();
+  assert.equal(r2.reintentos, 2);
+});
+
+test("una tanda que crece mientras se manda no se cierra y sale con todos sus cambios", async () => {
+  await limpiar();
+  const push = await import("../lib/push");
+  const aceptando = push.transporte.enviar;
+  let alguienTocoElPedido = false;
+  push.transporte.enviar = async (destino, cuerpo, urgency) => {
+    if (!alguienTocoElPedido) {
+      // Un cambio nuevo llega a mitad del barrido, cuando ya se leyó la tanda.
+      alguienTocoElPedido = true;
+      await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vasos", kind: "CANTIDAD", before: "1", after: "2" });
+    }
+    return aceptando(destino, cuerpo, urgency);
+  };
+  try {
+    await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+    await pasaronMinutos(3);
+    const r = await notify.flushPendingOrderPushes();
+    assert.equal(r.cerrados, 0, "las tandas crecieron: no se cierran");
+    for (const quien of [ids.logistica, ids.armador]) {
+      const [a] = await avisos(quien);
+      assert.equal(a.pushedAt, null);
+      assert.equal(a.changeCount, 2);
+    }
+  } finally {
+    push.transporte.enviar = aceptando;
+  }
+  // Pasada la próxima quietud, sale con los dos cambios y ahí sí se cierra.
+  await pasaronMinutos(3);
+  const antes = enviadosAlTelefono.length;
+  const r2 = await notify.flushPendingOrderPushes();
+  assert.equal(r2.cerrados, 2);
+  assert.equal(r2.enviados, 2);
+  const nuevos = enviadosAlTelefono.slice(antes);
+  assert.equal(nuevos.length, 2);
+  assert.ok(nuevos.every((x) => x.body.includes("Hielo") && x.body.includes("Vasos")), "faltó un cambio en el push");
+});
+
+test("si falla la lectura para armar el texto, el aviso no se cierra y sale en el barrido siguiente", async () => {
+  await limpiar();
+  // El barrido lee con el cliente de lib/db, que no es el de esta prueba.
+  const { prisma: base } = await import("../lib/db");
+  const original = base.event.findUnique;
+  const consoleError = console.error;
+  const errores: string[] = [];
+
+  // El cambio se guarda ANTES de romper la lectura: guardarlo también la usa.
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  await pasaronMinutos(3);
+
+  base.event.findUnique = (async () => {
+    throw new Error("database is locked");
+  }) as unknown as typeof base.event.findUnique;
+  console.error = (...args: unknown[]) => void errores.push(args.map(String).join(" "));
+  try {
+    const r = await notify.flushPendingOrderPushes();
+    assert.equal(r.enviados, 0);
+    assert.equal(r.cerrados, 0, "no se cierra lo que no se pudo avisar");
+  } finally {
+    base.event.findUnique = original;
+    console.error = consoleError;
+  }
+  assert.equal(await prisma.notification.count({ where: { type: "ORDER_EDIT", pushedAt: null } }), 2);
+  assert.equal(errores.filter((x) => x.includes("[avisos]") && x.includes("database is locked")).length, 2, errores.join("\n"));
+
+  // Con la lectura repuesta, el barrido siguiente lo manda y lo cierra.
+  const r2 = await notify.flushPendingOrderPushes();
+  assert.equal(r2.enviados, 2);
+  assert.equal(r2.cerrados, 2);
+});
+
+test("la última actividad de un aviso nunca retrocede", async () => {
+  // Dos guardados de la misma persona desde dos aparatos pueden llegar
+  // desordenados. Si `createdAt` retrocediera, el resumen de la tanda (que llega
+  // hasta `createdAt`) dejaría afuera el cambio más nuevo.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
+  const futuro = new Date(Date.now() + 60 * 1000);
+  await prisma.notification.updateMany({ data: { createdAt: futuro } });
+  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vasos", kind: "CANTIDAD", before: "1", after: "2" });
+  const [a] = await avisos(ids.logistica);
+  assert.equal(a.changeCount, 2);
+  assert.equal(a.createdAt.getTime(), futuro.getTime());
+});
+
 test("un evento que no existe no rompe el guardado del pedido", async () => {
   await assert.doesNotReject(() =>
     notify.notifyOrderChange(ACTOR(), "id-que-no-existe", { itemName: "x", kind: "CANTIDAD", after: "1" })

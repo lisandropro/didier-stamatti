@@ -123,7 +123,7 @@ export async function createSuggestion(input: NewSuggestion): Promise<Suggestion
 }
 
 /** Aviso dentro de la app + push. Aparte de los avisos de pedidos: no entra en
- *  el agrupamiento de cinco minutos, porque una sugerencia es un hecho suelto.
+ *  el agrupamiento de dos minutos, porque una sugerencia es un hecho suelto.
  *  Nunca lanza: que falle el aviso no puede perder la sugerencia. */
 async function avisarALaAdministradora(
   suggestionId: string,
