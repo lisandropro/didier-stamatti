@@ -20,6 +20,10 @@ type Opciones = {
   sinVentanas?: boolean;
   /** Cómo responde el servidor. Por defecto, todo bien. */
   fetch?: (pedido: Pedido) => Promise<unknown>;
+  /** La ventana abierta tarda para siempre en cargar la pantalla nueva. */
+  navegacionColgada?: boolean;
+  /** Traer la ventana al frente falla. */
+  focoFalla?: boolean;
 };
 
 const respuestaOk = { ok: true, json: async () => ({ clave: "BClave" }) };
@@ -30,6 +34,17 @@ function cargarSW(opciones: Opciones = {}) {
   const mostradas: { titulo: string; opciones: { data: { url: string; d?: string } } }[] = [];
   const navegadas: string[] = [];
   const abiertas: string[] = [];
+  let enfocadas = 0;
+  const ventana = {
+    focus: async () => {
+      enfocadas++;
+      if (opciones.focoFalla) throw new Error("no se pudo enfocar");
+    },
+    navigate: (u: string) => {
+      navegadas.push(u);
+      return opciones.navegacionColgada ? new Promise<void>(() => {}) : Promise.resolve();
+    },
+  };
   const self = {
     addEventListener: (tipo: string, fn: Manejador) => (manejadores[tipo] = fn),
     skipWaiting: () => {},
@@ -44,8 +59,7 @@ function cargarSW(opciones: Opciones = {}) {
     },
     clients: {
       claim: async () => {},
-      matchAll: async () =>
-        opciones.sinVentanas ? [] : [{ focus: async () => {}, navigate: async (u: string) => { navegadas.push(u); } }],
+      matchAll: async () => (opciones.sinVentanas ? [] : [ventana]),
       openWindow: async (u: string) => { abiertas.push(u); },
     },
   };
@@ -56,7 +70,7 @@ function cargarSW(opciones: Opciones = {}) {
   };
   const codigo = fs.readFileSync(path.join(process.cwd(), "public", "sw.js"), "utf8");
   vm.runInNewContext(codigo, { self, fetch, caches: { keys: async () => [], match: async () => undefined, open: async () => ({ put: async () => {} }), delete: async () => true }, URL });
-  return { manejadores, pedidos, mostradas, navegadas, abiertas };
+  return { manejadores, pedidos, mostradas, navegadas, abiertas, enfocadas: () => enfocadas };
 }
 
 /** Dispara el evento y devuelve lo que el service worker pidió mantener vivo. */
@@ -123,6 +137,39 @@ test("si el servidor no contesta y no hay ventanas, también abre una nueva sin 
   lanzar(sw.manejadores.notificationclick, tocar("ent-1"));
   await soltar();
   assert.deepEqual(sw.abiertas, ["/aviso/1"], "esperó al servidor antes de abrir");
+});
+
+test("con la app abierta, tocar el aviso la trae al frente sin esperar a que cargue", async () => {
+  // La pantalla nueva tarda para siempre en cargar (señal mala): el foco no
+  // puede esperarla, porque el navegador solo deja enfocar poco después del toque.
+  const sw = cargarSW({ navegacionColgada: true });
+  lanzar(sw.manejadores.notificationclick, tocar("ent-1"));
+  await soltar();
+  assert.deepEqual(sw.navegadas, ["/aviso/1"], "no empezó a ir a la pantalla del aviso");
+  assert.equal(sw.enfocadas(), 1, "esperó a que cargue la pantalla antes de traer la app al frente");
+});
+
+test("si traer la app al frente falla, igual termina bien y avisa que se abrió", async () => {
+  const sw = cargarSW({ focoFalla: true });
+  await disparar(sw.manejadores.notificationclick, tocar("ent-1"));
+  assert.deepEqual(sw.navegadas, ["/aviso/1"]);
+  assert.ok(sw.pedidos.some((p) => p.url === "/api/notifications/abierto"), "no avisó que se abrió");
+});
+
+test("el service worker sigue vivo hasta que termina el aviso de apertura", async () => {
+  // Abrir va primero y no espera, pero el pedido de "se abrió" no se puede
+  // cortar a la mitad: el aviso queda sin leer si el navegador apaga el
+  // service worker antes de que llegue.
+  let responder: (r: unknown) => void = () => {};
+  const sw = cargarSW({ fetch: () => new Promise((r) => { responder = r; }) });
+  let terminado = false;
+  const todo = Promise.all(lanzar(sw.manejadores.notificationclick, tocar("ent-1"))).then(() => { terminado = true; });
+  await soltar();
+  assert.deepEqual(sw.navegadas, ["/aviso/1"], "no abrió");
+  assert.equal(terminado, false, "dio por terminado el evento con el aviso de apertura todavía en vuelo");
+  responder(respuestaOk);
+  await todo;
+  assert.equal(terminado, true);
 });
 
 test("si el aviso de apertura falla por la red, igual abre", async () => {

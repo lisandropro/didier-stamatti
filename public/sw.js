@@ -102,8 +102,15 @@ self.addEventListener("notificationclick", (event) => {
         const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
         for (const client of list) {
           if ("focus" in client) {
-            if ("navigate" in client) await client.navigate(url).catch(() => {});
-            return await client.focus();
+            // Mismo motivo que arriba: el navegador solo deja traer la app al
+            // frente poco después del toque, y `navigate` no termina hasta que
+            // el servidor contesta. Se empieza a navegar, se enfoca YA, y recién
+            // después se espera la navegación. Ninguna de las dos puede romper
+            // a la otra: si falla una, la otra igual se hace.
+            const navegacion = "navigate" in client ? client.navigate(url).catch(() => {}) : null;
+            await Promise.resolve(client.focus()).catch(() => {});
+            if (navegacion) await navegacion;
+            return;
           }
         }
         if (self.clients.openWindow) return await self.clients.openWindow(url);
