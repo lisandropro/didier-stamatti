@@ -39,7 +39,10 @@ test("el depósito no pasa ninguna guarda de las acciones que escriben pedidos, 
     const s = fuente(`app/actions/${archivo}`);
     const guardas = [...new Set([...s.matchAll(/\b(can[A-Z]\w*)\(/g)].map((m) => m[1]))];
     assert.ok(guardas.length > 0, `${archivo} no usa ninguna guarda`);
-    for (const g of guardas) assert.equal(permisos[g]("DEPOSITO"), false, `${archivo}: ${g} deja pasar al depósito`);
+    for (const g of guardas) {
+      assert.equal(typeof permisos[g], "function", `${archivo}: ${g} no es una capacidad de lib/permissions`);
+      assert.equal(permisos[g]("DEPOSITO"), false, `${archivo}: ${g} deja pasar al depósito`);
+    }
   }
   // El catálogo no usa una capacidad sino el rol exacto.
   assert.match(fuente("app/actions/products.ts"), /user\.role !== "ADMIN"/);

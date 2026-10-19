@@ -18,7 +18,7 @@ model User {
   name          String
   email         String          @unique
   passwordHash  String
-  role          String          @default("ARMADOR") // ADMIN | ARMADOR | LOGISTICA
+  role          String          @default("ARMADOR") // ADMIN | ARMADOR | LOGISTICA | DEPOSITO
   createdAt     DateTime        @default(now())
   movements     StockMovement[]
   notifications Notification[]  @relation("NotifRecipient")

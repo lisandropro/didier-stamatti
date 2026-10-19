@@ -69,7 +69,8 @@ test("a LOGISTICA se le abrió solo lo que se decidió: mirar, sugerir, el respo
   // Se barren TODAS las capacidades exportadas, no una lista escrita a mano: si
   // alguien agrega un permiso nuevo y se lo concede al encargado de logística
   // "para que pueda ayudar", esta prueba lo dice. Él mira todo, manda
-  // sugerencias y cambia el responsable de la fiesta. Nada más.
+  // sugerencias, cambia el responsable de la fiesta y, desde la etapa 2, tilda
+  // lo que se prepara (ver abajo). Nada más.
   // `canVerStock` se agregó al armar la navegación por permisos. NO es un
   // permiso nuevo sobre datos: es exactamente lo que `canView` ya significaba
   // para las pantallas de stock, separado para poder decir que recepción y

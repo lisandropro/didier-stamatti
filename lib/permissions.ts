@@ -26,7 +26,7 @@ export const ROLE_LABEL: Record<string, string> = {
 export const ROLE_HELP: Record<string, string> = {
   ADMIN: "Control total",
   ARMADOR: "Arma pedidos",
-  LOGISTICA: "Mira todo y cambia el responsable de la fiesta",
+  LOGISTICA: "Mira todo, cambia el responsable y tilda lo preparado",
   DEPOSITO: "Prepara los pedidos en el teléfono",
 };
 

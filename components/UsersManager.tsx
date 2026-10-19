@@ -13,7 +13,9 @@ const ROLE_DETALLE: Record<string, string> = {
   ADMIN: "va a poder editar stock, administrar el catálogo, gestionar usuarios y borrar fines de semana.",
   ARMADOR: "va a poder armar pedidos y manejar los fines de semana, pero no editar stock ni el catálogo ni los usuarios.",
   LOGISTICA:
-    "va a poder mirar todo —pedidos, faltantes, inventario e historiales— y cambiar únicamente el responsable de cada fiesta. No va a poder modificar pedidos, stock ni el catálogo.",
+    "va a poder mirar todo —pedidos, faltantes, inventario e historiales—, cambiar el responsable de cada fiesta y tildar lo que se prepara en el depósito. No va a poder modificar pedidos, stock ni el catálogo.",
+  DEPOSITO:
+    "va a ver en el teléfono los eventos que vienen, con sus pedidos y lo que falta, y tildar lo que prepara. No va a poder modificar pedidos, ni entrar al inventario, al historial ni a los usuarios.",
 };
 
 
