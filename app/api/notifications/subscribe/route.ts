@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const { endpoint, p256dh, auth } = subscription;
   // De qué navegador viene, para mostrarlo en Dispositivos. Se renueva en cada
   // apertura de la app (PushSubscriptionSync).
-  const userAgent = req.headers.get("user-agent")?.slice(0, 300) ?? null;
+  const userAgent = req.headers.get("user-agent")?.slice(0, 300) || null;
 
   await prisma.pushSubscription.upsert({
     where: { endpoint },

@@ -18,10 +18,14 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
 
-  let body: { d?: unknown };
+  let body: { d?: unknown } | null;
   try {
     body = await req.json();
   } catch {
+    return NextResponse.json({ ok: false }, { status: 400 });
+  }
+  // Un cuerpo `null` (JSON válido) no tiene `d`: sin esta guarda leer `body.d` da 500.
+  if (typeof body !== "object" || body === null) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
   if (typeof body.d !== "string" || body.d.length === 0 || body.d.length > 64) {

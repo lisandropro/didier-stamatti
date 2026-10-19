@@ -30,12 +30,19 @@ test("abrir un aviso exige mismo origen y sesión, y marca solo lo propio", () =
 });
 
 test("la suscripción guarda de qué navegador viene", () => {
-  assert.match(fuente("app/api/notifications/subscribe/route.ts"), /user-agent/);
+  const s = fuente("app/api/notifications/subscribe/route.ts");
+  assert.match(s, /user-agent/);
+  assert.match(s, /update:[^}]*userAgent/);
+  assert.match(s, /create:[^}]*userAgent/);
 });
 
 test("probar un teléfono exige sesión y prueba solo los propios", () => {
   const s = fuente("app/actions/notifications.ts");
   const cuerpo = s.slice(s.indexOf("export async function probarEsteDispositivo"));
-  assert.ok(cuerpo.indexOf("getSessionUser(") < cuerpo.indexOf("enviarPrueba("));
+  // Con `indexOf` solo, borrar la sesión dejaba -1, y -1 es menor que cualquier
+  // posición: la comparación pasaba igual. Hay que pedir que exista.
+  const sesion = cuerpo.indexOf("getSessionUser(");
+  const envio = cuerpo.indexOf("enviarPrueba(");
+  assert.ok(sesion > -1 && envio > sesion, "tiene que pedir la sesión antes de probar");
   assert.match(cuerpo, /enviarPrueba\(user\.id,/);
 });
