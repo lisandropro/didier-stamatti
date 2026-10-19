@@ -10,8 +10,8 @@ const account = { id: "test-admin", name: "Prueba", role: "ADMIN", email: "test@
 
 test("la sesión usa el rol y nombre actuales, sin exponer el hash", async () => {
   const token = await issueSessionToken(account, true);
-  const resolved = await resolveSessionToken(token, async () => ({ ...account, name: "Nuevo nombre", role: "RECEPCION" }));
-  assert.deepEqual(resolved, { id: account.id, name: "Nuevo nombre", role: "RECEPCION", email: account.email });
+  const resolved = await resolveSessionToken(token, async () => ({ ...account, name: "Nuevo nombre", role: "LOGISTICA" }));
+  assert.deepEqual(resolved, { id: account.id, name: "Nuevo nombre", role: "LOGISTICA", email: account.email });
 });
 test("borrar al usuario, cambiar contraseña o un rol inválido revoca acceso", async () => {
   const token = await issueSessionToken(account, false);

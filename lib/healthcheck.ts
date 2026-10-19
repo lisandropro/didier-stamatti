@@ -46,18 +46,10 @@ function s3() {
  * ¿Se hizo un respaldo hace poco? Es la revisión más importante: sin respaldo
  * fresco, un problema de datos no tendría vuelta atrás.
  *
- * **Se revisan LOS DOS conjuntos, y esa es la corrección.** Antes miraba solo
- * `backups/`, el prefijo del stock. Los comprobantes se respaldan aparte en
- * `backups-comprobantes/` —con retención distinta, porque una factura hay que
- * guardarla años— y no los miraba nadie: si ese respaldo empezaba a fallar, la
- * revisión seguía diciendo que todo estaba en orden.
- *
- * Es el mismo error que ya se había encontrado y arreglado en `runBackup` el
- * 03/09. El arreglo no había llegado hasta acá, que es donde importa: de nada
- * sirve respaldar las dos bases si solo se vigila una.
- *
- * Los conjuntos salen de `CONJUNTOS`, que es la lista que usa el respaldo. Si
- * mañana aparece una tercera base, se vigila sola.
+ * Los conjuntos salen de `CONJUNTOS`, la misma lista que usa el respaldo: de
+ * nada sirve respaldar una base si no se vigila. El 03/09 pasó exactamente eso
+ * —se respaldaban dos bases y se miraba una sola—, y por eso no hay una lista
+ * propia acá. Si mañana aparece otra base, se vigila sola.
  */
 async function checkBackup(): Promise<HealthProblem[]> {
   const client = s3();

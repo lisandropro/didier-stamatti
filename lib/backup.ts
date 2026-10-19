@@ -3,19 +3,18 @@ import { readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prisma } from "@/lib/db";
-import { prismaComprobantes } from "@/lib/db-comprobantes";
 
 const RETENTION_DAYS = 14;
 const PREFIX = "backups/";
 
 /**
- * Los dos conjuntos de respaldo, con retenciones distintas a propósito.
+ * Los conjuntos de respaldo. Es una lista para que el healthcheck y la
+ * verificación de restauración recorran exactamente lo que se respalda.
  *
- * La base de comprobantes **no se poda**. La razón entera de separarla del
- * stock fue que un comprobante fiscal hay que conservarlo años y el respaldo
- * del stock se pisa cada catorce días. La separación se había hecho y el
- * respaldo no: la base nueva tenía CERO copias, y el healthcheck decía que
- * todo estaba en orden porque miraba solo el prefijo del stock.
+ * Hasta el 19/10/2026 había un segundo conjunto: la base de comprobantes, en
+ * `backups-comprobantes/`. Se retiró con el módulo financiero. Sus copias
+ * quedan en el bucket SIN podar y archivadas aparte, porque son retención
+ * fiscal: nada de esta app las toca.
  */
 const CONJUNTOS = [
   {
@@ -26,15 +25,6 @@ const CONJUNTOS = [
     // vacía, no es un respaldo — es un archivo con la extensión correcta.
     // `User` porque siempre tiene filas: sin usuarios nadie entraría a la app.
     tablaTestigo: "User",
-  },
-  {
-    etiqueta: "comprobantes",
-    prefijo: "backups-comprobantes/",
-    retencionDias: null,
-    // `Entidad` y no `Document`: los comprobantes pueden ser cero un lunes a la
-    // mañana, y eso es legítimo. La entidad la crea la migración, así que si
-    // falta, la copia está mal.
-    tablaTestigo: "Entidad",
   },
 ] as const;
 
@@ -85,7 +75,7 @@ async function respaldarUna(
 }
 
 /**
- * Respalda LAS DOS bases. Si una falla, la otra se intenta igual y el error
+ * Respalda cada conjunto. Si uno falla, los demás se intentan igual y el error
  * dice cuál fue: un respaldo parcial que se reporta como éxito es peor que uno
  * que falla entero.
  */
@@ -94,7 +84,7 @@ export async function runBackup(): Promise<{ ok: boolean; key?: string; error?: 
   const bucket = process.env.BACKUP_S3_BUCKET;
   if (!client || !bucket) return { ok: false, error: "Respaldo no configurado (faltan variables BACKUP_S3_*)." };
 
-  const bases = [prisma, prismaComprobantes] as unknown as {
+  const bases = [prisma] as unknown as {
     $executeRawUnsafe(sql: string): Promise<unknown>;
   }[];
 

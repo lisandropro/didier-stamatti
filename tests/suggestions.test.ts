@@ -44,14 +44,6 @@ const ESPERADO = {
   ADMIN: { enviar: true, gestionar: true },
   ARMADOR: { enviar: true, gestionar: false },
   LOGISTICA: { enviar: true, gestionar: false },
-  // Los roles de comprobantes también mandan sugerencias, por la misma razón
-  // que el resto: quien usa la herramienta es quien encuentra lo que le falta, y
-  // quien recibe mercadería con las manos ocupadas ve problemas que nadie más ve.
-  // Gestionar sigue siendo solo de la administradora.
-  RECEPCION: { enviar: true, gestionar: false },
-  PAGOS: { enviar: true, gestionar: false },
-  // Dirección manda sugerencias como cualquiera, pero no gestiona la app.
-  DIRECCION: { enviar: true, gestionar: false },
 } as const;
 
 for (const rol of Object.keys(ESPERADO) as (keyof typeof ESPERADO)[]) {

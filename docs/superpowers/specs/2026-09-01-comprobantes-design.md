@@ -1,3 +1,5 @@
+> **Retirado el 19/10/2026.** La app quedó solo para pedidos y lo financiero pasó a un sistema de gestión externo. El código que describe este documento vive en el tag `finanzas-final`; se conserva como historia del diseño.
+
 # Digitalizar los comprobantes para que Aldana pueda pagar sin entrar a ARCA
 
 1 de septiembre de 2026

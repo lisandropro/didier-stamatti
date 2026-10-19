@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PeriodHub } from "@/components/PeriodHub";
 import { fmtEvento, fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
@@ -6,7 +6,7 @@ import { nombreDe, separarPorFecha } from "@/lib/period-fit";
 import { ensurePeriodSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
 import { getSessionUser } from "@/lib/auth";
-import { canManagePeriods, canEditOrders } from "@/lib/permissions";
+import { canManagePeriods, canEditOrders, canVerStock } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,7 @@ export default async function Home({
   const sp = await searchParams;
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  if (!canVerStock(session.role)) notFound();
 
   // Lo que está en la papelera no aparece en ningún lado ni suma al stock.
   const periodos = await prisma.operationalPeriod.findMany({

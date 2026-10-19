@@ -130,6 +130,21 @@ test("quien hace el cambio no se avisa a sí mismo", async () => {
   assert.equal((await avisos(ids.admin)).length, 0);
 });
 
+test("un usuario con un rol retirado no recibe avisos de pedidos", async () => {
+  // Antes le llegaba a cualquier usuario menos al autor, incluidos los roles del
+  // módulo financiero, que ni veían el pedido del que se les avisaba.
+  const viejo = await prisma.user.create({
+    data: { name: "Contable", email: "pagos@test.local", role: "PAGOS", passwordHash: "x" },
+  });
+  try {
+    await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Hielo", kind: "AGREGADO", before: null, after: "20" });
+    assert.equal((await avisos(viejo.id)).length, 0);
+    assert.ok((await avisos(ids.logistica)).length > 0, "tampoco le llegó a logística: la prueba no prueba nada");
+  } finally {
+    await prisma.user.delete({ where: { id: viejo.id } });
+  }
+});
+
 test("guardar sin cambiar nada no genera aviso", async () => {
   const antes = (await avisos(ids.logistica)).length;
   await notify.notifyOrderChange(ACTOR(), ids.evento, []);

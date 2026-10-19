@@ -65,16 +65,16 @@ test("un problema urgente nuevo SÍ vuelve a avisar", () => {
   // La otra mitad: la firma tiene que seguir cambiando cuando aparece algo
   // grave, o un respaldo roto quedaría callado siete días.
   const antes = avisoDe(LOS_SIETE)!;
-  const despues = avisoDe([...LOS_SIETE, p("backup-old-comprobantes", "alta")])!;
+  const despues = avisoDe([...LOS_SIETE, p("backup-old-stock", "alta")])!;
   assert.notEqual(antes.signature, despues.signature);
-  assert.match(despues.message, /backup-old-comprobantes/);
+  assert.match(despues.message, /backup-old-stock/);
 });
 
 test("la firma no depende del orden", () => {
   // Si dependiera, el mismo problema avisaría de nuevo solo porque las
   // consultas devolvieron los resultados en otro orden.
-  const a = avisoDe([p("backup-old-stock", "alta"), p("comprobante-duplicado", "alta")])!;
-  const b = avisoDe([p("comprobante-duplicado", "alta"), p("backup-old-stock", "alta")])!;
+  const a = avisoDe([p("backup-old-stock", "alta"), p("linea-producto-de-baja", "alta")])!;
+  const b = avisoDe([p("linea-producto-de-baja", "alta"), p("backup-old-stock", "alta")])!;
   assert.equal(a.signature, b.signature);
 });
 

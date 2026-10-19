@@ -5,32 +5,10 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { NotifBadge } from "@/components/NotifBadge";
 import { NavPending } from "@/components/NavPending";
-import { canSendSuggestions, canVerStock, canCapturarComprobantes, canVerImportes } from "@/lib/permissions";
+import { canSendSuggestions, canVerStock } from "@/lib/permissions";
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 
-const PAGOS = {
-  href: "/pagos",
-  label: "Pagos",
-  icon: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M2.5 10h19" />
-    </svg>
-  ),
-};
-
-const RECEPCION = {
-  href: "/recepcion",
-  label: "Recepción",
-  icon: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" /><circle cx="12" cy="13" r="3.4" />
-    </svg>
-  ),
-};
-
-/** Los tres primeros son de quien arma pedidos. Quien solo recibe mercadería
- *  no los usa, y la barra tiene seis lugares: llenarla con lo que uno no toca
- *  es hacerle buscar el suyo entre cosas ajenas. */
+/** Los tres primeros son las pantallas del stock: solo con un rol que las vea. */
 const ITEMS = [
   {
     href: "/",
@@ -87,29 +65,14 @@ export function MobileNav({ role }: { role: string }) {
   const [abierta, setAbierta] = useState(false);
   const SUGERIR = { href: "", label: "Sugerir", icon: IconSuggest, accion: abrirSugerencia };
 
-  // Pagos SÍ está acá, aunque quien paga trabaje sentada en una oficina.
-  //
-  // El razonamiento anterior —"esa pantalla es una tabla, vive en el menú
-  // lateral"— pasaba por alto que **el menú lateral no existe abajo de 860px**:
-  // ahí se esconde y aparece esta barra. Quien tiene rol PAGOS abría la app en
-  // el teléfono y no encontraba absolutamente nada suyo: Avisos y Cuenta, y
-  // listo. Una pantalla a la que no se puede llegar es una pantalla que no
-  // existe.
-  const items = [
-    ...(canVerStock(role) ? ITEMS.slice(0, 3) : []),
-    ...(canCapturarComprobantes(role) ? [RECEPCION] : []),
-    ...(canVerImportes(role) ? [PAGOS] : []),
-    ...ITEMS.slice(3),
-  ];
+  const items = [...(canVerStock(role) ? ITEMS.slice(0, 3) : []), ...ITEMS.slice(3)];
 
   // La barra tiene lugar para seis. No es un numero elegido: abajo de 860px la
   // pantalla mas angosta que se usa son 360px, y a seis entradas cada una queda
   // en 60px — el ancho minimo para que la etiqueta se lea entera.
   //
-  // Con ADMIN, que ve todo, la cuenta da ocho. Antes eso no pasaba porque Pagos
-  // no estaba; agregarlo sin resolver el desborde hubiera cambiado un problema
-  // (una pantalla inalcanzable) por otro (siete etiquetas ilegibles). El
-  // sobrante va a una hoja, no se esconde.
+  // Hoy la cuenta da seis justas (cinco secciones y Sugerir). Si mañana se
+  // suma una séptima, el sobrante va a una hoja, no se esconde.
   const CUPO = 6;
   const todos = [...items, ...(puedeSugerir ? [SUGERIR] : [])];
   const hayDesborde = todos.length > CUPO;

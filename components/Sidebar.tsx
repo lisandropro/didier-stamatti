@@ -1,16 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ROLE_LABEL,
-  canSendSuggestions,
-  canManageSuggestions,
-  canVerStock,
-  canCapturarComprobantes,
-  canVerImportes,
-  canPagar,
-  canVerMargen,
-} from "@/lib/permissions";
+import { ROLE_LABEL, canSendSuggestions, canManageSuggestions, canVerStock } from "@/lib/permissions";
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 import { NavPending } from "@/components/NavPending";
 import { usePathname } from "next/navigation";
@@ -50,34 +41,7 @@ const ICONS = {
   ),
 };
 
-const ICONO_RECEPCION = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" /><circle cx="12" cy="13" r="3.4" />
-  </svg>
-);
-const ICONO_PAGOS = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M4 6h16v12H4z" /><path d="M4 10h16" /><path d="M8 14.5h4" />
-  </svg>
-);
-/** Un billete: acá se mira lo que entra, no lo que sale. */
-const ICONO_INGRESOS = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <rect x="2.5" y="6.5" width="19" height="11" rx="2" /><circle cx="12" cy="12" r="2.6" />
-    <path d="M6 12h.01M18 12h.01" />
-  </svg>
-);
-/** Un camión de reparto: el proveedor es el que trae, no el que factura. */
-const ICONO_PROVEEDORES = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M2.5 7h11v9h-11z" /><path d="M13.5 10.5h4l3 3V16h-7z" />
-    <circle cx="6.5" cy="18" r="1.8" /><circle cx="16.5" cy="18" r="1.8" />
-  </svg>
-);
-
-/** El pedido y el inventario: solo para quien los arma. Alguien que entra a
- *  fotografiar comprobantes o a pagarlos no tiene por qué ver esas pantallas —
- *  una nav con lo que uno no usa es una nav que se lee más lento. */
+/** El pedido y el inventario: para quien tiene un rol de la app. */
 const NAV_STOCK = [
   { href: "/", label: "Período", icon: ICONS.finde },
   { href: "/inventario", label: "Inventario", icon: ICONS.inventario },
@@ -88,8 +52,6 @@ const NAV_AVISOS = [{ href: "/notificaciones", label: "Avisos", icon: ICONS.avis
  *  botón de mandarlas y nada más: para ellos es un buzón, no una sección. */
 const ADMIN_NAV = [
   { href: "/sugerencias", label: "Sugerencias", icon: IconSuggest },
-  { href: "/importar", label: "Importar de ARCA", icon: ICONS.historial },
-  { href: "/entidades", label: "Entidades", icon: ICONS.usuarios },
   { href: "/usuarios", label: "Usuarios", icon: ICONS.usuarios },
 ];
 
@@ -105,23 +67,6 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
   const puedeSugerir = canSendSuggestions(user.role);
   const nav = [
     ...(canVerStock(user.role) ? NAV_STOCK : []),
-    ...(canCapturarComprobantes(user.role)
-      ? [{ href: "/recepcion", label: "Recepción", icon: ICONO_RECEPCION }]
-      : []),
-    ...(canVerImportes(user.role) ? [{ href: "/pagos", label: "Pagos", icon: ICONO_PAGOS }] : []),
-    // Va acá, con Pagos, y no en `ADMIN_NAV`: pactar a cuántos días se le paga
-    // a un proveedor es parte de pagar. Si sólo pudiera el ADMIN, quien paga
-    // tendría que pedirle el dato a otra persona — y así es como un dato se
-    // queda sin cargar para siempre.
-    ...(canPagar(user.role)
-      ? [{ href: "/proveedores", label: "Proveedores", icon: ICONO_PROVEEDORES }]
-      : []),
-    // El permiso más cerrado del sistema: ADMIN y DIRECCION. Quien paga
-    // proveedores no ve lo que se le cobra al cliente — no lo necesita, y es
-    // más sensible que la deuda.
-    ...(canVerMargen(user.role)
-      ? [{ href: "/ingresos", label: "Ingresos", icon: ICONO_INGRESOS }]
-      : []),
     ...NAV_AVISOS,
     ...(canManageSuggestions(user.role) ? ADMIN_NAV : []),
   ];

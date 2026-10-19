@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
-import { isPriorityRecipient, sortByNotificationPriority } from "@/lib/permissions";
+import { ROLES, isPriorityRecipient, sortByNotificationPriority } from "@/lib/permissions";
 
 // Mientras la persona sigue editando, los cambios se van sumando a un mismo
 // aviso. El push al celular NO sale con cada cambio: sale uno solo cuando pasa
@@ -73,9 +73,12 @@ export async function notifyOrderChange(
     // antes que el del resto. Es la única parte del orden que sí se puede
     // garantizar — el push viaja por servicios de terceros y su orden real de
     // entrega no depende de nosotros.
+    //
+    // Solo roles vigentes: antes le llegaba a cualquier usuario, incluidos los
+    // del módulo financiero, que no veían ni el pedido del que se les avisaba.
     const recipients = sortByNotificationPriority(
       await prisma.user.findMany({
-        where: { id: { not: actor.id } },
+        where: { id: { not: actor.id }, role: { in: [...ROLES] } },
         select: { id: true, role: true },
       })
     );

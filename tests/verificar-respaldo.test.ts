@@ -76,8 +76,8 @@ test("un archivo que NO es SQLite no pasa", () => {
 });
 
 test("una copia sin la tabla testigo no pasa", () => {
-  // Abre perfecto y tiene datos, pero de otra cosa: es el respaldo del stock
-  // guardado en el prefijo de comprobantes, o al revés.
+  // Abre perfecto y tiene datos, pero de otra cosa: la copia de otra base
+  // guardada en el prefijo del stock.
   const ruta = nuevoArchivo("otra.db");
   fs.rmSync(ruta, { force: true });
   const db = new Database(ruta);

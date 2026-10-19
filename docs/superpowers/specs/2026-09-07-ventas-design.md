@@ -1,3 +1,5 @@
+> **Retirado el 19/10/2026.** La app quedó solo para pedidos y lo financiero pasó a un sistema de gestión externo. El código que describe este documento vive en el tag `finanzas-final`; se conserva como historia del diseño.
+
 # Ventas — el lado comercial del evento
 
 **Objetivo:** que exista, por primera vez, el registro de a cuánto se vendió cada fiesta y cuánto se cobró de ella.

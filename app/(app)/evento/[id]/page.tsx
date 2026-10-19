@@ -5,7 +5,7 @@ import { nombreDe } from "@/lib/period-fit";
 import { OrderBuilder } from "@/components/OrderBuilder";
 import { OrderReadOnly } from "@/components/OrderReadOnly";
 import { getSessionUser } from "@/lib/auth";
-import { canEditOrders, canSetResponsable } from "@/lib/permissions";
+import { canEditOrders, canSetResponsable, canVerStock } from "@/lib/permissions";
 import { ordenDeCategoria } from "@/lib/categories";
 import { redirect } from "next/navigation";
 
@@ -20,6 +20,7 @@ export default async function EventoPage({
 }) {
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  if (!canVerStock(session.role)) notFound();
 
   const { id } = await params;
   const ev = await prisma.event.findUnique({ where: { id }, include: { period: { select: { label: true, startDay: true, endDay: true } } } });

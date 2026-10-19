@@ -1,3 +1,5 @@
+> **Retirado el 19/10/2026.** La app quedó solo para pedidos y lo financiero pasó a un sistema de gestión externo. El código que describe este documento vive en el tag `finanzas-final`; se conserva como historia del diseño.
+
 # Comprobantes · Etapa 1 — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
