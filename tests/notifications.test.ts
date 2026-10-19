@@ -10,7 +10,7 @@ import { instanteDe } from "../lib/dates";
  * El agrupamiento de avisos, contra una base de verdad.
  *
  * Se prueba acá y no a mano porque la regla es fácil de romper sin darse cuenta:
- * "un solo aviso por tanda, cinco minutos después del último cambio" depende de
+ * "un solo aviso por tanda, dos minutos después del último cambio" depende de
  * tres cosas que viven en archivos distintos (la marca de tiempo compartida, la
  * búsqueda del aviso abierto y el barrido). Ya se rompió una vez, cuando el
  * cambio se guardaba con su propio reloj y el resumen se comía el primero.
@@ -22,6 +22,7 @@ const DB = path.join(os.tmpdir(), `didier-test-avisos-${process.pid}.db`);
 let prisma: import("../app/generated/prisma/client").PrismaClient;
 let notify: typeof import("../lib/notify");
 let ids: { admin: string; logistica: string; armador: string; evento: string };
+const enviadosAlTelefono: { title: string; body: string; url?: string }[] = [];
 
 before(async () => {
   fs.rmSync(DB, { force: true });
@@ -39,6 +40,14 @@ before(async () => {
   const { PrismaBetterSqlite3 } = await import("@prisma/adapter-better-sqlite3");
   prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: `file:${DB}` }) });
   notify = await import("../lib/notify");
+  // El envío real se reemplaza: el barrido cuenta lo que ACEPTA el servicio de
+  // push, así que estas pruebas necesitan dispositivos y un transporte que acepte.
+  const push = await import("../lib/push");
+  push.transporte.listo = () => true;
+  push.transporte.enviar = async (_destino, cuerpo) => {
+    enviadosAlTelefono.push(JSON.parse(cuerpo));
+    return { statusCode: 201 };
+  };
 
   const mk = (name: string, role: string) =>
     prisma.user.create({ data: { name, email: `${role}@test.local`, role, passwordHash: "x" } });
@@ -59,6 +68,12 @@ before(async () => {
     },
   });
   ids = { admin: admin.id, logistica: logistica.id, armador: armador.id, evento: ev.id };
+
+  for (const [userId, sufijo] of [[logistica.id, "pablo"], [armador.id, "enrique"]] as const) {
+    await prisma.pushSubscription.create({
+      data: { userId, endpoint: `https://fcm.googleapis.com/fcm/send/${sufijo}`, p256dh: "k", auth: "a" },
+    });
+  }
 });
 
 after(async () => {
@@ -84,12 +99,30 @@ async function limpiar() {
   await prisma.orderChange.deleteMany({});
 }
 
-/** Corre el reloj hacia atrás: simula que pasaron los minutos de quietud. */
+/**
+ * Simula que pasaron los minutos de quietud: corre hacia atrás TODAS las marcas
+ * de tiempo juntas (aviso y cambios), como si el reloj hubiera avanzado.
+ *
+ * Tiene que ser así porque en producción la última actividad del aviso
+ * (`createdAt`) y el último cambio guardado llevan la misma marca, y el
+ * resumen de la tanda (`cambiosDeLaTanda`) se apoya en eso. Mover solo el aviso
+ * dejaba los cambios "en el futuro" del aviso y el resumen salía vacío.
+ */
 async function pasaronMinutos(n: number) {
-  await prisma.notification.updateMany({
-    where: { pushedAt: null },
-    data: { createdAt: new Date(Date.now() - n * 60 * 1000) },
-  });
+  const atras = (d: Date) => new Date(d.getTime() - n * 60 * 1000);
+  for (const a of await prisma.notification.findMany()) {
+    await prisma.notification.update({
+      where: { id: a.id },
+      data: {
+        createdAt: atras(a.createdAt),
+        sinceAt: atras(a.sinceAt),
+        pushedAt: a.pushedAt ? atras(a.pushedAt) : null,
+      },
+    });
+  }
+  for (const c of await prisma.orderChange.findMany()) {
+    await prisma.orderChange.update({ where: { id: c.id }, data: { createdAt: atras(c.createdAt) } });
+  }
 }
 
 test("cuatro cambios seguidos son UN solo aviso por persona", async () => {
@@ -156,10 +189,18 @@ test("mientras la edición sigue viva no sale ningún push", async () => {
   assert.equal(r.enviados, 0);
 });
 
-test("pasados los 5 minutos de quietud sale un push por persona", async () => {
-  await pasaronMinutos(6);
+test("pasados los 2 minutos de quietud sale un push por persona", async () => {
+  await pasaronMinutos(3);
   const r = await notify.flushPendingOrderPushes();
   assert.equal(r.enviados, 2);
+});
+
+test("el push dice qué cambió, no cuántas veces se tocó", () => {
+  // La tanda tiene 5 cambios: los 4 de "cuatro cambios seguidos" más el Hielo
+  // que suma la prueba de "un usuario con un rol retirado".
+  const ultimo = enviadosAlTelefono.at(-1)!;
+  assert.equal(ultimo.title, "El Carmen Center");
+  assert.equal(ultimo.body, "Copa de agua 10→24 · Servilletas +50 · Brasero quitado · y 2 más\n— Ana");
 });
 
 test("un segundo barrido no manda duplicados", async () => {
@@ -175,6 +216,14 @@ test("un cambio posterior abre tanda nueva en vez de colarse en la ya avisada", 
   const p = await avisos(ids.logistica);
   assert.equal(p.length, 2);
   assert.equal(p[0].changeCount, 1);
+});
+
+test("'Qué cambió' de una tanda vieja no muestra los cambios de la siguiente", async () => {
+  // `avisos` ordena del más nuevo al más viejo: [tanda nueva, tanda vieja].
+  const [, vieja] = await avisos(ids.logistica);
+  const cambios = await notify.cambiosDeLaTanda(vieja);
+  assert.equal(cambios.length, 5, "se coló el cambio de la tanda nueva");
+  assert.equal(cambios.some((x) => x.itemName === "Fuente"), false);
 });
 
 test("un aviso ya leído en la app no hace sonar el teléfono", async () => {
@@ -204,6 +253,18 @@ test("cada quien ve solo sus avisos", async () => {
   assert.ok(p.length > 0 && e.length > 0);
   assert.equal(p.every((x) => x.recipientId === ids.logistica), true);
   assert.equal(e.every((x) => x.recipientId === ids.armador), true);
+});
+
+test("si los cambios se compensaron, el teléfono no suena", async () => {
+  await limpiar();
+  const antes = enviadosAlTelefono.length;
+  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Hielo", kind: "AGREGADO", before: null, after: "20" });
+  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Hielo", kind: "QUITADO", before: "20", after: null });
+  await pasaronMinutos(3);
+  const r = await notify.flushPendingOrderPushes();
+  assert.equal(r.cerrados, 2, "las tandas se cierran igual");
+  assert.equal(r.enviados, 0);
+  assert.equal(enviadosAlTelefono.length, antes);
 });
 
 test("un evento que no existe no rompe el guardado del pedido", async () => {

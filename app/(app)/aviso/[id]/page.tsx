@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/format";
+import { cambiosDeLaTanda } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -49,13 +50,8 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
     ? await prisma.event.findUnique({ where: { id: aviso.eventId }, select: { lugar: true, deletedAt: true } })
     : null;
 
-  // Los cambios de esta tanda: desde que arrancó, sobre este pedido, de esta persona.
-  const cambios = aviso.eventId
-    ? await prisma.orderChange.findMany({
-        where: { eventId: aviso.eventId, actorName: aviso.actorName, createdAt: { gte: aviso.sinceAt } },
-        orderBy: { createdAt: "asc" },
-      })
-    : [];
+  // Los cambios de ESTA tanda y no los de las siguientes: ver cambiosDeLaTanda.
+  const cambios = await cambiosDeLaTanda(aviso);
 
   return (
     <>

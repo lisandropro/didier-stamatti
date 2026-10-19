@@ -1,11 +1,15 @@
 import { prisma } from "@/lib/db";
-import { sendPushToUser } from "@/lib/push";
+import { reintentarFallidos, sendPushToUser } from "@/lib/push";
+import { textoDePush } from "@/lib/aviso-texto";
 import { ROLES, isPriorityRecipient, sortByNotificationPriority } from "@/lib/permissions";
 
 // Mientras la persona sigue editando, los cambios se van sumando a un mismo
 // aviso. El push al celular NO sale con cada cambio: sale uno solo cuando pasa
 // este rato sin que nadie toque nada, o sea cuando terminó de editar.
-const QUIET_MINUTES = 5;
+//
+// Eran 5 minutos hasta el 19/10/2026. Se sentía lento y parecía que el aviso no
+// llegaba; con 2 sigue juntando la tanda de quien carga varias cosas seguidas.
+const QUIET_MINUTES = 2;
 
 // Tope para que una edición muy larga no quede acumulando para siempre en un
 // único aviso: pasado este rato desde que empezó, la próxima tanda arranca de cero.
@@ -130,10 +134,36 @@ export async function notifyOrderChange(
   }
 }
 
-/** Manda el push de los avisos cuya edición ya se quedó quieta. Corre cada un
- *  minuto desde `instrumentation.ts`. Devuelve cuántos push salieron. */
-export async function flushPendingOrderPushes(): Promise<{ enviados: number; cerrados: number }> {
+/**
+ * Los cambios de UNA tanda: desde que arrancó (`sinceAt`) hasta su última
+ * actividad (`createdAt`), sobre ese pedido y de esa persona.
+ *
+ * El tope de arriba es el arreglo: sin él, el resumen de una tanda vieja
+ * mostraba también los cambios de las tandas siguientes de la misma persona.
+ */
+export async function cambiosDeLaTanda(aviso: {
+  eventId: string | null;
+  actorName: string;
+  sinceAt: Date;
+  createdAt: Date;
+}) {
+  if (!aviso.eventId) return [];
+  return prisma.orderChange.findMany({
+    where: {
+      eventId: aviso.eventId,
+      actorName: aviso.actorName,
+      createdAt: { gte: aviso.sinceAt, lte: aviso.createdAt },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/** Manda el push de los avisos cuya edición ya se quedó quieta, y reintenta lo
+ *  que falló por algo pasajero en el barrido anterior. Corre cada un minuto
+ *  desde `instrumentation.ts`. Nunca lanza. */
+export async function flushPendingOrderPushes(): Promise<{ enviados: number; cerrados: number; reintentos: number }> {
   try {
+    const reintentos = await reintentarFallidos();
     const cutoff = new Date(Date.now() - QUIET_MINUTES * 60 * 1000);
     const pendientesCrudos = await prisma.notification.findMany({
       where: { type: "ORDER_EDIT", pushedAt: null, createdAt: { lte: cutoff } },
@@ -152,30 +182,34 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
       // Si ya lo vio en la app, no tiene sentido hacerle sonar el teléfono.
       if (!n.read) {
         // sendPushToUser nunca lanza: un fallo con una persona no puede dejar
-        // sin aviso a las demás. El try/catch es por si acaso cambiara eso.
+        // sin aviso a las demás. El try/catch es por si acaso cambiara eso, o
+        // por si falla la lectura de la tanda.
         try {
-          await sendPushToUser(
-            n.recipientId,
-            {
-              title: "Didier Stamatti",
-              body: n.message,
-              url: `/aviso/${n.id}`,
-              tag: `order-${n.eventId ?? n.id}`,
-            },
-            { kind: "ORDER_EDIT", notificationId: n.id },
-            { urgency: isPriorityRecipient(n.role) ? "high" : "normal" }
-          );
+          const ev = n.eventId
+            ? await prisma.event.findUnique({ where: { id: n.eventId }, select: { lugar: true } })
+            : null;
+          const texto = textoDePush(ev?.lugar ?? "Pedido", n.actorName, await cambiosDeLaTanda(n));
+          // `null`: los cambios se compensaron. En el depósito no hay nada que
+          // hacer, así que el teléfono no suena; el aviso queda en la app.
+          if (texto) {
+            const r = await sendPushToUser(
+              n.recipientId,
+              { title: texto.title, body: texto.body, url: `/aviso/${n.id}`, tag: `order-${n.eventId ?? n.id}` },
+              { kind: "ORDER_EDIT", notificationId: n.id },
+              { urgency: isPriorityRecipient(n.role) ? "high" : "normal" }
+            );
+            if (r.aceptados > 0) enviados++;
+          }
         } catch {
           // se sigue con el resto
         }
-        enviados++;
       }
-      // Se marca como enviado aunque el push haya fallado: el aviso ya está en
-      // la app, y reintentar para siempre sería peor que perder un push.
+      // Se cierra la tanda aunque el push haya fallado: el aviso ya está en la
+      // app, y el reintento de un fallo pasajero lo hace `reintentarFallidos`.
       await prisma.notification.update({ where: { id: n.id }, data: { pushedAt: new Date() } }).catch(() => {});
     }
-    return { enviados, cerrados: pendientes.length };
+    return { enviados, cerrados: pendientes.length, reintentos };
   } catch {
-    return { enviados: 0, cerrados: 0 };
+    return { enviados: 0, cerrados: 0, reintentos: 0 };
   }
 }

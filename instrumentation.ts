@@ -11,8 +11,10 @@ export async function register() {
   // avisos de cambios en los pedidos nunca saldrían al celular.
   const { flushPendingOrderPushes } = await import("@/lib/notify");
   const flush = async () => {
-    const { enviados, cerrados } = await flushPendingOrderPushes();
-    if (cerrados > 0) console.log(`[avisos] tandas cerradas: ${cerrados} · push enviados: ${enviados}`);
+    const { enviados, cerrados, reintentos } = await flushPendingOrderPushes();
+    if (cerrados > 0 || reintentos > 0) {
+      console.log(`[avisos] tandas cerradas: ${cerrados} · aceptados: ${enviados} · reintentos: ${reintentos}`);
+    }
   };
   void flush();
   setInterval(() => void flush(), MINUTE);
@@ -39,6 +41,11 @@ export async function register() {
       if (periodos + eventos + avisos > 0) {
         console.log(`[papelera] vaciada hasta el lunes ${corte}: ${periodos} períodos, ${eventos} eventos, ${avisos} avisos`);
       }
+      // El registro de envíos se guarda 60 días. Va acá porque es una limpieza
+      // diaria por fecha, igual que la papelera.
+      const { podarEntregas } = await import("@/lib/push");
+      const podadas = await podarEntregas();
+      if (podadas > 0) console.log(`[avisos] registro podado: ${podadas} envíos de más de 60 días`);
     } catch (e) {
       // Que no se caiga el arranque por esto: la papelera se limpia al día siguiente.
       console.error(`[papelera] error: ${e instanceof Error ? e.message : String(e)}`);
