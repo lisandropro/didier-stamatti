@@ -23,7 +23,7 @@ before(async () => {
     data: { periodId: periodo.id, lugar: "El Carmen", date: instanteDe(hoy(), "21:00"), guests: 100 },
   });
   const copa = await prisma.product.create({ data: { name: "Copa de agua", category: "ENSERES", type: "REUTILIZABLE", stock: 250 } });
-  const mesa = await prisma.product.create({ data: { name: "Mesa redonda", category: "MOBILIARIO", type: "REUTILIZABLE", stock: 40 } });
+  const mesa = await prisma.product.create({ data: { name: "Mesa redonda", category: "MOBILIARIO", type: "REUTILIZABLE", stock: 10 } });
   await prisma.orderLine.create({ data: { eventId: evento.id, productId: copa.id, qty: 300, note: "las altas" } });
   await prisma.orderLine.create({ data: { eventId: evento.id, productId: mesa.id, qty: 12 } });
   const suelto = await prisma.orderLine.create({
@@ -57,12 +57,15 @@ test("tildar copia lo que había en el pedido y lo deja preparado", async () => 
 });
 
 test("si el pedido cambia después, el estado lo dice y volver a tildar lo pone al día", async () => {
-  await prisma.orderLine.updateMany({ where: { eventId: ids.evento, productId: ids.copa }, data: { qty: 314 } });
+  await prisma.orderLine.updateMany({ where: { eventId: ids.evento, productId: ids.copa }, data: { qty: 314, note: "las bajas" } });
   const i = await estadoDe(ids.copa);
   assert.equal(i?.estado, "CAMBIO");
   assert.equal(i?.accion, "Sumá 14");
-  await db.tildar(ids.evento, ids.copa, PABLO);
+  await db.tildar(ids.evento, ids.copa, { id: "u-ana", name: "Ana" });
   assert.equal((await estadoDe(ids.copa))?.estado, "PREPARADO");
+  // Volver a tildar guarda la cantidad Y la nota nuevas, y quién lo hizo.
+  const fila = await prisma.preparacion.findUnique({ where: { eventId_clave: { eventId: ids.evento, clave: ids.copa } } });
+  assert.deepEqual([fila?.qty, fila?.note, fila?.porName], [314, "las bajas", "Ana"]);
 });
 
 test("si el renglón se borra, lo tildado pide sacarlo; tildarlo de nuevo lo da por sacado", async () => {
@@ -111,19 +114,43 @@ test("eventos para preparar: desde hoy hasta 14 días, vivos, con su avance y lo
   const borrado = await prisma.event.create({
     data: { periodId: ids.periodo, lugar: "Borrado", date: instanteDe(hoy(), "22:00"), deletedAt: new Date() },
   });
-  const lista = await db.eventosParaPreparar();
-  const lugares = lista.map((e) => e.lugar);
-  assert.ok(lugares.includes("El Carmen"));
-  for (const no of ["Lejos", "Ayer", "Borrado"]) assert.ok(!lugares.includes(no), `no tenía que aparecer ${no}`);
-  const carmen = lista.find((e) => e.lugar === "El Carmen")!;
-  assert.equal(carmen.cambiosParaAplicar, 1, "el Hielo que cambió");
-  assert.deepEqual(carmen.avance.find((a) => a.category === "ENSERES"), { category: "ENSERES", label: "Enseres", listos: 1, total: 1 });
-  await prisma.event.deleteMany({ where: { id: { in: [lejos.id, ayer.id, borrado.id] } } });
+  // Los bordes: el día 14 entra, el 15 ya no. Es el error más fácil de cometer.
+  const ultimo = await prisma.event.create({
+    data: { periodId: ids.periodo, lugar: "Día 14", date: instanteDe(sumarDias(hoy(), 14), "23:30") },
+  });
+  const pasado = await prisma.event.create({
+    data: { periodId: ids.periodo, lugar: "Día 15", date: instanteDe(sumarDias(hoy(), 15), "00:30") },
+  });
+  try {
+    const lista = await db.eventosParaPreparar();
+    const lugares = lista.map((e) => e.lugar);
+    assert.ok(lugares.includes("El Carmen"));
+    assert.ok(lugares.includes("Día 14"), "el día 14 tiene que entrar");
+    for (const no of ["Lejos", "Ayer", "Borrado", "Día 15"]) assert.ok(!lugares.includes(no), `no tenía que aparecer ${no}`);
+    assert.deepEqual(lista.map((e) => e.date.getTime()), [...lista.map((e) => e.date.getTime())].sort((a, b) => a - b), "por fecha");
+    const carmen = lista.find((e) => e.lugar === "El Carmen")!;
+    assert.equal(carmen.cambiosParaAplicar, 1, "el Hielo que cambió");
+    assert.deepEqual(carmen.avance.find((a) => a.category === "ENSERES"), { category: "ENSERES", label: "Enseres", listos: 1, total: 1 });
+  } finally {
+    await prisma.event.deleteMany({ where: { id: { in: [lejos.id, ayer.id, borrado.id, ultimo.id, pasado.id] } } });
+  }
 });
 
 test("faltantes del período: lo pedido entre todos contra el stock", async () => {
-  const filas = await shortages.periodShortages(ids.periodo);
-  const copa = filas.find((f) => f.productId === ids.copa)!;
-  assert.deepEqual([copa.totalRequested, copa.stock, copa.missing], [314, 250, 64]);
-  assert.equal(filas.some((f) => f.productId === ids.mesa), false, "la mesa ya no está en el pedido");
+  // Otro evento vivo del mismo período suma; uno en la papelera, no.
+  const vivo = await prisma.event.create({ data: { periodId: ids.periodo, lugar: "Otro vivo", date: instanteDe(hoy(), "20:00") } });
+  const tirado = await prisma.event.create({
+    data: { periodId: ids.periodo, lugar: "Tirado", date: instanteDe(hoy(), "20:00"), deletedAt: new Date() },
+  });
+  await prisma.orderLine.create({ data: { eventId: vivo.id, productId: ids.copa, qty: 10 } });
+  await prisma.orderLine.create({ data: { eventId: tirado.id, productId: ids.copa, qty: 1000 } });
+  try {
+    const filas = await shortages.periodShortages(ids.periodo);
+    const copa = filas.find((f) => f.productId === ids.copa)!;
+    assert.deepEqual([copa.totalRequested, copa.stock, copa.missing], [324, 250, 74]);
+    // La mesa tiene stock 10 y se pedían 12: si siguiera en el pedido, faltaría.
+    assert.equal(filas.some((f) => f.productId === ids.mesa), false, "la mesa ya no está en el pedido");
+  } finally {
+    await prisma.event.deleteMany({ where: { id: { in: [vivo.id, tirado.id] } } });
+  }
 });

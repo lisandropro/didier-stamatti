@@ -98,7 +98,10 @@ export async function eventShortages(eventId: string): Promise<{
 
 /** Lo que falta en todo un período: lo pedido entre todos sus eventos contra
  *  el stock. Es lo que mira el depósito: no le importa qué evento "causó" el
- *  faltante, sino cuánto tiene que conseguir. */
+ *  faltante, sino cuánto tiene que conseguir.
+ *
+ *  En estas filas valen `totalRequested`, `stock` y `missing`. `requested` es el
+ *  total del período y `otherRequested` es 0: no hay un evento "este". */
 export async function periodShortages(periodId: string): Promise<ShortageRow[]> {
   const { products, totalPorProducto } = await cargarPeriodo(periodId);
   const rows: ShortageRow[] = [];
