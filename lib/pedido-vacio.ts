@@ -111,7 +111,7 @@ export async function notificarPedidosVacios(diaDeHoy = hoy()): Promise<{ avisos
         });
         if (yaAvisado) continue;
 
-        await prisma.notification.create({
+        const aviso = await prisma.notification.create({
           data: {
             recipientId: u.id,
             actorName: "Sistema",
@@ -125,12 +125,11 @@ export async function notificarPedidosVacios(diaDeHoy = hoy()): Promise<{ avisos
             pushedAt: new Date(),
           },
         });
-        await sendPushToUser(u.id, {
-          title: "Falta armar un pedido",
-          body: mensaje,
-          url: `/evento/${a.id}`,
-          tag: `pedido-vacio-${a.id}`,
-        });
+        await sendPushToUser(
+          u.id,
+          { title: "Falta armar un pedido", body: mensaje, url: `/evento/${a.id}`, tag: `pedido-vacio-${a.id}` },
+          { kind: "PEDIDO_VACIO", notificationId: aviso.id },
+        );
         creados++;
       }
     }

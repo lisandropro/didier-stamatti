@@ -141,7 +141,7 @@ async function avisarALaAdministradora(
 
     for (const a of admins) {
       try {
-        await prisma.notification.create({
+        const aviso = await prisma.notification.create({
           data: {
             recipientId: a.id,
             actorName: autor,
@@ -153,12 +153,11 @@ async function avisarALaAdministradora(
             pushedAt: new Date(),
           },
         });
-        await sendPushToUser(a.id, {
-          title: "Didier Stamatti",
-          body: message,
-          url,
-          tag: `sugerencia-${suggestionId}`,
-        });
+        await sendPushToUser(
+          a.id,
+          { title: "Didier Stamatti", body: message, url, tag: `sugerencia-${suggestionId}` },
+          { kind: "SUGERENCIA", notificationId: aviso.id },
+        );
       } catch {
         // Si falla con una administradora, se sigue con las demás.
       }
@@ -224,7 +223,7 @@ export async function replyToSuggestion(id: string, reply: string): Promise<Sugg
 
   // Quien la mandó se entera de que le contestaron.
   try {
-    await prisma.notification.create({
+    const aviso = await prisma.notification.create({
       data: {
         recipientId: sug.authorId,
         actorName: guard.user.name,
@@ -234,12 +233,11 @@ export async function replyToSuggestion(id: string, reply: string): Promise<Sugg
         pushedAt: new Date(),
       },
     });
-    await sendPushToUser(sug.authorId, {
-      title: "Didier Stamatti",
-      body: `Te respondieron la sugerencia: ${sug.title}`,
-      url: `/sugerencias/${id}`,
-      tag: `sugerencia-${id}`,
-    });
+    await sendPushToUser(
+      sug.authorId,
+      { title: "Didier Stamatti", body: `Te respondieron la sugerencia: ${sug.title}`, url: `/sugerencias/${id}`, tag: `sugerencia-${id}` },
+      { kind: "SUGERENCIA", notificationId: aviso.id },
+    );
   } catch {
     // La respuesta ya quedó guardada y se ve al abrir la sugerencia.
   }

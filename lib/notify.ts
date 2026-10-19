@@ -162,6 +162,7 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
               url: `/aviso/${n.id}`,
               tag: `order-${n.eventId ?? n.id}`,
             },
+            { kind: "ORDER_EDIT", notificationId: n.id },
             { urgency: isPriorityRecipient(n.role) ? "high" : "normal" }
           );
         } catch {

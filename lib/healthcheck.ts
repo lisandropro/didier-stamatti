@@ -229,17 +229,17 @@ export async function runHealthCheck(): Promise<{ problems: HealthProblem[]; not
       });
       if (yaAvisado) continue;
 
-      await prisma.notification.create({
+      const aviso = await prisma.notification.create({
         // El push sale acá mismo: la fila nace marcada como enviada. Sin esto
         // quedaba para siempre como "pendiente", mintiendo sobre lo que pasó.
-        data: { recipientId: admin.id, actorName: "Sistema", type: signature, message, pushedAt: new Date() },
+        // `linkUrl`: sin él, tocarlo abría "Qué cambió", que es de pedidos.
+        data: { recipientId: admin.id, actorName: "Sistema", type: signature, message, pushedAt: new Date(), linkUrl: "/notificaciones" },
       });
-      await sendPushToUser(admin.id, {
-        title: "Didier Stamatti",
-        body: message,
-        url: "/notificaciones",
-        tag: "sistema",
-      });
+      await sendPushToUser(
+        admin.id,
+        { title: "Didier Stamatti", body: message, url: "/notificaciones", tag: "sistema" },
+        { kind: "SISTEMA", notificationId: aviso.id },
+      );
       notified = true;
     }
     return { problems, notified };
