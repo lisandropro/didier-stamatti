@@ -5,7 +5,7 @@ import { ROLE_LABEL, canSendSuggestions, canManageSuggestions, canVerStock } fro
 import { IconSuggest, abrirSugerencia } from "@/components/SuggestionBox";
 import { NavPending } from "@/components/NavPending";
 import { usePathname } from "next/navigation";
-import { logout } from "@/app/actions/auth";
+import { CerrarSesion } from "@/components/CerrarSesion";
 import { NotifBadge } from "@/components/NotifBadge";
 
 const ICONS = {
@@ -104,13 +104,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
             <div className="foot-role">{ROLE_LABEL[user.role] ?? user.role}</div>
           </div>
         </Link>
-        <form action={logout}>
-          <button type="submit" className="logout-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-              <path d="M15 12H4M8 8l-4 4 4 4" /><path d="M11 4h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" />
-            </svg>
-          </button>
-        </form>
+        <CerrarSesion variante="icono" />
       </div>
     </aside>
   );

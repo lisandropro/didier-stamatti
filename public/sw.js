@@ -74,23 +74,71 @@ self.addEventListener("push", (event) => {
     lang: "es-AR",
     tag: data.tag || undefined, // mismo evento => reemplaza el aviso anterior en el celular
     renotify: Boolean(data.tag),
-    data: { url: data.url || "/notificaciones" },
+    // `d` es la marca de esta entrega: se devuelve al tocarla.
+    data: { url: data.url || "/notificaciones", d: data.d || null },
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
+  const datos = event.notification.data || {};
+  const url = datos.url || "/";
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    (async () => {
+      if (datos.d) {
+        // Que quede registrado que se abrió, y el aviso leído. Si falla, se
+        // abre igual: no saberlo no puede impedir llegar a la pantalla.
+        await fetch("/api/notifications/abierto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ d: datos.d }),
+        }).catch(() => {});
+      }
+      const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const client of list) {
         if ("focus" in client) {
-          if ("navigate" in client) client.navigate(url).catch(() => {});
+          if ("navigate" in client) await client.navigate(url).catch(() => {});
           return client.focus();
         }
       }
       if (self.clients.openWindow) return self.clients.openWindow(url);
-    })
+    })()
+  );
+});
+
+// El navegador puede cambiar la suscripción por su cuenta (rotación de claves,
+// limpieza). Sin esto el teléfono quedaba mudo sin que nadie lo supiera, hasta
+// que la persona volviera a tocar "Activar notificaciones".
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const vieja = event.oldSubscription || null;
+        let clave = vieja && vieja.options && vieja.options.applicationServerKey;
+        if (!clave) {
+          const r = await fetch("/api/notifications/clave");
+          clave = (await r.json()).clave;
+        }
+        if (!clave) return;
+        const nueva =
+          event.newSubscription ||
+          (await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: clave }));
+        await fetch("/api/notifications/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(nueva.toJSON()),
+        });
+        if (vieja && vieja.endpoint !== nueva.endpoint) {
+          await fetch("/api/notifications/subscribe", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: vieja.endpoint }),
+          });
+        }
+      } catch {
+        // Si no se pudo, queda como antes: la persona lo ve en "Probar en este teléfono".
+      }
+    })()
   );
 });

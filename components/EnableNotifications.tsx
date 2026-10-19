@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { probarEsteDispositivo } from "@/app/actions/notifications";
+import { intentar } from "@/lib/actualizacion";
 
 type State = "loading" | "unsupported" | "ios-install" | "prompt" | "enabled" | "denied" | "working";
 
@@ -18,6 +20,7 @@ const PUB_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 export function EnableNotifications() {
   const [state, setState] = useState<State>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [prueba, setPrueba] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -104,6 +107,23 @@ export function EnableNotifications() {
     }
   }
 
+  async function probar() {
+    setPrueba("Mandando…");
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return setPrueba("Este teléfono no tiene los avisos activados.");
+      const r = await intentar(() => probarEsteDispositivo(sub.endpoint));
+      setPrueba(
+        r.ok
+          ? "Enviado: tiene que sonar en unos segundos. Si no suena, revisá el ahorro de batería del teléfono."
+          : r.error ?? "No se pudo probar.",
+      );
+    } catch {
+      setPrueba("No se pudo probar.");
+    }
+  }
+
   if (state === "loading") return null;
 
   return (
@@ -111,7 +131,9 @@ export function EnableNotifications() {
       {state === "enabled" ? (
         <>
           <span className="notif-enable-ok">🔔 Notificaciones activadas en este dispositivo</span>
+          <button className="btn ghost" onClick={probar}>Probar en este teléfono</button>
           <button className="btn ghost" onClick={disable}>Desactivar</button>
+          {prueba && <span className="notif-enable-note">{prueba}</span>}
         </>
       ) : state === "denied" ? (
         <span className="notif-enable-note">

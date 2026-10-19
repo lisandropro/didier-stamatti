@@ -27,11 +27,15 @@ export function PushSubscriptionSync() {
 
     (async () => {
       try {
-        if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+        if (!("serviceWorker" in navigator)) return;
+        // Se registra desde cualquier pantalla, no solo desde Avisos: hasta el
+        // 19/10/2026 un teléfono que nunca abría Avisos no tenía el service
+        // worker al día, y sin él no hay push ni renovación de la suscripción.
+        const reg =
+          (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
+        if (cancelado) return;
+        if (!("PushManager" in window) || !("Notification" in window)) return;
         if (Notification.permission !== "granted") return;
-
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (!reg || cancelado) return;
 
         const sub = await reg.pushManager.getSubscription();
         if (!sub || cancelado) return;
