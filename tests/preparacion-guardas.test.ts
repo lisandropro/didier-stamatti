@@ -144,6 +144,67 @@ test("el editor pide confirmación antes de cambiar algo ya preparado, en la fil
   assert.match(fuente("app/(app)/evento/[id]/page.tsx"), /preparacion\.findMany/);
 });
 
+test("una fila ya preparada está trabada: tocarla solo avisa, no guarda ningún cambio escondido", () => {
+  const s = fuente("components/OrderBuilder.tsx");
+
+  // conConfirmacion corta antes de llamar a `aplicar` cuando la fila está
+  // trabada. Si lo llamara igual (o lo guardara para después), un cambio que
+  // nadie vio terminaría aplicándose al confirmar.
+  const desde = s.indexOf("function conConfirmacion");
+  assert.ok(desde > -1, "no existe conConfirmacion");
+  const cuerpo = s.slice(desde, s.indexOf("function ", desde + "function conConfirmacion".length));
+  assert.match(cuerpo, /if \(bloqueada\(clave\)\)/);
+  const corta = cuerpo.indexOf("return");
+  const aplica = cuerpo.indexOf("aplicar()");
+  assert.ok(corta > -1 && aplica > corta, "conConfirmacion llama a aplicar antes de cortar");
+  assert.doesNotMatch(cuerpo.slice(0, corta), /aplicar\(\)/, "conConfirmacion aplica con la fila trabada");
+
+  // Lo que queda esperando confirmación es solo la clave de la fila, no una
+  // función con el valor nuevo: tipear 102 sobre un 10 no puede arrastrar nada.
+  assert.match(s, /useState<string \| null>\(null\)/);
+  assert.doesNotMatch(s, /setPorConfirmar\(\{/);
+  assert.match(s, /useState<ReadonlySet<string>>/);
+
+  // Los dos inputs de cantidad (catálogo y sueltos) son de solo lectura mientras
+  // la fila está trabada y abren el aviso al tocarlos: así no capturan teclas.
+  const cantidades = [...s.matchAll(/<input\s+className="qinput"[\s\S]*?\/>/g)].map((m) => m[0]);
+  assert.equal(cantidades.length, 2, "cambió la cantidad de inputs de cantidad: revisar la guarda");
+  for (const input of cantidades) {
+    assert.match(input, /readOnly=\{trabada\}/, "un input de cantidad se puede tipear con la fila trabada");
+    assert.match(input, /onFocus=\{trabada \?/);
+    assert.match(input, /onPointerDown=\{trabada \?/);
+  }
+
+  // La nota del catálogo tampoco se abre trabada: el botón abre el aviso.
+  const botonNota = s.slice(s.indexOf("className={`note-toggle"), s.indexOf("{p.note ? `✎"));
+  assert.match(botonNota, /if \(trabada\) setPorConfirmar\(p\.id\)/);
+
+  // En Extras, -, + y el tacho van por la pregunta; ninguno llama directo a la
+  // acción de cambiar o quitar.
+  const extras = s.slice(s.indexOf("function ExtrasPanel"));
+  const jsx = extras.slice(extras.indexOf('<div className="extras-form">'));
+  assert.match(jsx, /onClick=\{\(\) => pedirCambio\(c\.id, c\.qty - 1\)\}/);
+  assert.match(jsx, /onClick=\{\(\) => pedirCambio\(c\.id, c\.qty \+ 1\)\}/);
+  assert.match(jsx, /onClick=\{\(\) => pedirQuitar\(c\.id\)\}/);
+  assert.doesNotMatch(jsx, /changeQty\(c\.id/, "un control de Extras cambia sin pasar por pedirCambio");
+  assert.doesNotMatch(jsx, /remove\(c\.id\)/, "un control de Extras quita sin pasar por pedirQuitar");
+
+  // Al cambiar de pestaña o de búsqueda se cierra el aviso.
+  assert.match(s, /function elegirPestania\(valor: string\) \{\s*setTab\(valor\);\s*setPorConfirmar\(null\);/);
+  assert.match(s, /function escribirBusqueda\(valor: string\) \{\s*setQuery\(valor\);\s*setPorConfirmar\(null\);/);
+  assert.doesNotMatch(s, /onClick=\{\(\) => setTab\(/, "una pestaña cambia sin cerrar el aviso");
+});
+
+test("las pantallas no leen toda la historia de preparaciones ni las que no usan", () => {
+  // La portada cuenta lo tildado solo en los períodos que muestra, por evento.
+  const portada = fuente("app/(app)/page.tsx");
+  assert.doesNotMatch(portada, /prisma\.preparacion\.findMany/, "la portada vuelve a leer cada fila de Preparacion");
+  assert.match(portada, /periodId: \{ in: periodosConPreparados \}/);
+  assert.match(portada, /periodosConPreparados\.length > 0/);
+  // El pedido solo trae lo tildado si quien lo abre va a ver el editor.
+  assert.match(fuente("app/(app)/evento/[id]/page.tsx"), /puedeEditar\s*\?\s*prisma\.preparacion\.findMany/);
+});
+
 test("copiar y descartar avisan cuántos ítems preparados van a cambiar", () => {
   assert.match(fuente("components/OrderBuilder.tsx"), /ya están preparados y van a cambiar/);
   assert.match(fuente("components/PeriodHub.tsx"), /ya están preparados y van a cambiar/);

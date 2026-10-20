@@ -27,10 +27,17 @@ export default async function EventoPage({
   // Un evento en la papelera no se puede abrir ni editar.
   if (!ev || ev.deletedAt) notFound();
 
-  // Líneas ya cargadas de ESTE evento
-  const myLines = await prisma.orderLine.findMany({ where: { eventId: id } });
-  // Lo que el depósito ya tildó de este pedido: el editor avisa antes de cambiarlo.
-  const tildados = await prisma.preparacion.findMany({ where: { eventId: id }, select: { clave: true, qty: true } });
+  const puedeEditar = canEditOrders(session.role);
+
+  // Líneas ya cargadas de ESTE evento, y lo que el depósito ya tildó de este
+  // pedido: el editor avisa antes de cambiarlo. Lo tildado solo lo usa el
+  // editor; la vista de solo lectura no lo muestra, así que no se lo busca.
+  const [myLines, tildados] = await Promise.all([
+    prisma.orderLine.findMany({ where: { eventId: id } }),
+    puedeEditar
+      ? prisma.preparacion.findMany({ where: { eventId: id }, select: { clave: true, qty: true } })
+      : Promise.resolve([]),
+  ]);
 
   // Catálogo, ordenado como el Excel.
   //
@@ -120,7 +127,7 @@ export default async function EventoPage({
   // Quien no puede editar pedidos ve una pantalla de solo lectura, no el
   // armador con los controles apagados: así no queda ningún control por el que
   // se pueda colar una edición.
-  if (!canEditOrders(session.role)) {
+  if (!puedeEditar) {
     return (
       <OrderReadOnly
         data={{

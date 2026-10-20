@@ -130,13 +130,19 @@ export default async function Home({
   ]);
 
   // Lo que el depósito ya tildó, por período: descartar o restaurar lo pisa, y
-  // la confirmación lo tiene que decir. Son pocas filas (los eventos que vienen).
+  // la confirmación lo tiene que decir. Solo se pregunta por los períodos que la
+  // pantalla puede nombrar (el que se mira y los de las copias guardadas) y se
+  // trae un conteo por evento, no una fila por cada ítem tildado de toda la
+  // historia: eso crecía con cada finde preparado.
+  const periodosConPreparados = [...new Set([...(selected ? [selected.id] : []), ...versions.map((v) => v.periodId)])];
   const preparadosPorPeriodo = new Map<string, number>();
-  for (const f of await prisma.preparacion.findMany({
-    where: { event: { deletedAt: null, period: { deletedAt: null } } },
-    select: { event: { select: { periodId: true } } },
-  })) {
-    preparadosPorPeriodo.set(f.event.periodId, (preparadosPorPeriodo.get(f.event.periodId) ?? 0) + 1);
+  if (periodosConPreparados.length > 0) {
+    for (const e of await prisma.event.findMany({
+      where: { deletedAt: null, period: { deletedAt: null }, periodId: { in: periodosConPreparados } },
+      select: { periodId: true, _count: { select: { preparaciones: true } } },
+    })) {
+      preparadosPorPeriodo.set(e.periodId, (preparadosPorPeriodo.get(e.periodId) ?? 0) + e._count.preparaciones);
+    }
   }
 
   // Lo que ya se hizo se pliega abajo; arriba queda solo lo que falta.

@@ -57,6 +57,9 @@ type Data = {
 
 const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
+/** Id estable del input de cantidad de una fila, para devolverle el foco al destrabarla. */
+const idDeCantidad = (clave: string) => "cantidad-" + clave;
+
 const IconWarn = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
 );
@@ -165,25 +168,58 @@ export function OrderBuilder({ data }: { data: Data }) {
     queue.schedule(key, pending);
   }
   function forgetSave(key: string) { drafts.delete(key); keepDrafts(); }
-  // Cambiar algo que el depósito ya preparó obliga a rehacerlo. Se pregunta en
-  // la fila, una vez por ítem y por sesión: confirmado, el ajuste fino sigue
-  // sin trabas. Un aviso que se repite en cada tecla se deja de leer.
-  // Un ref y no un estado: se lee y se escribe solo desde los manejadores.
-  const confirmados = useRef(new Set<string>());
-  const [porConfirmar, setPorConfirmar] = useState<{ clave: string; aplicar: () => void } | null>(null);
+  // Cambiar algo que el depósito ya preparó obliga a rehacerlo. Una fila ya
+  // preparada y sin confirmar está TRABADA: tocarla solo muestra el aviso y no
+  // aplica nada. "Cambiar igual" la destraba por el resto de la sesión y recién
+  // ahí se edita de forma normal, con el ajuste fino sin trabas.
+  //
+  // No se guarda ningún cambio "pendiente de confirmar". El primer diseño lo
+  // hacía (una función con el valor nuevo) y rompía al tipear: el input es
+  // controlado, así que el "2" de "102" se sumaba al 10 viejo, el input volvía
+  // al 10 y "Cambiar igual" aplicaba un número que nadie había visto. Si la
+  // fila no cambia hasta destrabarla, no hay nada escondido que pueda divergir
+  // de lo que se ve en pantalla.
+  //
+  // Estado y no ref: al destrabar, la fila se tiene que volver a dibujar
+  // (deja de ser de solo lectura). Se actualiza siempre sin mutar.
+  const [confirmados, setConfirmados] = useState<ReadonlySet<string>>(() => new Set());
+  const [porConfirmar, setPorConfirmar] = useState<string | null>(null);
+  // La fila a la que hay que devolverle el foco cuando termine de destrabarse.
+  const aEnfocar = useRef<string | null>(null);
+  function bloqueada(clave: string) {
+    return data.preparados[clave] !== undefined && !confirmados.has(clave);
+  }
   function conConfirmacion(clave: string, aplicar: () => void) {
-    if (data.preparados[clave] !== undefined && !confirmados.current.has(clave)) {
-      setPorConfirmar({ clave, aplicar });
+    if (bloqueada(clave)) {
+      setPorConfirmar(clave);
       return;
     }
     aplicar();
   }
   function confirmarCambio() {
-    if (!porConfirmar) return;
-    confirmados.current.add(porConfirmar.clave);
-    const aplicar = porConfirmar.aplicar;
+    if (porConfirmar === null) return;
+    const clave = porConfirmar;
+    setConfirmados((previos) => new Set(previos).add(clave));
+    aEnfocar.current = clave;
     setPorConfirmar(null);
-    aplicar();
+  }
+  // El foco se mueve después de dibujar, no en el clic: en ese momento el input
+  // todavía es de solo lectura, y enfocarlo ahí volvería a abrir el aviso.
+  useEffect(() => {
+    const clave = aEnfocar.current;
+    if (clave === null) return;
+    aEnfocar.current = null;
+    document.getElementById(idDeCantidad(clave))?.focus();
+  }, [confirmados]);
+  // Cambiar de pestaña o de búsqueda esconde la fila del aviso: no queda abierto
+  // para cuando se vuelva.
+  function elegirPestania(valor: string) {
+    setTab(valor);
+    setPorConfirmar(null);
+  }
+  function escribirBusqueda(valor: string) {
+    setQuery(valor);
+    setPorConfirmar(null);
   }
 
   function updateItem(id: string, patch: Partial<ProductRow>) {
@@ -302,17 +338,17 @@ export function OrderBuilder({ data }: { data: Data }) {
             <input
               placeholder="Buscar en todo el catálogo…"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => escribirBusqueda(e.target.value)}
             />
           </label>
           {!searching &&
             CATS.map((c) => (
-              <button key={c.v} className={`tab${tab === c.v ? " active" : ""}`} onClick={() => setTab(c.v)}>
+              <button key={c.v} className={`tab${tab === c.v ? " active" : ""}`} onClick={() => elegirPestania(c.v)}>
                 {c.l}
               </button>
             ))}
           {!searching && (
-            <button className={`tab${tab === "EXTRAS" ? " active" : ""}`} onClick={() => setTab("EXTRAS")}>
+            <button className={`tab${tab === "EXTRAS" ? " active" : ""}`} onClick={() => elegirPestania("EXTRAS")}>
               Extras{customs.length > 0 ? ` (${customs.length})` : ""}
             </button>
           )}
@@ -329,8 +365,10 @@ export function OrderBuilder({ data }: { data: Data }) {
             forgetSave={forgetSave}
             onError={setError}
             preparados={data.preparados}
+            bloqueada={bloqueada}
             conConfirmacion={conConfirmacion}
-            porConfirmar={porConfirmar?.clave ?? null}
+            porConfirmar={porConfirmar}
+            onPedirConfirmacion={setPorConfirmar}
             onConfirmar={confirmarCambio}
             onCancelar={() => setPorConfirmar(null)}
           />
@@ -359,6 +397,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                       : p.qty > 0
                         ? { cls: "ok", txt: "Alcanza", fill: "var(--ok)" }
                         : null;
+              const trabada = bloqueada(p.id);
               return (
                 <div key={p.id} className={`orow${p.qty > 0 ? " has-qty" : ""}`}>
                   <div className="ocol-name">
@@ -375,7 +414,11 @@ export function OrderBuilder({ data }: { data: Data }) {
                     </div>
                     <button
                       className={`note-toggle${p.note ? " has-note" : ""}`}
-                      onClick={() => setNoteOpen((s) => ({ ...s, [p.id]: !s[p.id] }))}
+                      onClick={() => {
+                        // Trabada, la nota tampoco se abre: se pregunta primero.
+                        if (trabada) setPorConfirmar(p.id);
+                        else setNoteOpen((s) => ({ ...s, [p.id]: !s[p.id] }));
+                      }}
                     >
                       {p.note ? `✎ ${p.note}` : "+ nota"}
                     </button>
@@ -386,6 +429,11 @@ export function OrderBuilder({ data }: { data: Data }) {
                         placeholder="Aclaración… (ej: doradas, para postre)"
                         value={p.note}
                         autoFocus
+                        // Si el depósito tilda la fila con la nota abierta (llega con una
+                        // recarga), el campo se traba en vez de tragarse lo que se tipea.
+                        readOnly={trabada}
+                        onFocus={trabada ? () => setPorConfirmar(p.id) : undefined}
+                        onPointerDown={trabada ? () => setPorConfirmar(p.id) : undefined}
                         onChange={(e) => updateItem(p.id, { note: e.target.value })}
                         onBlur={() => setNoteOpen((s) => ({ ...s, [p.id]: false }))}
                         onKeyDown={(e) => {
@@ -417,8 +465,15 @@ export function OrderBuilder({ data }: { data: Data }) {
                       type="number"
                       inputMode="numeric"
                       min={0}
+                      id={idDeCantidad(p.id)}
                       value={p.qty === 0 ? "" : p.qty}
                       placeholder="0"
+                      // Trabado no se puede tipear: el aviso se abre al tocarlo y no se
+                      // captura ninguna tecla.
+                      readOnly={trabada}
+                      title={trabada ? "Ya está preparado: tocá para cambiarlo" : undefined}
+                      onFocus={trabada ? () => setPorConfirmar(p.id) : undefined}
+                      onPointerDown={trabada ? () => setPorConfirmar(p.id) : undefined}
                       onChange={(e) => {
                         const n = e.target.value.trim() === "" ? 0 : Math.max(0, Math.round(Number(e.target.value)));
                         updateItem(p.id, { qty: Number.isFinite(n) ? n : 0 });
@@ -428,7 +483,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                     <button className="qbtn" onClick={() => stepQty(p.id, 1)} aria-label="Sumar uno">+</button>
                     <button className="qbtn wide" onClick={() => stepQty(p.id, 10)} aria-label="Sumar diez">+10</button>
                   </div>
-                  {porConfirmar?.clave === p.id && (
+                  {porConfirmar === p.id && (
                     <div className="prep-aviso-fila" role="alert">
                       <span>
                         Ya está preparado ({data.preparados[p.id]}). Si lo cambiás, el depósito tiene que rehacerlo.
@@ -591,8 +646,10 @@ function ExtrasPanel({
   forgetSave,
   onError,
   preparados,
+  bloqueada,
   conConfirmacion,
   porConfirmar,
+  onPedirConfirmacion,
   onConfirmar,
   onCancelar,
 }: {
@@ -605,8 +662,11 @@ function ExtrasPanel({
   forgetSave: (key: string) => void;
   onError: (error: string | null) => void;
   preparados: Record<string, number>;
+  /** Preparada y sin confirmar: la fila no se edita, solo muestra el aviso. */
+  bloqueada: (clave: string) => boolean;
   conConfirmacion: (clave: string, aplicar: () => void) => void;
   porConfirmar: string | null;
+  onPedirConfirmacion: (clave: string) => void;
   onConfirmar: () => void;
   onCancelar: () => void;
 }) {
@@ -714,43 +774,53 @@ function ExtrasPanel({
             Sin ítems extra. Estos ítems no llevan control de stock y salen en el pedido del evento.
           </div>
         )}
-        {customs.map((c) => (
-          <div key={c.id} className="orow has-qty">
-            <div className="ocol-name">
-              <div className="pname">{c.name}</div>
-              <div className="rubro">
-                {CATS.find((cat) => cat.v === c.category)?.l ?? c.category} · Fuera de catálogo
-                {c.unit ? ` · por ${c.unit.toLowerCase()}` : ""}
+        {customs.map((c) => {
+          const clave = `custom:${c.id}`;
+          const trabada = bloqueada(clave);
+          return (
+            <div key={c.id} className="orow has-qty">
+              <div className="ocol-name">
+                <div className="pname">{c.name}</div>
+                <div className="rubro">
+                  {CATS.find((cat) => cat.v === c.category)?.l ?? c.category} · Fuera de catálogo
+                  {c.unit ? ` · por ${c.unit.toLowerCase()}` : ""}
+                </div>
               </div>
-            </div>
-            <div className="ocol-stock">
-              <span className="chip neutral">Sin control de stock</span>
-            </div>
-            <div className="ocol-qty">
-              <button className="qbtn" onClick={() => pedirCambio(c.id, c.qty - 1)} aria-label="Restar uno">−</button>
-              <input
-                className="qinput"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={c.qty}
-                onChange={(e) => pedirCambio(c.id, Math.round(Number(e.target.value)) || 1)}
-                aria-label={`Cantidad de ${c.name}`}
-              />
-              <button className="qbtn" onClick={() => pedirCambio(c.id, c.qty + 1)} aria-label="Sumar uno">+</button>
-              <button className="qbtn danger" onClick={() => pedirQuitar(c.id)} aria-label={`Borrar ${c.name}`}>{IconTrash}</button>
-            </div>
-            {porConfirmar === `custom:${c.id}` && (
-              <div className="prep-aviso-fila" role="alert">
-                <span>
-                  Ya está preparado ({preparados[`custom:${c.id}`]}). Si lo cambiás, el depósito tiene que rehacerlo.
-                </span>
-                <button className="btn primary" onClick={onConfirmar}>Cambiar igual</button>
-                <button className="btn ghost" onClick={onCancelar}>Cancelar</button>
+              <div className="ocol-stock">
+                <span className="chip neutral">Sin control de stock</span>
               </div>
-            )}
-          </div>
-        ))}
+              <div className="ocol-qty">
+                <button className="qbtn" onClick={() => pedirCambio(c.id, c.qty - 1)} aria-label="Restar uno">−</button>
+                <input
+                  className="qinput"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  id={idDeCantidad(clave)}
+                  value={c.qty}
+                  // Igual que en el catálogo: trabado no captura teclas, abre el aviso.
+                  readOnly={trabada}
+                  title={trabada ? "Ya está preparado: tocá para cambiarlo" : undefined}
+                  onFocus={trabada ? () => onPedirConfirmacion(clave) : undefined}
+                  onPointerDown={trabada ? () => onPedirConfirmacion(clave) : undefined}
+                  onChange={(e) => pedirCambio(c.id, Math.round(Number(e.target.value)) || 1)}
+                  aria-label={`Cantidad de ${c.name}`}
+                />
+                <button className="qbtn" onClick={() => pedirCambio(c.id, c.qty + 1)} aria-label="Sumar uno">+</button>
+                <button className="qbtn danger" onClick={() => pedirQuitar(c.id)} aria-label={`Borrar ${c.name}`}>{IconTrash}</button>
+              </div>
+              {porConfirmar === clave && (
+                <div className="prep-aviso-fila" role="alert">
+                  <span>
+                    Ya está preparado ({preparados[clave]}). Si lo cambiás, el depósito tiene que rehacerlo.
+                  </span>
+                  <button className="btn primary" onClick={onConfirmar}>Cambiar igual</button>
+                  <button className="btn ghost" onClick={onCancelar}>Cancelar</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </>
   );
