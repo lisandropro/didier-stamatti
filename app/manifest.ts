@@ -17,5 +17,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
       { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    // Mantener apretado el ícono en Android ofrece ir directo a Preparar.
+    shortcuts: [{ name: "Preparar", short_name: "Preparar", url: "/preparar" }],
   };
 }

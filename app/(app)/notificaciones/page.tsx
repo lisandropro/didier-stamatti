@@ -5,6 +5,7 @@ import Link from "next/link";
 import { NotificationsList } from "@/components/NotificationsList";
 import { EnableNotifications } from "@/components/EnableNotifications";
 import { ParaRevisar } from "@/components/ParaRevisar";
+import { InstalarApp } from "@/components/InstalarApp";
 import { canManageUsers, canSeeChecks } from "@/lib/permissions";
 import { collectProblems } from "@/lib/healthcheck";
 
@@ -56,6 +57,7 @@ export default async function NotificacionesPage() {
       </div>
       <div className="content">
         <ParaRevisar hallazgos={hallazgos} />
+        <InstalarApp />
         <EnableNotifications />
         {/* En el celular la barra lateral no existe: desde acá se llega igual. */}
         {canManageUsers(user.role) && (

@@ -2306,3 +2306,5 @@ tbody tr:hover{background:var(--surface-2)}
 .prep-aviso-fila span{flex:1 1 220px}
 .chip-prep{margin-left:var(--sp-2); font-size:var(--t-xs)}
 .prep-ojo{color:var(--warn); font-weight:700}
+.instalar{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-4); background:var(--surface); border:1px solid var(--gold); border-radius:var(--radius)}
+.instalar-texto{flex:1 1 240px; font-size:var(--t-sm); line-height:1.4}

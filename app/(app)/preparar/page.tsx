@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { canVerPreparacion } from "@/lib/permissions";
 import { eventosParaPreparar, DIAS_A_PREPARAR } from "@/lib/preparacion-db";
 import { fmtEvento, hoy, sumarDias } from "@/lib/dates";
+import { InstalarApp } from "@/components/InstalarApp";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function PrepararPage() {
         </div>
       </div>
       <div className="content">
+        <InstalarApp />
         {eventos.length === 0 ? (
           <div className="empty-card">
             <p className="empty-title">No hay eventos para preparar</p>

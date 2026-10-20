@@ -210,3 +210,12 @@ test("copiar y descartar avisan cuántos ítems preparados van a cambiar", () =>
   assert.match(fuente("components/PeriodHub.tsx"), /ya están preparados y van a cambiar/);
   assert.match(fuente("components/PeriodHub.tsx"), /v\.preparados > 0/);
 });
+
+test("la instalación guiada está en Avisos y en Preparar, y el manifiesto tiene el atajo", () => {
+  assert.match(fuente("app/(app)/notificaciones/page.tsx"), /<InstalarApp \/>/);
+  assert.match(fuente("app/(app)/preparar/page.tsx"), /<InstalarApp \/>/);
+  assert.match(fuente("app/manifest.ts"), /shortcuts:[\s\S]*"\/preparar"/);
+  const c = fuente("components/InstalarApp.tsx");
+  assert.match(c, /beforeinstallprompt/);
+  assert.match(c, /display-mode: standalone/);
+});
