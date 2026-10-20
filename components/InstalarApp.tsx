@@ -48,12 +48,19 @@ export function InstalarApp() {
   async function instalar() {
     const e = ofrecimiento.current;
     if (!e) return;
-    await e.prompt();
-    await e.userChoice;
-    // El ofrecimiento sirve una sola vez: aceptado o no, el botón ya no haría
-    // nada. Si el navegador lo vuelve a ofrecer más adelante, reaparece solo.
+    // El ofrecimiento sirve una sola vez: aceptado, cancelado o rechazado, el
+    // botón ya no haría nada. Se suelta antes de usarlo, así un segundo toque
+    // no lo pide de nuevo. Si el navegador lo vuelve a ofrecer, reaparece solo.
     ofrecimiento.current = null;
-    setModo("oculto");
+    try {
+      await e.prompt();
+      await e.userChoice;
+    } catch {
+      // El navegador puede rechazarlo (ya se usó, o no lo acepta en ese
+      // momento). No hay nada que explicarle a la persona: se esconde y listo.
+    } finally {
+      setModo("oculto");
+    }
   }
 
   if (modo === "oculto") return null;

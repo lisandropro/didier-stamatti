@@ -291,3 +291,14 @@ test("la instalación guiada está en Avisos y en Preparar, y el manifiesto tien
   assert.match(c, /beforeinstallprompt/);
   assert.match(c, /display-mode: standalone/);
 });
+
+test("si el navegador rechaza la instalación, el botón se esconde sin romper nada", () => {
+  // `prompt()` puede rechazar (el ofrecimiento ya se usó, o el navegador no lo
+  // acepta): sin el try, el error quedaba suelto y el botón seguía ahí sin servir.
+  const c = fuente("components/InstalarApp.tsx");
+  const desde = c.indexOf("async function instalar");
+  assert.ok(desde > -1, "no existe instalar");
+  const instalar = c.slice(desde, c.indexOf("\n  }\n", desde));
+  assert.match(instalar, /try \{\s*await e\.prompt\(\);\s*await e\.userChoice;\s*\} catch/);
+  assert.match(instalar, /finally \{\s*setModo\("oculto"\);/);
+});
