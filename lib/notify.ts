@@ -1,7 +1,7 @@
 import type { Notification } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { reintentarFallidos, sendPushToUser } from "@/lib/push";
-import { textoDeLoDeshecho, textoDePush, textoSinPendientes, textoTardio } from "@/lib/aviso-texto";
+import { esTituloSinPendientes, textoDeLoDeshecho, textoDePush, textoSinPendientes, textoTardio } from "@/lib/aviso-texto";
 import { estadoDelEvento } from "@/lib/preparacion-db";
 import { cambiosParaAplicar, textoDeAccion } from "@/lib/preparacion";
 import { diaDe, hoy } from "@/lib/dates";
@@ -246,6 +246,48 @@ export async function cambiosDeLaTanda(aviso: {
   });
 }
 
+/** Hasta dónde se mira para atrás lo que recibió un teléfono. Un "Sumá 14" de
+ *  hace más de dos días ya quedó tapado por todo lo que llegó después. */
+const VENTANA_CORRECCION_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * ¿Lo último que le llegó a esta persona sobre lo tardío de este evento pide
+ * corrección? O sea: ¿fue un "⚠ Cambio en pedido ya preparado" y no ya la
+ * corrección ("Pedido ya preparado · …")? Si lo último ya es la corrección,
+ * repetirla solo haría sonar el teléfono de nuevo.
+ *
+ * Dos pasos: las tandas tardías de esta persona sobre este evento, y la última
+ * entrega aceptada de alguna de ellas.
+ */
+async function quedoUnTardioSinCorregir(recipientId: string, eventId: string): Promise<boolean> {
+  const tandas = await prisma.notification.findMany({
+    where: { recipientId, eventId, type: "CAMBIO_TARDIO" },
+    select: { id: true },
+  });
+  if (tandas.length === 0) return false;
+  const ultima = await prisma.pushDelivery.findFirst({
+    where: {
+      userId: recipientId,
+      kind: "CAMBIO_TARDIO",
+      status: "ACEPTADO",
+      notificationId: { in: tandas.map((t) => t.id) },
+      createdAt: { gte: new Date(Date.now() - VENTANA_CORRECCION_MS) },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { payload: true },
+  });
+  if (!ultima) return false;
+  let titulo: unknown;
+  try {
+    titulo = (JSON.parse(ultima.payload) as { title?: unknown }).title;
+  } catch {
+    // Un registro ilegible no dice qué quedó en la pantalla. Corregir de más
+    // solo repite "ya no hay cambios para aplicar", que es la verdad.
+    titulo = undefined;
+  }
+  return !esTituloSinPendientes(titulo);
+}
+
 // Un barrido a la vez. `setInterval` larga el siguiente al minuto aunque el
 // anterior siga mandando, y con el servicio de push lento (reintentos, esperas
 // de 10 segundos) pasa: el segundo leía las mismas tandas todavía abiertas, las
@@ -312,6 +354,8 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
         // el barrido del minuto siguiente la reintenta.
         const tardio = n.type === "CAMBIO_TARDIO";
         let texto: ReturnType<typeof textoDePush>;
+        // Lo tardío sale con prioridad para todos: obliga a rehacer algo físico.
+        let urgente = tardio || isPriorityRecipient(n.role);
         try {
           const ev = n.eventId
             ? await prisma.event.findUnique({ where: { id: n.eventId }, select: { lugar: true, date: true } })
@@ -337,7 +381,18 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
               where: { notificationId: n.id, status: "ACEPTADO" },
               select: { id: true },
             });
-            if (yaLlego) texto = tardio ? textoSinPendientes(lugar, n.actorName) : textoDeLoDeshecho(lugar, n.actorName);
+            if (yaLlego) {
+              texto = tardio ? textoSinPendientes(lugar, n.actorName) : textoDeLoDeshecho(lugar, n.actorName);
+            } else if (tardio && n.eventId && (await quedoUnTardioSinCorregir(n.recipientId, n.eventId))) {
+              // Esta tanda no llegó a ningún teléfono, pero una ANTERIOR sí: sale
+              // "Sumá 14" y la tanda se cierra; minutos después alguien vuelve
+              // atrás y abre otra, que ya no deja nada para aplicar. Sin esto no
+              // sonaba nada y el teléfono se quedaba con "Sumá 14". Mismo `tag`
+              // (es por evento), así que lo reemplaza. Sin prioridad: no hay nada
+              // que hacer, solo dejar de hacer.
+              texto = textoSinPendientes(lugar, n.actorName);
+              urgente = false;
+            }
           }
         } catch (e) {
           console.error("[avisos] no se pudo armar el texto del aviso, se reintenta en el próximo barrido", n.id, mensajeDe(e));
@@ -357,8 +412,7 @@ export async function flushPendingOrderPushes(): Promise<{ enviados: number; cer
                 tag: `${tardio ? "tardio" : "order"}-${n.eventId ?? n.id}`,
               },
               { kind: tardio ? "CAMBIO_TARDIO" : "ORDER_EDIT", notificationId: n.id },
-              // Lo tardío sale con prioridad para todos: obliga a rehacer algo físico.
-              { urgency: tardio || isPriorityRecipient(n.role) ? "high" : "normal" }
+              { urgency: urgente ? "high" : "normal" }
             );
             if (r.aceptados > 0) enviados++;
           } catch (e) {

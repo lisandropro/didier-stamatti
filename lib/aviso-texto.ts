@@ -188,8 +188,16 @@ export function textoTardio(
   };
 }
 
+const TITULO_SIN_PENDIENTES = "Pedido ya preparado · ";
+
 /** Corrige un aviso tardío ya mandado cuando ya no queda nada por aplicar. Va
  *  con el mismo `tag` para reemplazarlo en la pantalla del teléfono. */
 export function textoSinPendientes(lugar: string, actorName: string): { title: string; body: string } {
-  return { title: `Pedido ya preparado · ${lugar}`, body: `Ya no hay cambios para aplicar${pieDe(actorName)}` };
+  return { title: `${TITULO_SIN_PENDIENTES}${lugar}`, body: `Ya no hay cambios para aplicar${pieDe(actorName)}` };
+}
+
+/** ¿Este título es el de `textoSinPendientes`? Por el principio y no entero: el
+ *  lugar del evento se puede haber corregido desde que salió. */
+export function esTituloSinPendientes(title: unknown): boolean {
+  return typeof title === "string" && title.startsWith(TITULO_SIN_PENDIENTES);
 }

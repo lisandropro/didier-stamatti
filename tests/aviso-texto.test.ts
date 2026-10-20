@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   consolidarCambios,
   describirCambio,
+  esTituloSinPendientes,
   textoDeLoDeshecho,
   textoDePush,
   textoSinPendientes,
@@ -266,4 +267,14 @@ test("la corrección cuando ya no queda nada para aplicar", () => {
     title: "Pedido ya preparado · El Carmen",
     body: "Ya no hay cambios para aplicar\n— Enrique",
   });
+});
+
+test("la corrección se reconoce por su título, aunque el lugar haya cambiado", () => {
+  assert.equal(esTituloSinPendientes(textoSinPendientes("El Carmen", "Enrique").title), true);
+  assert.equal(esTituloSinPendientes("Pedido ya preparado · Otro nombre"), true);
+  // El aviso de "qué rehacer" no es la corrección, sea de hoy o no.
+  for (const hoy of [false, true]) {
+    assert.equal(esTituloSinPendientes(textoTardio("El Carmen", "Enrique", ["Sumá 14 Copas"], hoy)!.title), false);
+  }
+  assert.equal(esTituloSinPendientes(undefined), false);
 });
