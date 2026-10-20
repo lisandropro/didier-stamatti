@@ -8,6 +8,7 @@ import {
   esEstado,
   esVisto,
   estadoDeItems,
+  firmaDePendientes,
   paraTildarSector,
   pideConfirmacion,
   sePuedeDestildar,
@@ -287,4 +288,21 @@ test("el avance de la pantalla es el mismo número que el de la lista de eventos
   for (const s of seccionesDePantalla(items).sectores) {
     assert.deepEqual({ listos: s.listos, total: s.total }, avance.get(s.category), s.category);
   }
+});
+
+test("la firma de lo pendiente no cambia si un suelto solo cambió de renglón", () => {
+  // Restaurar recrea los renglones: el mismo suelto pasa de custom:viejo a
+  // custom:nuevo. Si la firma lo viera distinto, avisaría un cambio que no hubo.
+  const hielo = (clave: string, qty: number, tildado: number) => ({
+    linea: { ...L(clave, qty), itemName: "Hielo", category: "BEBIDA" },
+    tilde: { ...T(clave, tildado), itemName: "Hielo", category: "BEBIDA" },
+  });
+  const firma = (h: ReturnType<typeof hielo>) => firmaDePendientes(estadoDeItems([h.linea, L("p1", 3)], [h.tilde, T("p1", 1)]));
+  const antes = firma(hielo("custom:viejo", 5, 2));
+  assert.equal(firma(hielo("custom:nuevo", 5, 2)), antes);
+  // Pero sí cambia si cambió lo que hay que hacer.
+  const otro = firma(hielo("custom:nuevo", 6, 2));
+  assert.notEqual(otro, antes);
+  // Y un producto del catálogo se sigue identificando por su clave.
+  assert.notEqual(firmaDePendientes(estadoDeItems([L("p2", 3)], [T("p2", 1)])), firmaDePendientes(estadoDeItems([L("p1", 3)], [T("p1", 1)])));
 });

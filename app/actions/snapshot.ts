@@ -7,7 +7,7 @@ import { applySnapshotData, buildSnapshotData, saveRecoverableVersion } from "@/
 import { canManagePeriods } from "@/lib/permissions";
 import { notifyOrderChange } from "@/lib/notify";
 import { estadoDelEvento, reasignarSueltos } from "@/lib/preparacion-db";
-import { cambiosParaAplicar, type ItemPreparacion } from "@/lib/preparacion";
+import { firmaDePendientes } from "@/lib/preparacion";
 import { hoy, instanteDe } from "@/lib/dates";
 
 export type SnapshotResult = {
@@ -25,21 +25,6 @@ function revalidar(periodId: string) {
 }
 
 const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-
-/** Lo que el depósito tiene pendiente en un evento, como un texto comparable:
- *  qué ítems quedaron para rehacer, en qué estado y con qué cantidad y nota.
- *
- *  Un suelto se identifica por nombre y sector, no por su clave: restaurar
- *  recrea los renglones y `reasignarSueltos` le cambia la clave aunque sea el
- *  mismo ítem. Comparado por clave, parecería un cambio que no hubo. */
-const firmaDePendientes = (items: ItemPreparacion[]): string =>
-  cambiosParaAplicar(items)
-    .map((i) => {
-      const quien = i.clave.startsWith("custom:") ? `suelto:${i.itemName}:${i.category}:${i.unit}` : i.clave;
-      return `${quien}:${i.estado}:${i.qty}:${i.note ?? ""}`;
-    })
-    .sort()
-    .join("|");
 
 /**
  * Descartar o restaurar reemplaza los pedidos de todo el período. El depósito

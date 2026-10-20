@@ -161,6 +161,24 @@ export function cambiosParaAplicar(items: ItemPreparacion[]): ItemPreparacion[] 
   return items.filter((i) => PARA_APLICAR.has(i.estado));
 }
 
+/** Lo que el depósito tiene pendiente en un evento, como un texto comparable:
+ *  qué ítems quedaron para rehacer, en qué estado y con qué cantidad y nota.
+ *  Restaurar una versión compara la firma de antes y la de después para avisar
+ *  solo si cambió algo.
+ *
+ *  Un suelto se identifica por nombre, sector y unidad, no por su clave:
+ *  restaurar recrea los renglones y `reasignarSueltos` le cambia la clave
+ *  aunque sea el mismo ítem. Comparado por clave, parecería un cambio que no hubo. */
+export function firmaDePendientes(items: ItemPreparacion[]): string {
+  return cambiosParaAplicar(items)
+    .map((i) => {
+      const quien = i.clave.startsWith("custom:") ? `suelto:${i.itemName}:${i.category}:${i.unit}` : i.clave;
+      return `${quien}:${i.estado}:${i.qty}:${i.note ?? ""}`;
+    })
+    .sort()
+    .join("|");
+}
+
 /** Un ítem en este estado no se resuelve de un toque: darlo por hecho sin
  *  querer borraría la instrucción ("sumá 14"). Lo decide el estado, no el lugar
  *  de la pantalla donde se dibuja la fila. */
