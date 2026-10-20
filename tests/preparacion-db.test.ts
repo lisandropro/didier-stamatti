@@ -251,6 +251,34 @@ test("eventos para preparar: desde hoy hasta 14 días, vivos, con su avance y lo
   }
 });
 
+test("la tarjeta de cada evento dice qué rehacer y quién lo cambió por última vez", async () => {
+  const quieto = await prisma.event.create({
+    data: { periodId: ids.periodo, lugar: "Sin cambios", date: instanteDe(sumarDias(hoy(), 2), "21:00") },
+  });
+  const cambio = (actorName: string, hace: number) =>
+    prisma.orderChange.create({
+      data: { eventId: ids.evento, actorName, itemName: "Hielo", kind: "CANTIDAD", before: "20", after: "25", createdAt: new Date(Date.now() - hace) },
+    });
+  const viejo = await cambio("Aldana", 3_600_000);
+  const nuevo = await cambio("Enrique", 60_000);
+  try {
+    const lista = await db.eventosParaPreparar();
+    const carmen = lista.find((e) => e.lugar === "El Carmen")!;
+    // Las mismas acciones que el aviso al teléfono, una por cada cambio para aplicar.
+    assert.equal(carmen.acciones.length, carmen.cambiosParaAplicar);
+    assert.match(carmen.acciones[0], /Hielo/);
+    // El último, no el primero.
+    assert.equal(carmen.ultimoCambio?.actorName, "Enrique");
+    assert.equal(carmen.ultimoCambio?.at.getTime(), nuevo.createdAt.getTime());
+    const sinCambios = lista.find((e) => e.lugar === "Sin cambios")!;
+    assert.equal(sinCambios.ultimoCambio, null);
+    assert.deepEqual(sinCambios.acciones, []);
+  } finally {
+    await prisma.orderChange.deleteMany({ where: { id: { in: [viejo.id, nuevo.id] } } });
+    await prisma.event.delete({ where: { id: quieto.id } });
+  }
+});
+
 test("faltantes del período: lo pedido entre todos contra el stock", async () => {
   // Otro evento vivo del mismo período suma; uno en la papelera, no.
   const vivo = await prisma.event.create({ data: { periodId: ids.periodo, lugar: "Otro vivo", date: instanteDe(hoy(), "20:00") } });

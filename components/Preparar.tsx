@@ -7,6 +7,7 @@ import { destildarItem, tildarItem, tildarSectorEntero } from "@/app/actions/pre
 import { intentar } from "@/lib/actualizacion";
 import { pideConfirmacion, seccionesDePantalla, type EstadoItem, type Visto, type VistoDeSector } from "@/lib/preparacion";
 import { esCategoria } from "@/lib/categories";
+import { RefrescoPeriodico } from "@/components/RefrescoPeriodico";
 
 type Item = {
   clave: string;
@@ -74,20 +75,6 @@ export function Preparar({ data }: { data: Data }) {
   const [sectorAConfirmar, setSectorAConfirmar] = useState<{ category: string; vistos: VistoDeSector[] } | null>(null);
   // La fila de "Cambios para aplicar" que espera la confirmación. Una sola a la vez.
   const [armada, setArmada] = useState<Armada | null>(null);
-
-  // Se actualiza sola: quien prepara con la pantalla abierta tiene que ver
-  // llegar un cambio sin recargar. Cada 45 s y al volver a la app.
-  useEffect(() => {
-    const refrescar = () => {
-      if (document.visibilityState === "visible") router.refresh();
-    };
-    const id = setInterval(refrescar, 45_000);
-    document.addEventListener("visibilitychange", refrescar);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", refrescar);
-    };
-  }, [router]);
 
   // El error se va solo: quien está mirando otra parte de la lista no lo va a
   // cerrar, y uno viejo en pantalla hace dudar de si lo último se guardó.
@@ -177,6 +164,9 @@ export function Preparar({ data }: { data: Data }) {
 
   return (
     <>
+      {/* Se actualiza sola: quien prepara con la pantalla abierta tiene que ver
+          llegar un cambio sin recargar. */}
+      <RefrescoPeriodico />
       {/* El error vive en la cabecera fija: si estuviera al principio de la
           lista, quien está scrolleado más abajo tocaría sin ver que no se guardó. */}
       <div className="prep-cabecera">

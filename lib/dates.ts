@@ -192,3 +192,20 @@ export function fmtMomento(instante: Date): string {
   const dd = (n: number) => String(n).padStart(2, "0");
   return `${p.day}/${p.month} · ${dd(p.hour)}:${dd(p.minute)}`;
 }
+
+/**
+ * "hace 12 min", "ayer", "hace 3 días" — cuánto pasó desde un momento.
+ *
+ * "Ayer" es el día argentino anterior, no "hace más de 24 horas": un cambio de
+ * anoche a las 23 visto hoy a las 10 es de ayer. Pasada una semana se da la
+ * fecha, que a esa altura dice más que un número de días.
+ */
+export function haceCuanto(desde: Date, ahora: Date = new Date()): string {
+  const min = Math.floor((ahora.getTime() - desde.getTime()) / 60_000);
+  if (min < 1) return "recién";
+  const dias = diasEntre(diaDe(desde), diaDe(ahora));
+  if (dias === 0) return min < 60 ? `hace ${min} min` : `hace ${Math.floor(min / 60)} h`;
+  if (dias === 1) return min < 60 ? `hace ${min} min` : "ayer";
+  if (dias < 7) return `hace ${dias} días`;
+  return fmtDia(diaDe(desde));
+}

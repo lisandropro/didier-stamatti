@@ -302,3 +302,14 @@ test("si el navegador rechaza la instalación, el botón se esconde sin romper n
   assert.match(instalar, /try \{\s*await e\.prompt\(\);\s*await e\.userChoice;\s*\} catch/);
   assert.match(instalar, /finally \{\s*setModo\("oculto"\);/);
 });
+
+test("la tarjeta de cada evento dice qué rehacer y el último cambio, y la lista se actualiza sola", () => {
+  const lista = fuente("app/(app)/preparar/page.tsx");
+  assert.match(lista, /e\.acciones/, "la tarjeta no muestra qué rehacer");
+  assert.match(lista, /e\.ultimoCambio/, "la tarjeta no muestra el último cambio");
+  assert.match(lista, /<RefrescoPeriodico \/>/, "la lista no se actualiza sola");
+  // La pantalla del evento usa el mismo refresco, no una copia del código.
+  const evento = fuente("components/Preparar.tsx");
+  assert.match(evento, /<RefrescoPeriodico \/>/);
+  assert.doesNotMatch(evento, /visibilitychange/, "Preparar volvió a tener su propio refresco");
+});

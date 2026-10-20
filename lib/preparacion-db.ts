@@ -9,6 +9,7 @@ import {
   mismaNota,
   paraTildarSector,
   sePuedeDestildar,
+  textoDeAccion,
   type ItemPreparacion,
   type LineaPedido,
   type Tildado,
@@ -259,10 +260,16 @@ export type EventoParaPreparar = {
   dia: string;
   avance: { category: string; label: string; listos: number; total: number }[];
   cambiosParaAplicar: number;
+  /** Qué rehacer, con las mismas palabras que el aviso al teléfono:
+   *  "Sumá 12 Copa de agua", "Sacá 3 Braseros". */
+  acciones: string[];
+  /** El último cambio al pedido, sea sobre algo preparado o no: quien prepara
+   *  de memoria o con un papel tiene que saber que el pedido se movió. */
+  ultimoCambio: { actorName: string; at: Date } | null;
 };
 
-/** Los eventos vivos de hoy a `DIAS_A_PREPARAR` días, con su avance por sector
- *  y cuántos cambios hay para aplicar. */
+/** Los eventos vivos de hoy a `DIAS_A_PREPARAR` días, con su avance por sector,
+ *  lo que hay que rehacer y quién cambió el pedido por última vez. */
 export async function eventosParaPreparar(hoyDia: string = hoy()): Promise<EventoParaPreparar[]> {
   const eventos = await prisma.event.findMany({
     where: {
@@ -273,13 +280,29 @@ export async function eventosParaPreparar(hoyDia: string = hoy()): Promise<Event
     orderBy: { date: "asc" },
     select: { id: true, lugar: true, date: true },
   });
+  // El último cambio de cada evento, de una sola vez y no evento por evento.
+  const ultimos = await prisma.orderChange.findMany({
+    where: { eventId: { in: eventos.map((e) => e.id) } },
+    orderBy: { createdAt: "desc" },
+    distinct: ["eventId"],
+    select: { eventId: true, actorName: true, createdAt: true },
+  });
+  const ultimoDe = new Map(ultimos.map((c) => [c.eventId, { actorName: c.actorName, at: c.createdAt }]));
   const out: EventoParaPreparar[] = [];
   for (const e of eventos) {
     const items = await estadoDelEvento(e.id);
     const avance = [...avancePorSector(items)]
       .sort(([a], [b]) => ordenDeCategoria(a) - ordenDeCategoria(b))
       .map(([category, a]) => ({ category, label: nombreDeCategoria(category), ...a }));
-    out.push({ ...e, dia: diaDe(e.date), avance, cambiosParaAplicar: cambiosParaAplicar(items).length });
+    const pendientes = cambiosParaAplicar(items);
+    out.push({
+      ...e,
+      dia: diaDe(e.date),
+      avance,
+      cambiosParaAplicar: pendientes.length,
+      acciones: pendientes.map(textoDeAccion),
+      ultimoCambio: ultimoDe.get(e.id) ?? null,
+    });
   }
   return out;
 }
