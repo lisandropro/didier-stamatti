@@ -45,7 +45,7 @@
 - **"Cambios para aplicar"** = los ítems en `CAMBIO`, `NOTA` o `SACAR`. La spec nombra "Cambió y Sacar", pero un cambio solo de nota también es tardío: si `NOTA` quedara afuera, ese aviso saldría sin nada que decir y no sonaría.
 - **Tildar un sector entero** tilda solo lo `PENDIENTE`.
 - **Cambio tardío** = todo cambio a un ítem que tiene `Preparacion`; un cambio solo de nota también cuenta. `addCustomLine` nunca es tardío. Se decide **dentro de la misma transacción que escribe**.
-- **Límite conocido.** Copiar un pedido y restaurar una versión borran los renglones y los crean de nuevo, así que los sueltos cambian de id. Lo tildado de un suelto queda en `SACAR` y el suelto nuevo, en `PENDIENTE`. El depósito lo ve y lo resuelve tildando los dos. No se arregla en esta etapa: haría falta que las versiones guarden el id del renglón.
+- **Límite conocido.** Copiar un pedido borra los renglones y los crea de nuevo, así que los sueltos cambian de id: lo tildado de un suelto queda en `SACAR` y el suelto nuevo, en `PENDIENTE` (es lo esperable: el pedido nuevo es el de otro evento). **Restaurar y descartar sí lo resuelven** desde la revisión final: `reasignarSueltos` devuelve lo tildado al renglón nuevo del mismo ítem (mismo nombre, sector y unidad).
 - **Aviso `CAMBIO_TARDIO`:**
   - tanda propia, misma quietud de 2 minutos, urgencia `high` para todos los destinatarios;
   - título `⚠ Cambio en pedido ya preparado · <lugar>`, con `HOY · ` adelante si el evento es hoy (día argentino);
