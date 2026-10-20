@@ -6,6 +6,7 @@ import {
   cambiosParaAplicar,
   claveDeLinea,
   estadoDeItems,
+  mismaNota,
   paraTildarSector,
   sePuedeDestildar,
   type ItemPreparacion,
@@ -181,6 +182,74 @@ export async function tildarSector(
     const hay = await tx.preparacion.count({ where: { eventId, clave: { in: claves } } });
     return { tildados: hay - yaEstaban, salteados };
   });
+}
+
+const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Restaurar una versión o descartar cambios borra los renglones y los crea de
+ * nuevo, y un suelto no tiene producto: su clave es el id del renglón, que
+ * cambia. Sin esto, lo tildado del suelto quedaba en SACAR ("Sacá 3 Mantel
+ * bordó") aunque el mantel siga yendo, el suelto nuevo en PENDIENTE, y el aviso
+ * al depósito decía que lo sacara.
+ *
+ * Se reconoce el suelto por lo que el depósito ve: en el mismo evento, un
+ * renglón sin producto con el mismo nombre, sector y unidad que todavía no
+ * tenga nada tildado. Si hay varios iguales, primero el de la misma cantidad y
+ * nota, para que cada fila tildada vuelva a su renglón. Si no hay ninguno, el
+ * suelto de verdad se fue y queda en SACAR, como tiene que ser.
+ *
+ * No se usa al copiar un pedido: copiar trae el de otro evento, y lo tildado
+ * acá no tiene por qué ser eso.
+ *
+ * Devuelve cuántas filas reasignó. Nunca lanza: corre con la restauración ya
+ * hecha, y un fallo acá no puede hacer creer que no se restauró.
+ */
+export async function reasignarSueltos(periodId: string): Promise<number> {
+  try {
+    const eventos = await prisma.event.findMany({
+      where: { periodId, deletedAt: null, preparaciones: { some: { clave: { startsWith: "custom:" } } } },
+      select: { id: true },
+    });
+    let n = 0;
+    for (const { id: eventId } of eventos) {
+      n += await prisma.$transaction(async (tx) => {
+        const lineas = await lineasDelEvento(tx, eventId);
+        const filas = await tx.preparacion.findMany({ where: { eventId }, orderBy: { at: "asc" } });
+        const enPedido = new Set(lineas.map((l) => l.clave));
+        const tomadas = new Set(filas.map((f) => f.clave));
+        // Los sueltos del pedido de ahora que nadie tildó: a los que se puede pasar una fila.
+        const libres = lineas.filter((l) => l.clave.startsWith("custom:") && !tomadas.has(l.clave));
+        // Lo tildado de un suelto cuyo renglón ya no está.
+        const huerfanas = filas.filter((f) => f.clave.startsWith("custom:") && !enPedido.has(f.clave));
+        const hechas = new Set<string>();
+        // Dos vueltas: primero las que tienen un renglón igual en todo (también
+        // cantidad y nota), después el resto. Así una fila sin gemelo exacto no
+        // le quita el renglón a la que sí lo tenía.
+        for (const exacta of [true, false]) {
+          for (const f of huerfanas) {
+            if (hechas.has(f.id)) continue;
+            const destino = libres.find(
+              (l) =>
+                l.itemName === f.itemName &&
+                l.category === f.category &&
+                l.unit === f.unit &&
+                (!exacta || (l.qty === f.qty && mismaNota(l.note, f.note))),
+            );
+            if (!destino) continue;
+            await tx.preparacion.update({ where: { id: f.id }, data: { clave: destino.clave } });
+            libres.splice(libres.indexOf(destino), 1);
+            hechas.add(f.id);
+          }
+        }
+        return hechas.size;
+      });
+    }
+    return n;
+  } catch (e) {
+    console.error("[avisos] no se pudieron reasignar los sueltos tildados después de restaurar", periodId, mensajeDe(e));
+    return 0;
+  }
 }
 
 export type EventoParaPreparar = {

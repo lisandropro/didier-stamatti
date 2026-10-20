@@ -157,6 +157,21 @@ test("descartar y restaurar avisan como tardío a los eventos que tenían algo t
   assert.ok(restaurada > -1 && restaurar.indexOf("avisarATildados(") > restaurada, "restorePeriodVersion avisa antes de marcar la versión como restaurada");
 });
 
+test("descartar y restaurar reasignan los sueltos tildados antes de comparar lo pendiente", () => {
+  // Si se compara antes de reasignar, el suelto que cambió de id parece un
+  // "Sacá 3" nuevo y sale un aviso por un cambio que no existe.
+  const s = fuente("app/actions/snapshot.ts");
+  for (const nombre of ["discardPeriodChanges", "restorePeriodVersion"]) {
+    const c = cuerpoDe(s, nombre);
+    const aplica = c.indexOf("applySnapshotData(");
+    const reasigna = c.indexOf("reasignarSueltos(");
+    const aviso = c.indexOf("avisarATildados(");
+    assert.ok(aplica > -1 && reasigna > aplica && aviso > reasigna, `${nombre} no reasigna los sueltos entre aplicar y avisar`);
+  }
+  // Copiar no: trae el pedido de otro evento, y lo tildado acá no tiene por qué ser eso.
+  assert.doesNotMatch(fuente("app/actions/order.ts"), /reasignarSueltos\(/);
+});
+
 test("descartar y restaurar no le avisan al depósito de eventos que ya pasaron", () => {
   // Descartar solo se ofrece en períodos terminados: sin este corte, cada
   // descarte mandaba avisos urgentes de fiestas que ya se hicieron.

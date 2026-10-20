@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { applySnapshotData, buildSnapshotData, saveRecoverableVersion } from "@/lib/snapshot";
 import { canManagePeriods } from "@/lib/permissions";
 import { notifyOrderChange } from "@/lib/notify";
-import { estadoDelEvento } from "@/lib/preparacion-db";
+import { estadoDelEvento, reasignarSueltos } from "@/lib/preparacion-db";
 import { cambiosParaAplicar, type ItemPreparacion } from "@/lib/preparacion";
 import { hoy, instanteDe } from "@/lib/dates";
 
@@ -138,6 +138,9 @@ export async function discardPeriodChanges(periodId: string): Promise<SnapshotRe
   const resguardo = await saveRecoverableVersion(periodId, "PRE_DESCARTE", user);
   const antes = await pendientesPorEvento(periodId);
   const restauradas = await applySnapshotData(periodId, snap.data);
+  // Los sueltos volvieron con otro id: lo tildado se pasa a su renglón nuevo
+  // ANTES de comparar lo pendiente, o el aviso diría "Sacá 3" de algo que sigue yendo.
+  await reasignarSueltos(periodId);
   await avisarATildados(periodId, antes, user, "Se descartaron los cambios del pedido");
 
   revalidar(periodId);
@@ -157,6 +160,9 @@ export async function restorePeriodVersion(versionId: string): Promise<SnapshotR
   const resguardo = await saveRecoverableVersion(version.periodId, "PRE_RESTAURACION", user);
   const antes = await pendientesPorEvento(version.periodId);
   const restauradas = await applySnapshotData(version.periodId, version.data);
+  // Como al descartar: los sueltos vuelven con otro id. Nunca lanza, así que
+  // no puede frenar la marca de "restaurada".
+  await reasignarSueltos(version.periodId);
   await prisma.periodVersion.update({ where: { id: versionId }, data: { restoredAt: new Date() } });
   // Al final: el aviso no puede frenar la marca de "restaurada" ni el revalidar.
   await avisarATildados(version.periodId, antes, user, "Se restauró una versión anterior del pedido");

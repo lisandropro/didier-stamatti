@@ -269,3 +269,74 @@ test("faltantes del período: lo pedido entre todos contra el stock", async () =
     await prisma.event.deleteMany({ where: { id: { in: [vivo.id, tirado.id] } } });
   }
 });
+
+test("restaurar una versión no deja en SACAR lo tildado de un suelto que sigue yendo", async () => {
+  // Restaurar borra los renglones y los crea de nuevo: cada suelto vuelve con
+  // otro id, y su clave es el id. Sin reasignar, lo tildado quedaba en SACAR
+  // ("Sacá 3 Mantel bordó") aunque el mantel siguiera yendo.
+  // Un período propio: restaurar recrea los renglones de TODO el período.
+  const snapshot = await import("../lib/snapshot");
+  const periodo = await prisma.operationalPeriod.create({ data: { startDay: hoy(), endDay: hoy() } });
+  const ev = await prisma.event.create({ data: { periodId: periodo.id, lugar: "Restaurado", date: instanteDe(hoy(), "21:00") } });
+  const otro = await prisma.event.create({ data: { periodId: periodo.id, lugar: "Otro del período", date: instanteDe(hoy(), "22:00") } });
+  try {
+    const suelto = (eventId: string, customName: string, customCategory: string, customUnit: string, qty: number, note: string | null = null) =>
+      prisma.orderLine.create({ data: { eventId, customName, customCategory, customUnit, qty, note } });
+    // Dos manteles con el mismo nombre: cada fila tildada vuelve a su renglón.
+    const mantel = await suelto(ev.id, "Mantel bordó", "MANTELERIA", "Unidad", 3);
+    const mantelLargo = await suelto(ev.id, "Mantel bordó", "MANTELERIA", "Unidad", 2, "los largos");
+    const hielo = await suelto(ev.id, "Hielo", "BEBIDA", "Bolsa", 20);
+    // Otro evento con el mismo suelto: lo de un evento no se pasa a otro.
+    await suelto(otro.id, "Hielo", "BEBIDA", "Bolsa", 20);
+    for (const l of [mantel, mantelLargo, hielo]) {
+      await db.tildar(ev.id, `custom:${l.id}`, PABLO, { estado: "PENDIENTE", qty: l.qty, note: l.note });
+    }
+
+    // La versión que se restaura no tiene el hielo de este evento: ese sí se va.
+    const { data } = await snapshot.buildSnapshotData(periodo.id);
+    const sinHielo = (JSON.parse(data) as { eventId: string; customName: string | null }[]).filter(
+      (l) => !(l.eventId === ev.id && l.customName === "Hielo"),
+    );
+    await snapshot.applySnapshotData(periodo.id, JSON.stringify(sinHielo));
+    assert.equal(
+      (await db.estadoDelEvento(ev.id)).filter((i) => i.estado === "SACAR").length,
+      3,
+      "la prueba no reproduce el problema: los sueltos no cambiaron de id",
+    );
+
+    assert.equal(await db.reasignarSueltos(periodo.id), 2);
+    const items = await db.estadoDelEvento(ev.id);
+    const manteles = items.filter((i) => i.itemName === "Mantel bordó");
+    assert.deepEqual(
+      manteles.map((i) => [i.estado, i.qty, i.note]).sort(),
+      [["PREPARADO", 2, "los largos"], ["PREPARADO", 3, null]].sort(),
+      "un mantel tildado quedó en SACAR o en el renglón del otro",
+    );
+    assert.ok(manteles.every((i) => i.tildado?.porName === "Pablo"), "se perdió quién lo tildó");
+    // El hielo de este evento ya no va: sigue pidiendo que lo saquen.
+    assert.deepEqual(items.filter((i) => i.itemName === "Hielo").map((i) => i.estado), ["SACAR"]);
+    assert.equal(await prisma.preparacion.count({ where: { eventId: otro.id } }), 0);
+    // Una segunda vez no hay nada que reasignar.
+    assert.equal(await db.reasignarSueltos(periodo.id), 0);
+  } finally {
+    await prisma.event.deleteMany({ where: { id: { in: [ev.id, otro.id] } } });
+    await prisma.operationalPeriod.delete({ where: { id: periodo.id } });
+  }
+});
+
+test("reasignar los sueltos nunca lanza: la restauración ya se hizo", async () => {
+  const original = prisma.event.findMany;
+  const consoleError = console.error;
+  const errores: string[] = [];
+  prisma.event.findMany = (async () => {
+    throw new Error("database is locked");
+  }) as unknown as typeof prisma.event.findMany;
+  console.error = (...args: unknown[]) => void errores.push(args.map(String).join(" "));
+  try {
+    assert.equal(await db.reasignarSueltos(ids.periodo), 0);
+  } finally {
+    prisma.event.findMany = original;
+    console.error = consoleError;
+  }
+  assert.ok(errores.some((x) => x.includes("[avisos]") && x.includes("database is locked")), errores.join("\n"));
+});
