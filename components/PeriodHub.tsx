@@ -41,8 +41,6 @@ type HubData = {
     rangeLabel: string;
     isPast: boolean;
     snapshotTakenAt: string | null;
-    /** Ítems que el depósito ya tildó en los eventos del período: descartar los pisa. */
-    preparados: number;
     /** Los que faltan hacer: es la lista que se ve. */
     events: EventItem[];
     /** Los que ya se hicieron. Se pliegan al pie para que no estorben. */
@@ -413,7 +411,6 @@ export function PeriodHub({ data }: { data: HubData }) {
           id={selected.id}
           label={selected.label}
           takenAt={selected.snapshotTakenAt}
-          preparados={selected.preparados}
           // Borrar y descartar alcanzan al período entero, también a lo ya hecho.
           currentLines={[...selected.events, ...selected.pasados].reduce((n, e) => n + e.lineCount, 0)}
           eventCount={totalEventos}
@@ -600,7 +597,6 @@ function ConfirmDiscardChanges({
   id,
   label,
   takenAt,
-  preparados,
   currentLines,
   eventCount,
   onClose,
@@ -609,7 +605,6 @@ function ConfirmDiscardChanges({
   id: string;
   label: string;
   takenAt: string | null;
-  preparados: number;
   currentLines: number;
   eventCount: number;
   onClose: () => void;
@@ -644,11 +639,6 @@ function ConfirmDiscardChanges({
           <p>
             <b>Qué NO se toca:</b> el período, los eventos, el stock del depósito ni el historial de movimientos.
           </p>
-          {preparados > 0 && (
-            <p>
-              <b>{preparados} {preparados === 1 ? "ítem ya está preparado y va a cambiar" : "ítems ya están preparados y van a cambiar"}</b>: el depósito va a recibir el aviso para revisarlos.
-            </p>
-          )}
         </div>
         <div className="banner ok" style={{ marginBottom: "var(--sp-4)" }}>
           <div>

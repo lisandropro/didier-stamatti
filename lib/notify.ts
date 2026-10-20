@@ -160,7 +160,7 @@ export async function notifyOrderChange(
   const cambios = Array.isArray(entrada) ? entrada : [entrada];
   if (cambios.length === 0) return;
   try {
-    const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { lugar: true } });
+    const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { lugar: true, date: true } });
     if (!ev) return;
 
     // Una sola marca de tiempo para el cambio y para el aviso: si el cambio se
@@ -201,8 +201,14 @@ export async function notifyOrderChange(
 
     // Lo tardío va a su propia tanda: es otro aviso (qué rehacer, con prioridad
     // para todos) y no se mezcla con los cambios comunes.
+    //
+    // Salvo que el evento ya haya pasado: no queda nada que rehacer en el
+    // depósito, y editar una fiesta que terminó mandaba "Sumá 14" con prioridad
+    // alta. El cambio igual queda marcado como tardío en el registro de arriba,
+    // que mide "el día del evento o después". El corte es por día argentino: el
+    // evento de hoy, aunque ya haya empezado, todavía avisa.
     const comunes = cambios.filter((c) => !c.tardio).length;
-    const tardios = cambios.length - comunes;
+    const tardios = diaDe(ev.date) < hoy() ? 0 : cambios.length - comunes;
 
     for (const r of recipients) {
       // La tardía primero: si una tanda falla, que no sea la urgente la que se pierda.

@@ -8,6 +8,7 @@ import { canManagePeriods } from "@/lib/permissions";
 import { notifyOrderChange } from "@/lib/notify";
 import { estadoDelEvento } from "@/lib/preparacion-db";
 import { cambiosParaAplicar, type ItemPreparacion } from "@/lib/preparacion";
+import { hoy, instanteDe } from "@/lib/dates";
 
 export type SnapshotResult = {
   ok: boolean;
@@ -51,11 +52,15 @@ const firmaDePendientes = (items: ItemPreparacion[]): string =>
  * el segundo paso no puede comparar: avisa a todo evento tildado que haya
  * quedado con algo pendiente (mejor un aviso de más que un depósito sin
  * enterarse).
+ *
+ * Los dos saltean los eventos cuyo día ya pasó: ahí no queda nada que rehacer.
+ * Descartar solo se ofrece en períodos terminados, así que sin este corte cada
+ * descarte mandaba avisos urgentes de fiestas que ya se hicieron.
  */
 async function pendientesPorEvento(periodId: string): Promise<Map<string, string>> {
   try {
     const eventos = await prisma.event.findMany({
-      where: { periodId, deletedAt: null, preparaciones: { some: {} } },
+      where: { periodId, deletedAt: null, preparaciones: { some: {} }, date: { gte: instanteDe(hoy(), "00:00") } },
       select: { id: true },
     });
     const antes = new Map<string, string>();
@@ -77,7 +82,7 @@ async function avisarATildados(
 ): Promise<void> {
   try {
     const eventos = await prisma.event.findMany({
-      where: { periodId, deletedAt: null, preparaciones: { some: {} } },
+      where: { periodId, deletedAt: null, preparaciones: { some: {} }, date: { gte: instanteDe(hoy(), "00:00") } },
       select: { id: true },
     });
     for (const e of eventos) {

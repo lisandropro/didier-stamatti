@@ -129,12 +129,13 @@ export default async function Home({
     }),
   ]);
 
-  // Lo que el depósito ya tildó, por período: descartar o restaurar lo pisa, y
-  // la confirmación lo tiene que decir. Solo se pregunta por los períodos que la
-  // pantalla puede nombrar (el que se mira y los de las copias guardadas) y se
-  // trae un conteo por evento, no una fila por cada ítem tildado de toda la
-  // historia: eso crecía con cada finde preparado.
-  const periodosConPreparados = [...new Set([...(selected ? [selected.id] : []), ...versions.map((v) => v.periodId)])];
+  // Lo que el depósito ya tildó, por período: restaurar una copia lo pisa, y la
+  // Papelera lo tiene que decir. Solo se pregunta por los períodos de las copias
+  // guardadas y se trae un conteo por evento, no una fila por cada ítem tildado
+  // de toda la historia: eso crecía con cada finde preparado. (Descartar no lo
+  // dice: solo se ofrece en períodos que ya pasaron, y de esos el depósito no
+  // recibe aviso.)
+  const periodosConPreparados = [...new Set(versions.map((v) => v.periodId))];
   const preparadosPorPeriodo = new Map<string, number>();
   if (periodosConPreparados.length > 0) {
     for (const e of await prisma.event.findMany({
@@ -179,7 +180,6 @@ export default async function Home({
           rangeLabel: fmtRangoDias(selected.startDay, selected.endDay),
           isPast,
           snapshotTakenAt,
-          preparados: preparadosPorPeriodo.get(selected.id) ?? 0,
           // Los que ya se hicieron van aparte: en la pantalla se pliegan, así
           // quien arma un pedido no lee fechas para saber qué le falta.
           events: porHacer.map(tarjetaDeEvento),

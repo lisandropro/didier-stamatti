@@ -157,6 +157,22 @@ test("descartar y restaurar avisan como tardío a los eventos que tenían algo t
   assert.ok(restaurada > -1 && restaurar.indexOf("avisarATildados(") > restaurada, "restorePeriodVersion avisa antes de marcar la versión como restaurada");
 });
 
+test("descartar y restaurar no le avisan al depósito de eventos que ya pasaron", () => {
+  // Descartar solo se ofrece en períodos terminados: sin este corte, cada
+  // descarte mandaba avisos urgentes de fiestas que ya se hicieron.
+  const s = fuente("app/actions/snapshot.ts");
+  for (const nombre of ["pendientesPorEvento", "avisarATildados"]) {
+    const desde = s.indexOf(`async function ${nombre}`);
+    assert.ok(desde > -1, `no existe ${nombre}`);
+    const cuerpo = s.slice(desde, s.indexOf("\n}", desde));
+    assert.match(
+      cuerpo,
+      /preparaciones: \{ some: \{\} \}, date: \{ gte: instanteDe\(hoy\(\), "00:00"\) \}/,
+      `${nombre} no saltea los eventos que ya pasaron`,
+    );
+  }
+});
+
 test("las pantallas de preparar comprueban su permiso; tildar se ofrece solo a quien puede", () => {
   for (const archivo of ["app/(app)/preparar/page.tsx", "app/(app)/preparar/[eventId]/page.tsx"]) {
     assert.match(fuente(archivo), /canVerPreparacion\(sesion\.role\)\) notFound\(\)/, archivo);
@@ -239,10 +255,17 @@ test("las pantallas no leen toda la historia de preparaciones ni las que no usan
   assert.match(fuente("app/(app)/evento/[id]/page.tsx"), /puedeEditar\s*\?\s*prisma\.preparacion\.findMany/);
 });
 
-test("copiar y descartar avisan cuántos ítems preparados van a cambiar", () => {
+test("copiar y restaurar avisan cuántos ítems preparados van a cambiar; descartar no", () => {
   assert.match(fuente("components/OrderBuilder.tsx"), /ya están preparados y van a cambiar/);
-  assert.match(fuente("components/PeriodHub.tsx"), /ya están preparados y van a cambiar/);
-  assert.match(fuente("components/PeriodHub.tsx"), /v\.preparados > 0/);
+  const hub = fuente("components/PeriodHub.tsx");
+  // Restaurar, en las filas de la Papelera.
+  assert.match(hub, /ya están preparados y van a cambiar/);
+  assert.match(hub, /v\.preparados > 0/);
+  // Descartar es solo de períodos que ya pasaron: el depósito no recibe aviso
+  // de ellos, y la confirmación no puede prometer uno.
+  const descartar = hub.slice(hub.indexOf("function ConfirmDiscardChanges"), hub.indexOf("function ConfirmDeletePeriod"));
+  assert.ok(descartar.length > 0, "no existe ConfirmDiscardChanges");
+  assert.doesNotMatch(descartar, /preparad/);
 });
 
 test("la instalación guiada está en Avisos y en Preparar, y el manifiesto tiene el atajo", () => {

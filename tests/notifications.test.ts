@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
-import { instanteDe } from "../lib/dates";
+import { hoy, instanteDe, sumarDias } from "../lib/dates";
 
 /**
  * El agrupamiento de avisos, contra una base de verdad.
@@ -21,7 +21,7 @@ import { instanteDe } from "../lib/dates";
 const DB = path.join(os.tmpdir(), `didier-test-avisos-${process.pid}.db`);
 let prisma: import("../app/generated/prisma/client").PrismaClient;
 let notify: typeof import("../lib/notify");
-let ids: { admin: string; logistica: string; armador: string; evento: string };
+let ids: { admin: string; logistica: string; armador: string; evento: string; futuro: string };
 // Cada push que "sale", con el teléfono al que iba: hay pruebas que necesitan
 // saber a quién le llegó y a quién no.
 const enviadosAlTelefono: { title: string; body: string; url?: string; tag?: string; endpoint: string }[] = [];
@@ -71,7 +71,17 @@ before(async () => {
       guests: 100,
     },
   });
-  ids = { admin: admin.id, logistica: logistica.id, armador: armador.id, evento: ev.id };
+  // El 15/08 ya pasó, y un evento que ya pasó no recibe avisos tardíos: no
+  // queda nada que rehacer en el depósito. Las pruebas de lo tardío usan este,
+  // de dentro de tres días. Mismo lugar, para que los textos se lean igual.
+  const diaFuturo = sumarDias(hoy(), 3);
+  const periodoFuturo = await prisma.operationalPeriod.create({
+    data: { label: "Futuro", startDay: diaFuturo, endDay: diaFuturo },
+  });
+  const futuro = await prisma.event.create({
+    data: { periodId: periodoFuturo.id, lugar: "El Carmen Center", date: instanteDe(diaFuturo, "21:00"), guests: 100 },
+  });
+  ids = { admin: admin.id, logistica: logistica.id, armador: armador.id, evento: ev.id, futuro: futuro.id };
 
   for (const [userId, endpoint] of [[logistica.id, TEL_PABLO], [armador.id, TEL_ENRIQUE]] as const) {
     await prisma.pushSubscription.create({ data: { userId, endpoint, p256dh: "k", auth: "a" } });
@@ -644,12 +654,12 @@ const tandas = (recipientId: string, type: string) =>
 
 test("un cambio tardío va a su propia tanda, que abre la pantalla de preparar", async () => {
   await limpiar();
-  await notify.notifyOrderChange(ACTOR(), ids.evento, {
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, {
     itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true,
   });
   const [t] = await tandas(ids.logistica, "CAMBIO_TARDIO");
   assert.ok(t, "no abrió la tanda de cambio tardío");
-  assert.equal(t.linkUrl, `/preparar/${ids.evento}`);
+  assert.equal(t.linkUrl, `/preparar/${ids.futuro}`);
   assert.match(t.message, /ya preparado/);
   assert.equal((await tandas(ids.logistica, "ORDER_EDIT")).length, 0, "lo tardío no va además a la tanda común");
   const [c] = await prisma.orderChange.findMany({ where: { itemName: "Copa de agua" } });
@@ -658,7 +668,7 @@ test("un cambio tardío va a su propia tanda, que abre la pantalla de preparar",
 
 test("un guardado con cambios tardíos y comunes abre una tanda de cada una", async () => {
   await limpiar();
-  await notify.notifyOrderChange(ACTOR(), ids.evento, [
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, [
     { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true },
     { itemName: "Servilletas", kind: "AGREGADO", before: null, after: "50" },
   ]);
@@ -677,8 +687,8 @@ test("'Qué cambió' de la tanda común no muestra los cambios tardíos", async 
 // test empieza con limpiar().
 test("un segundo cambio tardío de la misma persona se suma a la misma tanda abierta", async () => {
   await limpiar();
-  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true });
-  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Brasero", kind: "QUITADO", before: "3", after: null, tardio: true });
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true });
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, { itemName: "Brasero", kind: "QUITADO", before: "3", after: null, tardio: true });
   const tardias = await tandas(ids.logistica, "CAMBIO_TARDIO");
   assert.equal(tardias.length, 1, "abrió una tanda por cada cambio tardío");
   assert.equal(tardias[0].changeCount, 2);
@@ -688,12 +698,12 @@ test("un segundo cambio tardío de la misma persona se suma a la misma tanda abi
 test("el aviso tardío dice qué rehacer, abre Preparar y sale con prioridad para todos", async () => {
   await limpiar();
   const copa = await prisma.product.create({ data: { name: "Copa de agua", category: "ENSERES", type: "REUTILIZABLE", stock: 500 } });
-  await prisma.orderLine.create({ data: { eventId: ids.evento, productId: copa.id, qty: 24 } });
+  await prisma.orderLine.create({ data: { eventId: ids.futuro, productId: copa.id, qty: 24 } });
   await prisma.preparacion.create({
-    data: { eventId: ids.evento, clave: copa.id, itemName: "Copa de agua", unit: "Unidad", category: "ENSERES", qty: 10, porName: "Pablo" },
+    data: { eventId: ids.futuro, clave: copa.id, itemName: "Copa de agua", unit: "Unidad", category: "ENSERES", qty: 10, porName: "Pablo" },
   });
   const antes = enviadosAlTelefono.length;
-  await notify.notifyOrderChange(ACTOR(), ids.evento, {
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, {
     itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true,
   });
   await pasaronMinutos(3);
@@ -704,9 +714,9 @@ test("el aviso tardío dice qué rehacer, abre Preparar y sale con prioridad par
   for (const p of nuevos) {
     assert.match(p.title, /^⚠ Cambio en pedido ya preparado · El Carmen Center$/, "sin HOY: el evento no es hoy");
     assert.equal(p.body, "Sumá 14 Copa de agua\n— Ana");
-    assert.equal(p.url, `/preparar/${ids.evento}`);
+    assert.equal(p.url, `/preparar/${ids.futuro}`);
     // Su propio tag: el aviso urgente no reemplaza en la pantalla al común, ni al revés.
-    assert.equal(p.tag, `tardio-${ids.evento}`);
+    assert.equal(p.tag, `tardio-${ids.futuro}`);
   }
   const entregas = await prisma.pushDelivery.findMany({ where: { kind: "CAMBIO_TARDIO" } });
   assert.ok(entregas.length > 0 && entregas.every((e) => e.urgency === "high"), "el tardío sale con prioridad alta para todos");
@@ -717,11 +727,11 @@ test("el aviso tardío dice qué rehacer, abre Preparar y sale con prioridad par
 test("si el depósito ya lo aplicó antes de que salga el aviso, no suena", async () => {
   await limpiar();
   const vaso = await prisma.product.create({ data: { name: "Vaso", category: "ENSERES", type: "REUTILIZABLE", stock: 500 } });
-  await prisma.orderLine.create({ data: { eventId: ids.evento, productId: vaso.id, qty: 30 } });
+  await prisma.orderLine.create({ data: { eventId: ids.futuro, productId: vaso.id, qty: 30 } });
   await prisma.preparacion.create({
-    data: { eventId: ids.evento, clave: vaso.id, itemName: "Vaso", unit: "Unidad", category: "ENSERES", qty: 20, porName: "Pablo" },
+    data: { eventId: ids.futuro, clave: vaso.id, itemName: "Vaso", unit: "Unidad", category: "ENSERES", qty: 20, porName: "Pablo" },
   });
-  await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vaso", kind: "CANTIDAD", before: "20", after: "30", tardio: true });
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, { itemName: "Vaso", kind: "CANTIDAD", before: "20", after: "30", tardio: true });
   // El depósito vuelve a tildar con la cantidad nueva: ya no queda nada para aplicar.
   await prisma.preparacion.updateMany({ where: { clave: vaso.id }, data: { qty: 30 } });
   await pasaronMinutos(3);
@@ -735,6 +745,37 @@ test("si el depósito ya lo aplicó antes de que salga el aviso, no suena", asyn
   assert.ok(tardias.length === 2 && tardias.every((t) => t.pushedAt !== null), "las dos tandas tienen que quedar cerradas");
   await prisma.preparacion.deleteMany({});
   await prisma.orderLine.deleteMany({ where: { productId: vaso.id } });
+});
+
+test("un cambio tardío sobre un evento que ya pasó queda en el registro, pero no abre la tanda urgente", async () => {
+  // Editar una fiesta que ya terminó mandaba "Sumá 14" al depósito, que no
+  // tiene nada que rehacer. El evento de estas pruebas es del 15/08: ya pasó.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.evento, [
+    { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true },
+    { itemName: "Servilletas", kind: "AGREGADO", before: null, after: "50" },
+  ]);
+  // El registro de cambios tardíos mide "el día del evento o después": lo guarda igual.
+  const [c] = await prisma.orderChange.findMany({ where: { itemName: "Copa de agua" } });
+  assert.equal(c.tardio, true);
+  assert.equal(await prisma.notification.count({ where: { type: "CAMBIO_TARDIO" } }), 0, "abrió la tanda urgente de un evento que ya pasó");
+  // Lo común sigue como siempre.
+  assert.equal((await tandas(ids.logistica, "ORDER_EDIT"))[0]?.changeCount, 1);
+});
+
+test("un evento de hoy todavía recibe el aviso tardío, aunque ya haya empezado", async () => {
+  // El corte es por día argentino, no por hora: la fiesta de hoy a la madrugada
+  // todavía se está armando o desarmando.
+  await limpiar();
+  const { periodId } = await prisma.event.findUniqueOrThrow({ where: { id: ids.futuro }, select: { periodId: true } });
+  const deHoy = await prisma.event.create({ data: { periodId, lugar: "Hoy temprano", date: instanteDe(hoy(), "00:05") } });
+  try {
+    await notify.notifyOrderChange(ACTOR(), deHoy.id, { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24", tardio: true });
+    assert.equal((await tandas(ids.logistica, "CAMBIO_TARDIO")).length, 1);
+  } finally {
+    await limpiar();
+    await prisma.event.delete({ where: { id: deHoy.id } });
+  }
 });
 
 test("un evento que no existe no rompe el guardado del pedido", async () => {
