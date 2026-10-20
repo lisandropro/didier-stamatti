@@ -5,11 +5,14 @@ import {
   avancePorSector,
   cambiosParaAplicar,
   claveDeLinea,
-  clavesParaTildarSector,
   estadoDeItems,
+  paraTildarSector,
+  sePuedeDestildar,
   type ItemPreparacion,
   type LineaPedido,
   type Tildado,
+  type Visto,
+  type VistoDeSector,
 } from "@/lib/preparacion";
 
 // La preparación contra la base: leer el pedido y lo tildado, tildar y
@@ -74,28 +77,34 @@ export async function hayTildados(db: Db, eventId: string): Promise<boolean> {
 }
 
 /**
- * Tildar un ítem: copia lo que hay en el pedido ahora. Si el ítem ya no está en
- * el pedido (estado SACAR), tildarlo es confirmar que se sacó: la fila se borra
- * y no queda nada que recordar.
+ * Tildar un ítem: guarda la cantidad y la nota que se VIERON en la fila, no
+ * las del pedido al llegar el toque (ver `Visto`). Si el pedido cambió en el
+ * medio, el ítem queda en CAMBIO o NOTA y se ve en "Cambios para aplicar": no
+ * hace falta nada más, es justamente lo que tiene que pasar.
+ *
+ * Lo que se vio para sacar (SACAR) se confirma borrando la fila: ya se sacó y
+ * no queda nada que recordar. Si mientras tanto el ítem volvió al pedido, queda
+ * PENDIENTE, que es la verdad: lo que se sacó ya no está preparado.
+ *
+ * Nombre, unidad y sector salen del renglón de ahora. Si el renglón ya no está
+ * pero el ítem estaba tildado, se pone al día esa fila con lo visto: queda en
+ * SACAR, con la cantidad que de verdad se juntó.
  */
 export async function tildar(
   eventId: string,
   clave: string,
   actor: { id: string; name: string },
+  visto: Visto,
 ): Promise<"tildado" | "sacado" | "no-existe"> {
   return prisma.$transaction(async (tx) => {
+    if (visto.estado === "SACAR") {
+      const borrado = await tx.preparacion.deleteMany({ where: { eventId, clave } });
+      return borrado.count > 0 ? "sacado" : "no-existe";
+    }
+    const loVisto = { qty: visto.qty, note: visto.note, porId: actor.id, porName: actor.name, at: new Date() };
     const linea = (await lineasDelEvento(tx, eventId)).find((l) => l.clave === clave && l.qty > 0);
     if (linea) {
-      const datos = {
-        itemName: linea.itemName,
-        unit: linea.unit,
-        category: linea.category,
-        qty: linea.qty,
-        note: linea.note,
-        porId: actor.id,
-        porName: actor.name,
-        at: new Date(),
-      };
+      const datos = { itemName: linea.itemName, unit: linea.unit, category: linea.category, ...loVisto };
       await tx.preparacion.upsert({
         where: { eventId_clave: { eventId, clave } },
         update: datos,
@@ -103,45 +112,74 @@ export async function tildar(
       });
       return "tildado";
     }
-    const borrado = await tx.preparacion.deleteMany({ where: { eventId, clave } });
-    return borrado.count > 0 ? "sacado" : "no-existe";
+    const puesta = await tx.preparacion.updateMany({ where: { eventId, clave }, data: loVisto });
+    return puesta.count > 0 ? "tildado" : "no-existe";
   });
 }
 
-/** Destildar: para errores de quien tilda. Borra la fila. */
-export async function destildar(eventId: string, clave: string): Promise<boolean> {
-  return (await prisma.preparacion.deleteMany({ where: { eventId, clave } })).count > 0;
+/**
+ * Destildar: para errores de quien tilda. Borra la fila, pero solo si el ítem
+ * sigue PREPARADO como se vio (`sePuedeDestildar`). Un ✓ viejo en la pantalla
+ * no puede borrar un "Sumá 14" que llegó después: en ese caso no se toca nada y
+ * vuelve "cambio", para que la pantalla se ponga al día.
+ */
+export async function destildar(eventId: string, clave: string, visto: Visto): Promise<"destildado" | "cambio"> {
+  return prisma.$transaction(async (tx) => {
+    const item = (await estadoDelEvento(eventId, tx)).find((i) => i.clave === clave);
+    if (!sePuedeDestildar(item, visto)) return "cambio";
+    await tx.preparacion.deleteMany({ where: { eventId, clave } });
+    return "destildado";
+  });
 }
 
-/** Tilda de una vez todo lo PENDIENTE de un sector. Devuelve cuántos tildó. */
-export async function tildarSector(eventId: string, category: string, actor: { id: string; name: string }): Promise<number> {
+/**
+ * Tilda de una vez lo PENDIENTE de un sector que se vio y sigue igual
+ * (`paraTildarSector`), con lo que se vio. Devuelve cuántas filas creó y
+ * cuántos de los vistos salteó porque cambiaron mientras tanto.
+ */
+export async function tildarSector(
+  eventId: string,
+  category: string,
+  actor: { id: string; name: string },
+  vistos: VistoDeSector[],
+): Promise<{ tildados: number; salteados: number }> {
   return prisma.$transaction(async (tx) => {
     const lineas = await lineasDelEvento(tx, eventId);
     const items = estadoDeItems(lineas, await tildadosDelEvento(tx, eventId));
-    const claves = new Set(clavesParaTildarSector(items, category));
-    let n = 0;
-    for (const l of lineas) {
-      if (!claves.has(l.clave)) continue;
+    const { claves, salteados } = paraTildarSector(items, category, vistos);
+    if (claves.length === 0) return { tildados: 0, salteados };
+    const linea = new Map(lineas.map((l) => [l.clave, l]));
+    // El primero de cada clave: es el que `paraTildarSector` comparó.
+    const visto = new Map<string, VistoDeSector>();
+    for (const v of vistos) if (!visto.has(v.clave)) visto.set(v.clave, v);
+
+    // Se cuentan las filas que hay antes y después, y no los upsert: un upsert
+    // que encontró la fila hecha no tildó nada, y el número tiene que decir
+    // cuántos tildó ESTE toque.
+    const yaEstaban = await tx.preparacion.count({ where: { eventId, clave: { in: claves } } });
+    for (const clave of claves) {
+      const l = linea.get(clave)!;
+      const v = visto.get(clave)!;
       // upsert y no create: si dos teléfonos tildan el mismo sector a la vez, el
       // segundo encuentra la fila hecha y no la pisa ni choca con la clave única.
       await tx.preparacion.upsert({
-        where: { eventId_clave: { eventId, clave: l.clave } },
+        where: { eventId_clave: { eventId, clave } },
         update: {},
         create: {
           eventId,
-          clave: l.clave,
+          clave,
           itemName: l.itemName,
           unit: l.unit,
           category: l.category,
-          qty: l.qty,
-          note: l.note,
+          qty: v.qty,
+          note: v.note,
           porId: actor.id,
           porName: actor.name,
         },
       });
-      n++;
     }
-    return n;
+    const hay = await tx.preparacion.count({ where: { eventId, clave: { in: claves } } });
+    return { tildados: hay - yaEstaban, salteados };
   });
 }
 

@@ -1,15 +1,72 @@
 // La preparación de un pedido en el depósito, calculada. Sin base de datos.
 //
 // El depósito tilda en el teléfono lo que junta. Lo tildado guarda la cantidad
-// y la nota que tenía el pedido EN ESE MOMENTO. Comparar eso con el pedido de
-// ahora dice qué cambió después de preparar y qué hay que hacer físicamente.
+// y la nota que se VEÍAN en la pantalla al tildar (ver `Visto`). Comparar eso
+// con el pedido de ahora dice qué cambió después de preparar y qué hay que
+// hacer físicamente.
 // Nada de esto se guarda: se calcula cada vez, como los faltantes, para que no
 // pueda quedar desactualizado.
 
 import { recortar } from "@/lib/aviso-texto";
 import { nombreDeCategoria, ordenDeCategoria } from "@/lib/categories";
+import { validQuantity } from "@/lib/quantity";
 
 export type EstadoItem = "PENDIENTE" | "PREPARADO" | "CAMBIO" | "NOTA" | "SACAR";
+
+const ESTADOS: ReadonlySet<unknown> = new Set<EstadoItem>(["PENDIENTE", "PREPARADO", "CAMBIO", "NOTA", "SACAR"]);
+
+/** ¿Es uno de los cinco estados? Lo que llega de la pantalla no se cree a ciegas. */
+export function esEstado(x: unknown): x is EstadoItem {
+  return ESTADOS.has(x);
+}
+
+/**
+ * Lo que mostraba la fila cuando la tocaron: el estado, la cantidad y la nota
+ * del pedido tal como se dibujaron.
+ *
+ * Tildar guarda ESTO y no lo que dice el pedido al llegar el toque. Entre que
+ * se dibuja la pantalla y el toque puede pasar un minuto: si alguien cambió el
+ * pedido en el medio, copiar el pedido de ahora dejaba preparado un número que
+ * nadie vio, y el cambio desaparecía sin aviso. Guardando lo visto, el cambio
+ * queda a la vista en "Cambios para aplicar".
+ */
+export type Visto = { estado: EstadoItem; qty: number; note: string | null };
+
+/** Una fila pendiente de un sector tal como se veía al tocar "Tildar todo". */
+export type VistoDeSector = { clave: string; qty: number; note: string | null };
+
+// Lo visto llega del teléfono y se guarda tal cual, así que se comprueba como
+// cualquier dato de afuera antes de escribirlo.
+
+/** Una clave de ítem (ver `claveDeLinea`), con un tope de largo. */
+export function esClave(x: unknown): x is string {
+  return typeof x === "string" && x.length > 0 && x.length <= 100;
+}
+
+/** La nota, con el mismo tope que tiene en el pedido. */
+function esNota(x: unknown): x is string | null {
+  return x === null || (typeof x === "string" && x.length <= 1000);
+}
+
+export function esVisto(x: unknown): x is Visto {
+  if (typeof x !== "object" || x === null) return false;
+  const v = x as Record<string, unknown>;
+  return esEstado(v.estado) && validQuantity(v.qty) && esNota(v.note);
+}
+
+/** Lo visto de un sector entero. El tope es por si acaso: ningún sector de un
+ *  pedido real llega a tanto. */
+export function sonVistosDeSector(x: unknown): x is VistoDeSector[] {
+  return (
+    Array.isArray(x) &&
+    x.length <= 500 &&
+    x.every((fila: unknown) => {
+      if (typeof fila !== "object" || fila === null) return false;
+      const v = fila as Record<string, unknown>;
+      return esClave(v.clave) && validQuantity(v.qty) && esNota(v.note);
+    })
+  );
+}
 
 /** Un renglón del pedido tal como está ahora. */
 export type LineaPedido = {
@@ -21,7 +78,7 @@ export type LineaPedido = {
   note: string | null;
 };
 
-/** Lo que el depósito tildó: copia del renglón en el momento de tildar. */
+/** Lo que el depósito tildó: el renglón con la cantidad y la nota que se vieron al tildar. */
 export type Tildado = LineaPedido & { porName: string; at: Date };
 
 export type ItemPreparacion = {
@@ -44,7 +101,9 @@ export function claveDeLinea(linea: { id: string; productId: string | null }): s
   return linea.productId ?? `custom:${linea.id}`;
 }
 
-const mismaNota = (a: string | null, b: string | null) => (a ?? "").trim() === (b ?? "").trim();
+/** Dos notas son la misma si dicen lo mismo: nula, vacía y de puros espacios
+ *  son "sin nota", y los espacios de los bordes no cuentan. */
+export const mismaNota = (a: string | null, b: string | null) => (a ?? "").trim() === (b ?? "").trim();
 
 /**
  * El estado de cada ítem: lo que pide el pedido, más lo tildado que ya no está.
@@ -194,8 +253,53 @@ export function avancePorSector(items: { category: string; estado: EstadoItem }[
   return out;
 }
 
-/** "Tildar todo el sector" toma solo lo pendiente. Lo que cambió o hay que
- *  sacar implica mover algo físico y se confirma de a uno. */
-export function clavesParaTildarSector(items: ItemPreparacion[], category: string): string[] {
-  return items.filter((i) => i.category === category && i.estado === "PENDIENTE").map((i) => i.clave);
+/**
+ * Destildar es para deshacer un error de quien tilda, y solo vale sobre lo que
+ * se vio: el ítem tiene que seguir PREPARADO con la cantidad y la nota que
+ * mostraba la fila. Si no, el ✓ de la pantalla es viejo y debajo hay algo
+ * nuevo ("Sumá 14"): destildar lo borraría sin que nadie lo lea.
+ */
+export function sePuedeDestildar(item: ItemPreparacion | undefined, visto: Visto): boolean {
+  return visto.estado === "PREPARADO" && preparadoAsi(item, visto.qty, visto.note);
+}
+
+/** ¿Está preparado, y con esta cantidad y esta nota? */
+function preparadoAsi(item: ItemPreparacion | undefined, qty: number, note: string | null): boolean {
+  return item?.estado === "PREPARADO" && item.tildado !== null && item.tildado.qty === qty && mismaNota(item.tildado.note, note);
+}
+
+/**
+ * "Tildar todo el sector" toma solo lo pendiente, y de eso solo lo que se vio
+ * y sigue igual. Lo que cambió o hay que sacar implica mover algo físico y se
+ * confirma de a uno; lo que entró al pedido después de dibujar la pantalla
+ * nadie lo vio, así que no viene en `vistos` y queda pendiente.
+ *
+ * `salteados` son los vistos que no se tildan porque cambiaron (otra cantidad,
+ * otra nota, otro estado, o ya no están): la pantalla avisa que hay que
+ * revisarlos. Lo que otro teléfono ya tildó tal cual se veía no se cuenta ahí:
+ * quedó como se quería y no hay nada que revisar.
+ */
+export function paraTildarSector(
+  items: ItemPreparacion[],
+  category: string,
+  vistos: VistoDeSector[],
+): { claves: string[]; salteados: number } {
+  const porClave = new Map(items.map((i) => [i.clave, i]));
+  const vistas = new Set<string>();
+  const claves: string[] = [];
+  let salteados = 0;
+  for (const v of vistos) {
+    if (vistas.has(v.clave)) continue;
+    vistas.add(v.clave);
+    const i = porClave.get(v.clave);
+    const delSector = i !== undefined && i.category === category;
+    if (delSector && i.estado === "PENDIENTE" && i.qty === v.qty && mismaNota(i.note, v.note)) {
+      claves.push(v.clave);
+    } else if (delSector && preparadoAsi(i, v.qty, v.note)) {
+      // Ya tildado, y como se veía: nada que hacer ni que avisar.
+    } else {
+      salteados++;
+    }
+  }
+  return { claves, salteados };
 }

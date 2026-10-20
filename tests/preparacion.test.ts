@@ -4,10 +4,15 @@ import {
   avancePorSector,
   cambiosParaAplicar,
   claveDeLinea,
-  clavesParaTildarSector,
+  esClave,
+  esEstado,
+  esVisto,
   estadoDeItems,
+  paraTildarSector,
   pideConfirmacion,
+  sePuedeDestildar,
   seccionesDePantalla,
+  sonVistosDeSector,
   textoDeAccion,
   type LineaPedido,
   type Tildado,
@@ -123,12 +128,85 @@ test("avance por sector: lo al día sobre lo que hay que mover, incluido lo que 
   assert.deepEqual(avancePorSector(items).get("MOBILIARIO"), { listos: 1, total: 1 });
 });
 
-test("tildar un sector entero toma solo lo pendiente de ese sector", () => {
+test("tildar un sector entero toma solo lo pendiente de ese sector, y solo lo que se vio", () => {
   const items = estadoDeItems(
-    [L("p1", 1), L("p2", 2), L("camb", 5), L("otro", 1, null, "BEBIDA")],
+    [L("p1", 1), L("p2", 2), L("camb", 5), L("otro", 1, null, "BEBIDA"), L("nuevo", 4)],
     [T("camb", 2), T("sacar", 3)],
   );
-  assert.deepEqual(clavesParaTildarSector(items, "ENSERES").sort(), ["p1", "p2"]);
+  // "nuevo" entró al pedido después de que se dibujó la pantalla: nadie lo vio.
+  const r = paraTildarSector(items, "ENSERES", [
+    { clave: "p1", qty: 1, note: null },
+    { clave: "p2", qty: 2, note: null },
+    // Lo que no está pendiente no se tilda aunque llegue en lo visto: lo que
+    // cambió se confirma de a uno, y lo de otro sector no es de este sector.
+    { clave: "camb", qty: 5, note: null },
+    { clave: "otro", qty: 1, note: null },
+  ]);
+  assert.deepEqual(r, { claves: ["p1", "p2"], salteados: 2 });
+});
+
+test("tildar un sector saltea lo que cambió desde que se vio, y no cuenta lo que otro ya tildó así", () => {
+  const items = estadoDeItems(
+    [L("cant", 12), L("nota", 3, "las altas"), L("igual", 1), L("ya", 7)],
+    [T("ya", 7)],
+  );
+  const r = paraTildarSector(items, "ENSERES", [
+    { clave: "cant", qty: 10, note: null }, // la cantidad cambió
+    { clave: "nota", qty: 3, note: "las bajas" }, // la nota cambió
+    { clave: "igual", qty: 1, note: "  " }, // los espacios no cambian la nota
+    { clave: "ya", qty: 7, note: null }, // otro teléfono lo tildó tal cual se veía
+    { clave: "igual", qty: 1, note: null }, // repetido: cuenta una vez
+    { clave: "fantasma", qty: 1, note: null }, // ya no está en el pedido
+  ]);
+  assert.deepEqual(r, { claves: ["igual"], salteados: 3 });
+});
+
+test("destildar solo deshace lo que se vio preparado y sigue igual", () => {
+  const [prep] = estadoDeItems([L("a", 10, "largos")], [T("a", 10, "largos")]);
+  assert.equal(sePuedeDestildar(prep, { estado: "PREPARADO", qty: 10, note: "largos " }), true);
+  assert.equal(sePuedeDestildar(prep, { estado: "PREPARADO", qty: 9, note: "largos" }), false);
+  assert.equal(sePuedeDestildar(prep, { estado: "PREPARADO", qty: 10, note: "cortos" }), false);
+  assert.equal(sePuedeDestildar(prep, { estado: "PENDIENTE", qty: 10, note: "largos" }), false, "no se vio preparado");
+  // Un ✓ viejo en la pantalla no puede borrar un "Sumá 14" que llegó después.
+  const [camb] = estadoDeItems([L("a", 24)], [T("a", 10)]);
+  assert.equal(sePuedeDestildar(camb, { estado: "PREPARADO", qty: 10, note: null }), false);
+  assert.equal(sePuedeDestildar(undefined, { estado: "PREPARADO", qty: 10, note: null }), false);
+});
+
+test("de la pantalla se aceptan los cinco estados y nada más", () => {
+  for (const e of ["PENDIENTE", "PREPARADO", "CAMBIO", "NOTA", "SACAR"]) assert.equal(esEstado(e), true, e);
+  for (const e of ["", "preparado", "LISTO", null, undefined, 3]) assert.equal(esEstado(e), false, String(e));
+});
+
+test("lo visto que llega del teléfono se comprueba antes de guardarlo", () => {
+  assert.equal(esVisto({ estado: "PENDIENTE", qty: 10, note: null }), true);
+  assert.equal(esVisto({ estado: "SACAR", qty: 0, note: "x".repeat(1000) }), true, "sacar se ve en cero; la nota con el tope del pedido");
+  for (const malo of [
+    null,
+    "PENDIENTE",
+    { estado: "LISTO", qty: 1, note: null },
+    { estado: "PENDIENTE", qty: -1, note: null },
+    { estado: "PENDIENTE", qty: 1.5, note: null },
+    { estado: "PENDIENTE", qty: "10", note: null },
+    { estado: "PENDIENTE", qty: 1 },
+    { estado: "PENDIENTE", qty: 1, note: 3 },
+    { estado: "PENDIENTE", qty: 1, note: "x".repeat(1001) },
+  ]) {
+    assert.equal(esVisto(malo), false, JSON.stringify(malo));
+  }
+});
+
+test("lo visto de un sector entero: cada fila con su clave, y con tope", () => {
+  const fila = { clave: "p1", qty: 1, note: null };
+  assert.equal(sonVistosDeSector([]), true);
+  assert.equal(sonVistosDeSector([fila, { clave: "custom:l1", qty: 0, note: "las altas" }]), true);
+  assert.equal(sonVistosDeSector(Array(500).fill(fila)), true);
+  assert.equal(sonVistosDeSector(Array(501).fill(fila)), false);
+  for (const malo of [null, fila, [null], [{ ...fila, clave: "" }], [{ ...fila, clave: "x".repeat(101) }], [{ ...fila, qty: -1 }], [{ ...fila, note: undefined }]]) {
+    assert.equal(sonVistosDeSector(malo), false, JSON.stringify(malo));
+  }
+  assert.equal(esClave("p1"), true);
+  assert.equal(esClave(""), false);
 });
 
 test("la pantalla reparte: arriba lo que hay que aplicar, y cada sector sin repetir esas filas", () => {

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { destildarItem, tildarItem, tildarSectorEntero } from "@/app/actions/preparacion";
 import { intentar } from "@/lib/actualizacion";
-import { pideConfirmacion, seccionesDePantalla, type EstadoItem } from "@/lib/preparacion";
+import { pideConfirmacion, seccionesDePantalla, type EstadoItem, type Visto, type VistoDeSector } from "@/lib/preparacion";
 import { esCategoria } from "@/lib/categories";
 
 type Item = {
@@ -29,6 +29,18 @@ type Data = {
 };
 
 const unidad = (u: string) => (u === "Unidad" ? "" : ` ${u.toLowerCase()}`);
+
+/** Lo que se ve de una fila: viaja con cada toque, y el servidor guarda eso y
+ *  no lo que diga el pedido cuando llega el toque. */
+const vistoDe = (i: Item): Visto => ({ estado: i.estado, qty: i.qty, note: i.note });
+
+/** La fila de "Cambios para aplicar" que espera la confirmación, tal como se
+ *  veía al armar la pregunta. La cantidad tildada también: la pregunta
+ *  ("¿Ya sumaste 14?") sale de ella. */
+type Armada = Visto & { clave: string; tildadoQty: number | null };
+const armadaDe = (i: Item): Armada => ({ ...vistoDe(i), clave: i.clave, tildadoQty: i.tildadoQty });
+const sigueComoSeArmo = (a: Armada, i: Item) =>
+  a.clave === i.clave && a.estado === i.estado && a.qty === i.qty && a.note === i.note && a.tildadoQty === i.tildadoQty;
 
 /** Cuánto dura el error en pantalla. Sin esto se queda hasta el próximo toque. */
 const ERROR_MS = 8_000;
@@ -55,10 +67,13 @@ export function Preparar({ data }: { data: Data }) {
   // tragarse los toques sobre las demás.
   const [enVuelo, setEnVuelo] = useState<ReadonlySet<string>>(() => new Set());
   // Un objeto y no un texto: dos errores iguales seguidos reinician el reloj.
+  // También lleva los avisos (se guardó, pero algo cambió y hay que mirarlo).
   const [error, setError] = useState<{ texto: string } | null>(null);
-  const [sectorAConfirmar, setSectorAConfirmar] = useState<string | null>(null);
+  // El sector a tildar entero, con sus filas pendientes tal como se veían al
+  // tocar "Tildar todo": lo que entre mientras el diálogo está abierto nadie lo vio.
+  const [sectorAConfirmar, setSectorAConfirmar] = useState<{ category: string; vistos: VistoDeSector[] } | null>(null);
   // La fila de "Cambios para aplicar" que espera la confirmación. Una sola a la vez.
-  const [armada, setArmada] = useState<string | null>(null);
+  const [armada, setArmada] = useState<Armada | null>(null);
 
   // Se actualiza sola: quien prepara con la pantalla abierta tiene que ver
   // llegar un cambio sin recargar. Cada 45 s y al volver a la app.
@@ -82,7 +97,7 @@ export function Preparar({ data }: { data: Data }) {
     return () => clearTimeout(id);
   }, [error]);
 
-  async function correr<T extends { ok: boolean; error?: string }>(clave: string, accion: () => Promise<T>) {
+  async function correr<T extends { ok: boolean; error?: string; aviso?: string }>(clave: string, accion: () => Promise<T>) {
     setEnVuelo((prev) => new Set(prev).add(clave));
     const r = await intentar(accion);
     setEnVuelo((prev) => {
@@ -90,22 +105,27 @@ export function Preparar({ data }: { data: Data }) {
       sig.delete(clave);
       return sig;
     });
-    if (r.ok) {
+    if (r.ok && !r.aviso) {
       setError(null);
       return;
     }
-    setError({ texto: r.error ?? "No se pudo guardar." });
-    // Si falló, la pantalla quedó vieja (el ítem ya no está, el evento se fue):
-    // se vuelve a pedir para que la lista se ponga al día.
+    // Un aviso no es un error (lo demás se guardó), pero va en la misma tira.
+    setError({ texto: (r.ok ? r.aviso : r.error) ?? "No se pudo guardar." });
+    // Si falló o hubo aviso, la pantalla quedó vieja (el ítem cambió, ya no
+    // está, el evento se fue): se vuelve a pedir para que la lista se ponga al día.
     router.refresh();
   }
 
   function alternar(i: Item) {
     if (!data.puedeTildar || enVuelo.has(i.clave)) return;
     // Tocar algo preparado lo destilda (errores de quien tilda). Tocar algo
-    // pendiente, que cambió o hay que sacar, lo da por hecho con el pedido de ahora.
+    // pendiente, que cambió o hay que sacar, lo da por hecho. Los dos llevan lo
+    // que se ve en la fila: se guarda eso, y no se destilda si debajo hay algo nuevo.
+    const visto = vistoDe(i);
     void correr(i.clave, () =>
-      i.estado === "PREPARADO" ? destildarItem(data.evento.id, i.clave) : tildarItem(data.evento.id, i.clave),
+      i.estado === "PREPARADO"
+        ? destildarItem(data.evento.id, i.clave, visto)
+        : tildarItem(data.evento.id, i.clave, visto),
     );
   }
 
@@ -116,7 +136,7 @@ export function Preparar({ data }: { data: Data }) {
   function tocar(i: Item, pideConfirmar: boolean) {
     if (!data.puedeTildar || enVuelo.has(i.clave)) return;
     if (pideConfirmar) {
-      setArmada((actual) => (actual === i.clave ? null : i.clave));
+      setArmada((actual) => (actual?.clave === i.clave ? null : armadaDe(i)));
       return;
     }
     alternar(i);
@@ -127,17 +147,19 @@ export function Preparar({ data }: { data: Data }) {
     alternar(i);
   }
 
-  function tildarSector(category: string) {
+  function tildarSector(a: { category: string; vistos: VistoDeSector[] }) {
     setSectorAConfirmar(null);
-    void correr(`sector:${category}`, () => tildarSectorEntero(data.evento.id, category));
+    void correr(`sector:${a.category}`, () => tildarSectorEntero(data.evento.id, a.category, a.vistos));
   }
 
   const { paraAplicar, sectores } = seccionesDePantalla(data.items);
 
   // Si el pedido se actualizó y la fila armada ya no está en "Cambios para
-  // aplicar" (otro teléfono la tildó), se desarma: si volviera a cambiar,
-  // no puede reaparecer con una pregunta abierta que nadie hizo.
-  if (armada !== null && !paraAplicar.some((i) => i.clave === armada)) setArmada(null);
+  // aplicar" (otro teléfono la tildó), se desarma: si volviera a cambiar, no
+  // puede reaparecer con una pregunta abierta que nadie hizo. Lo mismo si
+  // sigue ahí pero cambió lo que muestra (cantidad, nota, estado): la pregunta
+  // se hizo sobre lo de antes, y confirmarla daría por hecho algo que nadie leyó.
+  if (armada !== null && !paraAplicar.some((i) => sigueComoSeArmo(armada, i))) setArmada(null);
 
   const fila = (i: Item) => (
     <Fila
@@ -146,7 +168,7 @@ export function Preparar({ data }: { data: Data }) {
       puedeTildar={data.puedeTildar}
       ocupada={enVuelo.has(i.clave)}
       pideConfirmar={pideConfirmacion(i.estado)}
-      armada={armada === i.clave}
+      armada={armada?.clave === i.clave}
       alTocar={() => tocar(i, pideConfirmacion(i.estado))}
       alConfirmar={() => confirmar(i)}
       alCancelar={() => setArmada(null)}
@@ -201,7 +223,12 @@ export function Preparar({ data }: { data: Data }) {
                 <button
                   type="button"
                   className="btn ghost prep-sector-btn"
-                  onClick={() => setSectorAConfirmar(s.category)}
+                  onClick={() =>
+                    setSectorAConfirmar({
+                      category: s.category,
+                      vistos: s.filas.filter((i) => i.estado === "PENDIENTE").map((i) => ({ clave: i.clave, qty: i.qty, note: i.note })),
+                    })
+                  }
                   disabled={enVuelo.has(`sector:${s.category}`)}
                   aria-label={`Tildar todo ${s.label}`}
                 >
@@ -246,7 +273,7 @@ export function Preparar({ data }: { data: Data }) {
             onKeyDown={(e) => { if (e.key === "Escape") setSectorAConfirmar(null); }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="prep-sector-titulo">¿Tildar todo {sectores.find((s) => s.category === sectorAConfirmar)?.label ?? sectorAConfirmar}?</h2>
+            <h2 id="prep-sector-titulo">¿Tildar todo {sectores.find((s) => s.category === sectorAConfirmar.category)?.label ?? sectorAConfirmar.category}?</h2>
             <div className="msub">
               Se tilda solo lo pendiente. Lo que cambió o hay que sacar se confirma de a uno, porque hay que mover algo.
             </div>

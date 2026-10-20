@@ -78,6 +78,40 @@ test("ninguna acción de preparación escribe sin comprobar permiso y evento viv
   }
 });
 
+test("las acciones de preparar comprueban lo visto y se lo pasan a la escritura", () => {
+  const s = fuente("app/actions/preparacion.ts");
+  for (const [nombre, comprueba] of [
+    ["tildarItem", "esVisto(visto)"],
+    ["destildarItem", "esVisto(visto)"],
+    ["tildarSectorEntero", "sonVistosDeSector(vistos)"],
+  ] as const) {
+    const c = cuerpoDe(s, nombre);
+    const valida = c.indexOf(comprueba);
+    const escritura = c.search(/\b(tildar|destildar|tildarSector)\(eventId/);
+    assert.ok(valida > -1 && escritura > valida, `${nombre} escribe lo visto sin comprobarlo`);
+    // Si lo visto no llegara a la escritura, se volvería a guardar lo que diga el
+    // pedido al llegar el toque, que es justo lo que no se quiere.
+    assert.match(c.slice(escritura), /^\w+\(eventId, [^)]*\bvistos?\)/, `${nombre} no le pasa lo visto a la escritura`);
+  }
+});
+
+test("la pantalla de preparar manda lo que se ve, y la pregunta armada se desarma si cambia", () => {
+  const s = fuente("components/Preparar.tsx");
+  assert.match(s, /const vistoDe = \(i: Item\): Visto => \(\{ estado: i\.estado, qty: i\.qty, note: i\.note \}\)/);
+  assert.match(s, /destildarItem\(data\.evento\.id, i\.clave, visto\)/);
+  assert.match(s, /tildarItem\(data\.evento\.id, i\.clave, visto\)/);
+  assert.match(s, /tildarSectorEntero\(data\.evento\.id, a\.category, a\.vistos\)/);
+  // "Tildar todo" manda solo lo pendiente del sector, tal como se veía.
+  assert.match(s, /vistos: s\.filas\.filter\(\(i\) => i\.estado === "PENDIENTE"\)/);
+  const desde = s.indexOf("const sigueComoSeArmo");
+  assert.ok(desde > -1, "no existe sigueComoSeArmo");
+  const sigue = s.slice(desde, s.indexOf(";", desde));
+  for (const campo of ["clave", "estado", "qty", "note"]) assert.match(sigue, new RegExp(`a\\.${campo} === i\\.${campo}`), campo);
+  assert.match(s, /!paraAplicar\.some\(\(i\) => sigueComoSeArmo\(armada, i\)\)\) setArmada\(null\)/);
+  // Un aviso (se tildó, pero algo cambió) se muestra y la pantalla se pone al día.
+  assert.match(s, /setError\(\{ texto: \(r\.ok \? r\.aviso : r\.error\)/);
+});
+
 test("cada acción del pedido marca si el cambio es tardío antes de avisar", () => {
   const s = fuente("app/actions/order.ts");
   const cuerpo = (nombre: string) => cuerpoDe(s, nombre);

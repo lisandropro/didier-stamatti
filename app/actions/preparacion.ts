@@ -5,9 +5,11 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { canPreparar } from "@/lib/permissions";
 import { esCategoria } from "@/lib/categories";
+import { esClave, esVisto, sonVistosDeSector, type Visto, type VistoDeSector } from "@/lib/preparacion";
 import { destildar, tildar, tildarSector } from "@/lib/preparacion-db";
 
-export type PrepResult = { ok: boolean; error?: string; count?: number };
+/** `aviso`: salió bien, pero hay algo que mirar (no es un error, no bloquea). */
+export type PrepResult = { ok: boolean; error?: string; count?: number; aviso?: string };
 
 /** Tildar es escribir: lo decide el servidor, y solo sobre un evento vivo. */
 async function requerirPreparar(eventId: string) {
@@ -25,43 +27,48 @@ async function requerirPreparar(eventId: string) {
   return { user, error: null };
 }
 
-function claveValida(clave: unknown): clave is string {
-  return typeof clave === "string" && clave.length > 0 && clave.length <= 100;
-}
-
 function revalidar(eventId: string) {
   revalidatePath("/preparar");
   revalidatePath(`/preparar/${eventId}`);
 }
 
-/** Tilda un ítem como preparado con lo que pide ahora el pedido. Si ya no va,
- *  lo da por sacado. */
-export async function tildarItem(eventId: string, clave: string): Promise<PrepResult> {
+/** Tilda un ítem como preparado con lo que se vio en la fila. Si se vio para
+ *  sacar, lo da por sacado. */
+export async function tildarItem(eventId: string, clave: string, visto: Visto): Promise<PrepResult> {
   const { user, error } = await requerirPreparar(eventId);
   if (!user) return { ok: false, error: error! };
-  if (!claveValida(clave)) return { ok: false, error: "Ítem inválido." };
-  const r = await tildar(eventId, clave, user);
+  // Lo visto se guarda tal cual: se comprueba como cualquier dato de afuera.
+  if (!esClave(clave) || !esVisto(visto)) return { ok: false, error: "Ítem inválido." };
+  const r = await tildar(eventId, clave, user, visto);
   if (r === "no-existe") return { ok: false, error: "Ese ítem ya no está en el pedido." };
   revalidar(eventId);
   return { ok: true };
 }
 
-/** Destilda un ítem: para cuando se tildó por error. */
-export async function destildarItem(eventId: string, clave: string): Promise<PrepResult> {
+/** Destilda un ítem: para cuando se tildó por error. Solo si sigue como se vio. */
+export async function destildarItem(eventId: string, clave: string, visto: Visto): Promise<PrepResult> {
   const { user, error } = await requerirPreparar(eventId);
   if (!user) return { ok: false, error: error! };
-  if (!claveValida(clave)) return { ok: false, error: "Ítem inválido." };
-  await destildar(eventId, clave);
+  if (!esClave(clave) || !esVisto(visto)) return { ok: false, error: "Ítem inválido." };
+  const r = await destildar(eventId, clave, visto);
+  if (r === "cambio") return { ok: false, error: "Ese ítem cambió recién: revisá lo que hay que aplicar." };
   revalidar(eventId);
   return { ok: true };
 }
 
-/** Tilda todo lo pendiente de un sector. */
-export async function tildarSectorEntero(eventId: string, category: string): Promise<PrepResult> {
+/** Tilda lo pendiente de un sector que se vio y sigue igual. Lo que cambió
+ *  mientras tanto no se tilda, y se avisa sin frenar el resto. */
+export async function tildarSectorEntero(eventId: string, category: string, vistos: VistoDeSector[]): Promise<PrepResult> {
   const { user, error } = await requerirPreparar(eventId);
   if (!user) return { ok: false, error: error! };
   if (!esCategoria(category)) return { ok: false, error: "Sector inválido." };
-  const count = await tildarSector(eventId, category, user);
+  if (!sonVistosDeSector(vistos)) return { ok: false, error: "Ítems inválidos." };
+  const { tildados, salteados } = await tildarSector(eventId, category, user, vistos);
   revalidar(eventId);
-  return { ok: true, count };
+  if (salteados === 0) return { ok: true, count: tildados };
+  const aviso =
+    salteados === 1
+      ? "1 ítem cambió mientras tanto y no se tildó: revisalo."
+      : `${salteados} ítems cambiaron mientras tanto y no se tildaron: revisalos.`;
+  return { ok: true, count: tildados, aviso };
 }
