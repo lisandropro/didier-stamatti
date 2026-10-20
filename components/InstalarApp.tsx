@@ -49,9 +49,11 @@ export function InstalarApp() {
     const e = ofrecimiento.current;
     if (!e) return;
     await e.prompt();
-    const { outcome } = await e.userChoice;
+    await e.userChoice;
+    // El ofrecimiento sirve una sola vez: aceptado o no, el botón ya no haría
+    // nada. Si el navegador lo vuelve a ofrecer más adelante, reaparece solo.
     ofrecimiento.current = null;
-    if (outcome === "accepted") setModo("oculto");
+    setModo("oculto");
   }
 
   if (modo === "oculto") return null;
