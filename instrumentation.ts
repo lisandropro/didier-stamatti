@@ -30,6 +30,20 @@ export async function register() {
   void avisarVacios();
   setInterval(() => void avisarVacios(), DAY);
 
+  // --- Faltante nuevo --------------------------------------------------------
+  // Cada minuto, como los avisos de pedidos: un faltante tiene que llegar al
+  // depósito mientras todavía se puede conseguir. Fuera de la condición del
+  // respaldo, por lo mismo que el aviso de pedido vacío.
+  const { barrerFaltantes } = await import("@/lib/faltantes-db");
+  const barrerFaltantesYAnotar = async () => {
+    const { avisos, registrados } = await barrerFaltantes();
+    if (avisos > 0 || registrados > 0) {
+      console.log(`[faltantes] avisos: ${avisos} · registrados sin avisar: ${registrados}`);
+    }
+  };
+  void barrerFaltantesYAnotar();
+  setInterval(() => void barrerFaltantesYAnotar(), MINUTE);
+
   // --- Vaciado de la papelera ----------------------------------------------
   // Va antes del respaldo y fuera de su condición: limpiar la papelera no
   // depende de tener el respaldo configurado. La regla es por fecha, así que
