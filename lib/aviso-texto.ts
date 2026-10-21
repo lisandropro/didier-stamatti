@@ -201,3 +201,34 @@ export function textoSinPendientes(lugar: string, actorName: string): { title: s
 export function esTituloSinPendientes(title: unknown): boolean {
   return typeof title === "string" && title.startsWith(TITULO_SIN_PENDIENTES);
 }
+
+/** Un faltante a avisar, con lo que lo explica: el lugar del evento cuyo pedido
+ *  lo empujó, o `null` si no hubo un cambio de pedido reciente (bajó el stock). */
+export type FaltanteConCausa = { name: string; totalRequested: number; stock: number; missing: number; causa: string | null };
+
+/** "Copa de agua: faltan 50 (piden 300, hay 250). Lo empujó el pedido de El Carmen Center."
+ *  El producto va primero porque los nombres del catálogo están en singular:
+ *  "faltan 50 Copa de agua" se lee mal. */
+function lineaDeFaltante(f: FaltanteConCausa): string {
+  const causa = f.causa ? `Lo empujó el pedido de ${f.causa}.` : "Por un ajuste de stock.";
+  return `${f.name}: faltan ${f.missing} (piden ${f.totalRequested}, hay ${f.stock}). ${causa}`;
+}
+
+/**
+ * El aviso de faltante nuevo: un push por período, con hasta tres productos y
+ * cuántos más. `null` si no hay nada que avisar. Como el aviso de cambios, se
+ * recorta el detalle y nunca el "y N más".
+ */
+export function textoDeFaltantes(periodo: string, items: FaltanteConCausa[]): { title: string; body: string } | null {
+  if (items.length === 0) return null;
+  const visibles = items.slice(0, MAX_EN_EL_PUSH).map(lineaDeFaltante).join("\n");
+  const resto = items.length > MAX_EN_EL_PUSH ? `\ny ${items.length - MAX_EN_EL_PUSH} más` : "";
+  return { title: `Falta stock · ${periodo}`, body: recortar(visibles, MAX_CUERPO - resto.length) + resto };
+}
+
+/** Lo mismo en una línea, para la lista de avisos de la app. */
+export function resumenDeFaltantes(periodo: string, items: FaltanteConCausa[]): string {
+  const partes = items.slice(0, MAX_EN_EL_PUSH).map((f) => `${f.name} (faltan ${f.missing})`);
+  const resto = items.length > MAX_EN_EL_PUSH ? ` · y ${items.length - MAX_EN_EL_PUSH} más` : "";
+  return recortar(`Falta stock en ${periodo}: ${partes.join(" · ")}`, MAX_CUERPO - resto.length) + resto;
+}

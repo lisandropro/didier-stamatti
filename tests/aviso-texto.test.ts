@@ -4,6 +4,8 @@ import {
   consolidarCambios,
   describirCambio,
   esTituloSinPendientes,
+  resumenDeFaltantes,
+  textoDeFaltantes,
   textoDeLoDeshecho,
   textoDePush,
   textoSinPendientes,
@@ -277,4 +279,40 @@ test("la corrección se reconoce por su título, aunque el lugar haya cambiado",
     assert.equal(esTituloSinPendientes(textoTardio("El Carmen", "Enrique", ["Sumá 14 Copas"], hoy)!.title), false);
   }
   assert.equal(esTituloSinPendientes(undefined), false);
+});
+
+test("aviso de faltante: título con el período, una línea por producto con su causa", () => {
+  const t = textoDeFaltantes("Finde 24/10", [
+    { name: "Copa de agua", totalRequested: 300, stock: 250, missing: 50, causa: "El Carmen Center" },
+    { name: "Brasero", totalRequested: 12, stock: 10, missing: 2, causa: null },
+  ]);
+  assert.deepEqual(t, {
+    title: "Falta stock · Finde 24/10",
+    body:
+      "Copa de agua: faltan 50 (piden 300, hay 250). Lo empujó el pedido de El Carmen Center.\n" +
+      "Brasero: faltan 2 (piden 12, hay 10). Por un ajuste de stock.",
+  });
+});
+
+test("aviso de faltante: tres productos y cuántos más, sin pasar de 500", () => {
+  const items = Array.from({ length: 5 }, (_, i) => ({
+    name: `Producto ${i} ${"x".repeat(200)}`, totalRequested: 10, stock: 5, missing: 5, causa: "Salón",
+  }));
+  const t = textoDeFaltantes("P", items)!;
+  assert.ok(t.body.length <= 500);
+  assert.ok(t.body.endsWith("\ny 2 más"));
+});
+
+test("sin faltantes no hay aviso", () => {
+  assert.equal(textoDeFaltantes("P", []), null);
+});
+
+test("el resumen para la lista de avisos entra en una línea", () => {
+  assert.equal(
+    resumenDeFaltantes("Finde 24/10", [
+      { name: "Copa de agua", totalRequested: 300, stock: 250, missing: 50, causa: "El Carmen Center" },
+      { name: "Brasero", totalRequested: 12, stock: 10, missing: 2, causa: null },
+    ]),
+    "Falta stock en Finde 24/10: Copa de agua (faltan 50) · Brasero (faltan 2)",
+  );
 });
