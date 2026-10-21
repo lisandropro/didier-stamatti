@@ -13,7 +13,7 @@ import { ROLES, isPriorityRecipient, sortByNotificationPriority } from "@/lib/pe
 //
 // Eran 5 minutos hasta el 19/10/2026. Se sentía lento y parecía que el aviso no
 // llegaba; con 2 sigue juntando la tanda de quien carga varias cosas seguidas.
-const QUIET_MINUTES = 2;
+export const QUIET_MINUTES = 2;
 
 // Tope para que una edición muy larga no quede acumulando para siempre en un
 // único aviso: pasado este rato desde que empezó, la próxima tanda arranca de cero.
