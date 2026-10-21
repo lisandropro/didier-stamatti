@@ -16,9 +16,11 @@ export type Decision = {
 };
 
 /**
- * La primera vez que se barre un período se registra todo lo que ya falta sin
- * avisar: si no, el deploy (o un período recién creado con pedidos copiados)
- * dispararía un aviso por cada faltante viejo.
+ * `primeraVez` es solo para los períodos que ya existían cuando se desplegó el
+ * aviso (`faltantesDesde` nulo): su primer barrido registra todo lo que ya
+ * falta sin avisar, porque si no el deploy dispararía un aviso por cada
+ * faltante viejo. Un período creado después nace marcado (`createPeriod`) y
+ * nunca pasa por acá: lo que le falte es nuevo, y se avisa.
  *
  * Si falta menos que lo avisado, no se toca la fila: lo guardado es lo que se
  * avisó, y si vuelve a subir sin pasar ese número el depósito ya lo sabía.

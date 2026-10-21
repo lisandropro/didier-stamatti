@@ -198,6 +198,8 @@ export async function barrerFaltantes(ahora: Date = new Date()): Promise<{ perio
           select: { productId: true, missing: true, at: true },
         });
         const avisadoEn = new Map(avisados.map((a) => [a.productId, a.at]));
+        // Nulo solo en un período que ya existía al desplegar: los que se crean
+        // después nacen marcados y avisan desde su primer pedido.
         const primeraVez = p.faltantesDesde === null;
         const d = decidirFaltantes(actuales, avisados, primeraVez);
 

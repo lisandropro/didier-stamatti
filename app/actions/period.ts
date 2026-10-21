@@ -86,7 +86,11 @@ export async function createPeriod(input: {
   }
 
   const label = input.label?.trim() || null;
-  const p = await prisma.operationalPeriod.create({ data: { label, startDay, endDay } });
+  // Nace marcado para el barrido de faltantes: no tiene faltantes viejos, así
+  // que no le toca el primer barrido que registra sin avisar (ese es para los
+  // períodos que ya existían al desplegar). Sin esto, los faltantes de su primer
+  // pedido (copiar uno es un toque) se registrarían en silencio.
+  const p = await prisma.operationalPeriod.create({ data: { label, startDay, endDay, faltantesDesde: new Date() } });
   revalidatePath("/");
   return { ok: true, id: p.id };
 }

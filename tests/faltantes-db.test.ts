@@ -40,6 +40,7 @@ before(async () => {
   for (const u of [pablo, dante]) {
     await prisma.pushSubscription.create({ data: { userId: u.id, endpoint: `https://fcm.googleapis.com/fcm/send/${u.name}`, p256dh: "k", auth: "a" } });
   }
+  // Sin `faltantesDesde`: como un período que ya existía al desplegar el aviso.
   const periodo = await prisma.operationalPeriod.create({ data: { label: "Finde", startDay: hoyDia, endDay: sumarDias(hoyDia, 2) } });
   const evento = await prisma.event.create({ data: { periodId: periodo.id, lugar: "El Carmen", date: instanteDe(hoyDia, "21:00") } });
   const copa = await prisma.product.create({ data: { name: "Copa de agua", category: "ENSERES", type: "REUTILIZABLE", stock: 250 } });
@@ -365,5 +366,32 @@ test("un período que termina hoy se barre; uno que terminó ayer, no", async ()
     assert.equal(pushesDe(termino.id).length, 0);
   } finally {
     await retirar([hasta.id, termino.id], [producto.id]);
+  }
+});
+
+test("un período creado después del deploy avisa los faltantes de su primer pedido", async () => {
+  enviados.length = 0;
+  // Como lo crea `createPeriod`: nace con `faltantesDesde`. El primer barrido
+  // sin avisar es solo para los períodos que ya existían al desplegar.
+  const periodo = await prisma.operationalPeriod.create({
+    data: { label: "Aparte recien creado", startDay: hoyDia, endDay: sumarDias(hoyDia, 2), faltantesDesde: ahora },
+  });
+  const producto = await nuevoProducto("Silla aparte recien creado", 100);
+  try {
+    // Se crea el evento y se le copia un pedido de otro: un toque, enseguida.
+    const evento = await nuevoEvento(periodo.id, "Quinta");
+    await piden(evento.id, producto.id, 180);
+    await cambioEn(evento.id, "Todo el pedido", ahora, "COPIADO");
+
+    const r1 = await barrer(new Date(ahora.getTime() + 30_000));
+    assert.equal(r1.avisos, 0, "30 segundos después de copiar: todavía no");
+    const r2 = await barrer(dentroDeMin(3));
+    assert.equal(r2.registrados, 0, "no se registra en silencio como un faltante viejo");
+    assert.equal(r2.avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, "Silla aparte recien creado: faltan 80 (piden 180, hay 100). Lo empujó el pedido de Quinta.");
+    assert.equal(dante.url, `/preparar/${evento.id}#faltantes`);
+  } finally {
+    await retirar([periodo.id], [producto.id]);
   }
 });

@@ -199,9 +199,11 @@ model OperationalPeriod {
   events    Event[]
   snapshot  PeriodSnapshot?
   versions  PeriodVersion[]
-  // Cuándo se barrieron por primera vez sus faltantes. El primer barrido
-  // registra lo que ya falta SIN avisar (si no, el deploy dispararía un aviso
-  // por cada faltante viejo); desde ahí se avisa solo lo nuevo. Nulo = todavía no.
+  // Desde cuándo se avisan sus faltantes. Nulo quiere decir una sola cosa: el
+  // período ya existía cuando se desplegó el aviso. Su primer barrido registra
+  // lo que ya falta SIN avisar (si no, el deploy dispararía un aviso por cada
+  // faltante viejo) y lo marca. Un período creado después nace marcado
+  // (`createPeriod`): sus faltantes son todos nuevos y se avisan.
   faltantesDesde    DateTime?
   faltantesAvisados FaltanteAvisado[]
 
