@@ -156,6 +156,7 @@ model Product {
   movements  StockMovement[]
   orderLines OrderLine[]
   changes    ProductChange[]
+  faltantesAvisados FaltanteAvisado[]
 
   @@index([category])
 }
@@ -198,6 +199,11 @@ model OperationalPeriod {
   events    Event[]
   snapshot  PeriodSnapshot?
   versions  PeriodVersion[]
+  // Cuándo se barrieron por primera vez sus faltantes. El primer barrido
+  // registra lo que ya falta SIN avisar (si no, el deploy dispararía un aviso
+  // por cada faltante viejo); desde ahí se avisa solo lo nuevo. Nulo = todavía no.
+  faltantesDesde    DateTime?
+  faltantesAvisados FaltanteAvisado[]
 
   @@index([deletedAt])
   @@index([startDay, endDay])
@@ -345,4 +351,21 @@ model Preparacion {
   at       DateTime @default(now())
 
   @@unique([eventId, clave])
+}
+
+/// Lo último que se avisó que falta de un producto en un período.
+///
+/// El barrido de cada minuto compara lo que falta ahora con esto: avisa si
+/// falta algo nuevo o más que lo avisado, y borra la fila cuando deja de
+/// faltar. `missing` es lo que decía el último aviso, no lo que falta hoy.
+model FaltanteAvisado {
+  id        String            @id @default(cuid())
+  periodId  String
+  period    OperationalPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  missing   Int
+  at        DateTime          @default(now())
+
+  @@unique([periodId, productId])
 }
