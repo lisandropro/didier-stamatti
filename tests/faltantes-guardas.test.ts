@@ -48,3 +48,10 @@ test("un período nuevo nace con faltantesDesde: su primer pedido avisa", () => 
     .filter((f) => /operationalPeriod\.create/.test(fuente(f)));
   assert.deepEqual(otros, []);
 });
+
+test("el subtítulo de Avisos no dice que todo lo cambió el equipo", () => {
+  // Los avisos de faltante los firma "Sistema": nadie del equipo los hizo.
+  const s = fuente("app/(app)/notificaciones/page.tsx");
+  assert.match(s, /<div className="sub">Cambios en los pedidos y faltantes de stock<\/div>/);
+  assert.doesNotMatch(s, /hechos por el equipo/);
+});
