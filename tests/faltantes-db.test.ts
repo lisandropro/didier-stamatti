@@ -154,6 +154,9 @@ test("sin un cambio de pedido reciente, la causa es un ajuste de stock", async (
   assert.match(enviados[0].body, /Copa de agua: faltan 130 \(piden 330, hay 200\)\. Por un ajuste de stock\.$/);
   const deDante = enviados.find((p) => p.endpoint.endsWith("Dante"))!;
   assert.equal(deDante.url, `/preparar/${ids.evento}#faltantes`, "sin causa, el primer evento del período");
+  // Fechado después de "ahora": si quedara, las pruebas que siguen (que barren
+  // en "ahora") lo verían como un ajuste de stock en curso y esperarían.
+  await prisma.stockMovement.deleteMany({ where: { productId: ids.copa } });
 });
 
 test("la regla es la del editor: un consumible o un producto sin contar no avisan", async () => {
@@ -520,5 +523,41 @@ test("sin un cambio de pedido ni un movimiento de stock que lo expliquen, no se 
     assert.equal(dante.url, `/preparar/${vivo.id}#faltantes`, "sin causa, el primer evento vivo del período");
   } finally {
     await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("mientras alguien sigue tocando el stock, el barrido espera, y después avisa una sola vez", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte inventario");
+  const producto = await nuevoProducto("Bandeja aparte inventario", 10);
+  const otro = await nuevoProducto("Cubetera aparte inventario", 50);
+  try {
+    const evento = await nuevoEvento(periodo.id, "El Carmen");
+    await piden(evento.id, producto.id, 10);
+    // Una sesión de inventario: se recuenta la bandeja (rompieron dos) y se
+    // sigue contando lo demás.
+    await prisma.product.update({ where: { id: producto.id }, data: { stock: 8 } });
+    await movimiento(producto.id, -2, new Date(ahora.getTime() - 30_000));
+    assert.equal((await barrer(ahora)).avisos, 0, "hace 30 segundos que se tocó el stock: todavía no");
+    assert.equal(pushesDe(periodo.id).length, 0);
+
+    assert.equal((await barrer(dentroDeMin(3))).avisos, 4, "pasada la quietud, sale");
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, "Bandeja aparte inventario: faltan 2 (piden 10, hay 8). Por un ajuste de stock.");
+    assert.equal((await barrer(dentroDeMin(4))).avisos, 0, "una sola vez");
+    assert.equal(pushesDe(periodo.id).length, 2, "Pablo y Dante, una vez cada uno");
+
+    // El stock es uno solo para todos los períodos: un recuento de cualquier
+    // producto hace esperar a todos, aunque lo que empeoró sea un pedido.
+    enviados.length = 0;
+    await prisma.orderLine.updateMany({ where: { eventId: evento.id }, data: { qty: 12 } });
+    await cambioEn(evento.id, producto.name, dentroDeMin(5));
+    await movimiento(otro.id, -1, new Date(dentroDeMin(10).getTime() - 30_000));
+    assert.equal((await barrer(dentroDeMin(10))).avisos, 0, "se está contando otra cosa: todavía no");
+    assert.equal((await barrer(dentroDeMin(13))).avisos, 4);
+    const segundo = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(segundo.body, "Bandeja aparte inventario: faltan 4 (piden 12, hay 8). Lo empujó el pedido de El Carmen.");
+  } finally {
+    await retirar([periodo.id], [producto.id, otro.id]);
   }
 });

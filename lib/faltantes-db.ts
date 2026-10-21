@@ -190,18 +190,27 @@ export async function barrerFaltantes(ahora: Date = new Date()): Promise<{ perio
     const idsVivos = new Set(vivos.map((p) => p.id));
     for (const id of esperandoDesde.keys()) if (!idsVivos.has(id)) esperandoDesde.delete(id);
 
+    // El stock también se espera, y para todos los períodos a la vez: es uno
+    // solo. Una sesión de inventario son recuentos y roturas seguidos; sin esto,
+    // cada uno que deje algo corto mandaría un push de urgencia alta por minuto,
+    // uno por período vivo. Una lectura por barrido (índice por `createdAt`).
+    const ultimoStock = await prisma.stockMovement.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+    const stockEnCurso = ultimoStock !== null && ahora.getTime() - ultimoStock.createdAt.getTime() < QUIET_MINUTES * 60_000;
+
     for (const p of vivos) {
       try {
-        // Quietud: mientras alguien sigue cambiando pedidos del período, se
-        // espera. El aviso sale cuando terminó de editar, con el número final.
+        // Quietud: mientras alguien sigue cambiando pedidos del período (o el
+        // stock), se espera. El aviso sale cuando terminó, con el número final.
         // Pero la espera tiene techo (`MAX_ESPERA_MIN`): si los cambios no paran,
         // se barre igual con lo que hay.
-        const ultimo = await prisma.orderChange.findFirst({
-          where: { event: { periodId: p.id } },
-          orderBy: { createdAt: "desc" },
-          select: { createdAt: true },
-        });
-        if (ultimo && ahora.getTime() - ultimo.createdAt.getTime() < QUIET_MINUTES * 60_000) {
+        const ultimo = stockEnCurso
+          ? null
+          : await prisma.orderChange.findFirst({
+              where: { event: { periodId: p.id } },
+              orderBy: { createdAt: "desc" },
+              select: { createdAt: true },
+            });
+        if (stockEnCurso || (ultimo && ahora.getTime() - ultimo.createdAt.getTime() < QUIET_MINUTES * 60_000)) {
           const desde = esperandoDesde.get(p.id) ?? ahora.getTime();
           esperandoDesde.set(p.id, desde);
           if (ahora.getTime() - desde < MAX_ESPERA_MIN * 60_000) continue;
