@@ -26,16 +26,20 @@
   - un producto que falta y no estaba avisado, o que falta MÁS que lo avisado → aviso `FALTANTE` y se actualiza la fila;
   - si falta igual o menos que lo avisado → nada;
   - si dejó de faltar → se borra la fila, sin aviso.
-- **Primera corrida de cada período** (`faltantesDesde` nulo): registra los faltantes que ya existen **sin avisar** y marca `faltantesDesde`. Al desplegar, todos los períodos arrancan así: el deploy no dispara un aviso por cada faltante viejo.
+- **Primera corrida de cada período** (`faltantesDesde` nulo): registra los faltantes que ya existen **sin avisar** y marca `faltantesDesde`. Al desplegar, todos los períodos arrancan así: el deploy no dispara un aviso por cada faltante viejo. *(Corregido en la revisión final: un período creado después del deploy nace con `faltantesDesde` puesto, así que avisa desde su primer pedido. Nulo significa solo "existía al desplegar".)*
 - **Qué períodos:** vivos (`deletedAt` nulo) y que no terminaron (`endDay >= hoy`, día argentino).
-- **Quietud:** si el último cambio de pedido del período (`OrderChange`) tiene menos de `QUIET_MINUTES` (2) minutos, ese período espera al barrido siguiente. Es la misma regla que los avisos de cambios: se avisa cuando la persona terminó de editar.
+- **Quietud:** si el último cambio de pedido del período (`OrderChange`) tiene menos de `QUIET_MINUTES` (2) minutos, ese período espera al barrido siguiente. Es la misma regla que los avisos de cambios: se avisa cuando la persona terminó de editar. *(Ajustado en las revisiones: la espera tiene un tope de 60 minutos (`MAX_ESPERA_MIN`), y un movimiento de stock reciente también hace esperar a todos los períodos.)*
 - **El texto:**
-  - título `Falta stock · <período>` (el nombre del período con `nombreDe`);
+  - título `Falta stock · <período>` (el nombre del período con `nombreDe`, acotado a 60 caracteres);
   - una línea por producto: `<producto>: faltan <n> (piden <total>, hay <stock>). Lo empujó el pedido de <lugar>.`;
-  - sin un cambio reciente que lo explique: `… Por un ajuste de stock.`;
+  - si lo explica un movimiento de stock: `… Por un ajuste de stock.`; si no lo explica ni un pedido ni el stock: `… Cambió el pedido del período.`;
   - hasta 3 productos y `y N más`; el cuerpo, como máximo 500 caracteres.
   - La spec dice "Faltan 50 Copas de agua…", pero los nombres del catálogo están en singular ("Copa de agua"): por eso el producto va primero.
-- **La causa:** el último `OrderChange` del período sobre ese producto (por nombre: `itemName === name`) en los últimos 60 minutos; si no hay, el último "Todo el pedido" (copiar o restaurar) en esa ventana; si tampoco, "Por un ajuste de stock".
+- **La causa** *(versión final, después de la revisión)*: dentro de la ventana que arranca en el más tardío entre "hace 60 minutos" y el último aviso de ese producto, y sin contar eventos borrados:
+  - el último cambio que **subió** lo pedido de ese producto (`AGREGADO`, o `CANTIDAD` con `after > before`, por nombre);
+  - si no hay, el último cambio de pedido entero (`COPIADO`, `RESTAURADO` o `PERIODO`);
+  - si no hay, un `StockMovement` del producto → "Por un ajuste de stock.";
+  - si tampoco, "Cambió el pedido del período.".
 - **Destinatarios:** todos los usuarios con un rol vigente (`ROLES`), con los prioritarios primero, **sin excluir a nadie** (un faltante no tiene autor). Urgencia `high` para todos.
 - **A dónde lleva:**
   - quien ve el stock (`canVerStock`): `/?w=<periodId>`, la portada del período con el resumen de lo que se pasa del stock;
