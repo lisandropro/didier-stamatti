@@ -14,16 +14,22 @@ import { sendPushToUser } from "@/lib/push";
 import { ROLES, canVerStock, sortByNotificationPriority } from "@/lib/permissions";
 import { QUIET_MINUTES } from "@/lib/notify";
 
-/** Un cambio de pedido o un movimiento de stock más viejo que esto ya no
- *  explica un faltante. */
-export const CAUSA_RECIENTE_MIN = 60;
-
 /** Cuánto como máximo se espera a que una persona termine de editar. Pasado
  *  esto, el período se barre aunque siga habiendo cambios recientes: si no, una
  *  edición que no para (o un cambio automático cada tanto) posterga el aviso
  *  para siempre y el depósito se entera tarde. Mismo criterio que
  *  `MAX_BATCH_MINUTES` en `lib/notify.ts`: la espera tiene un techo. */
 export const MAX_ESPERA_MIN = 60;
+
+/** Un cambio de pedido, un movimiento de stock o un cambio de tipo más viejo que
+ *  esto ya no explica un faltante. Tiene que cubrir la espera: si una hora de
+ *  edición seguida hace esperar al barrido hasta el techo, el cambio que empujó
+ *  el faltante ya es más viejo que `MAX_ESPERA_MIN` cuando por fin se avisa, y
+ *  con una ventana igual de corta quedaría afuera y el aviso no culparía a
+ *  nadie. De ahí el margen: la quietud con que arrancó la espera (el último
+ *  cambio ya tenía hasta `QUIET_MINUTES` cuando se la notó) y otro tanto por el
+ *  minuto que tarda el barrido en notarlo. */
+export const CAUSA_RECIENTE_MIN = MAX_ESPERA_MIN + 2 * QUIET_MINUTES;
 
 const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -56,35 +62,61 @@ function subioLoPedido(c: { kind: string; before: string | null; after: string |
 
 /** Por qué falta cada producto, en este orden:
  *  1. el último cambio de pedido del período que subió lo pedido de ese
- *     producto (por nombre), o si no, el último que trajo un pedido entero:
- *     la causa es ese evento, y el aviso lleva a él;
- *  2. si no, un movimiento de stock del producto: "por un ajuste de stock";
+ *     producto (por nombre), o si no, el último que trajo un pedido entero a un
+ *     evento que pide ese producto: la causa es ese evento, y el aviso lleva a
+ *     él. Un pedido entero copiado a un evento que no pide el producto no lo
+ *     empujó: cuenta como causa del producto solo donde el producto está;
+ *  2. si no, un movimiento de stock del producto, o un cambio de su tipo (pasar
+ *     de consumible a reutilizable lo empieza a contar, sin dejar un
+ *     movimiento): "por un ajuste de stock";
  *  3. si no, nada que lo explique: no se culpa a nadie ("cambió el pedido").
  *
- *  Todo dentro de la última hora y después del último aviso de ese producto
- *  (`avisadoEn`): lo que ya se explicó en un aviso anterior no puede explicar
- *  un empeoramiento posterior. Y un evento borrado nunca es la causa (ni el
- *  destino del aviso): ya no está en el pedido, y mandar al depósito a una
- *  pantalla que no existe es peor que no nombrar a nadie. */
+ *  Todo dentro de la ventana (`CAUSA_RECIENTE_MIN`) y después del último aviso
+ *  de ese producto (`avisadoEn`): lo que ya se explicó en un aviso anterior no
+ *  puede explicar un empeoramiento posterior. Y un evento borrado nunca es la
+ *  causa (ni el destino del aviso): ya no está en el pedido, y mandar al
+ *  depósito a una pantalla que no existe es peor que no nombrar a nadie. */
 async function causas(periodId: string, faltantes: Faltante[], ahora: Date, avisadoEn: Map<string, Date>) {
   const desde = new Date(ahora.getTime() - CAUSA_RECIENTE_MIN * 60_000);
+  const productIds = faltantes.map((f) => f.productId);
   const cambios = await prisma.orderChange.findMany({
     where: { event: { periodId, deletedAt: null }, createdAt: { gte: desde } },
     orderBy: { createdAt: "desc" },
     select: { itemName: true, kind: true, before: true, after: true, createdAt: true, event: { select: { id: true, lugar: true } } },
   });
   const movimientos = await prisma.stockMovement.findMany({
-    where: { productId: { in: faltantes.map((f) => f.productId) }, createdAt: { gte: desde } },
+    where: { productId: { in: productIds }, createdAt: { gte: desde } },
     select: { productId: true, createdAt: true },
   });
+  // El tipo se guarda con el nombre del campo del código ("type"), el mismo que
+  // escribe `updateProduct`.
+  const cambiosDeTipo = await prisma.productChange.findMany({
+    where: { productId: { in: productIds }, field: "type", createdAt: { gte: desde } },
+    select: { productId: true, createdAt: true },
+  });
+  // Un cambio que trae un pedido entero no nombra a los productos: sirve de causa
+  // de un producto solo si el pedido de ese evento lo tiene. Una lectura por
+  // período que avisa, no una por producto.
+  const eventosDePedidoEntero = [...new Set(cambios.filter((x) => DE_TODO_EL_PEDIDO.has(x.kind)).map((x) => x.event.id))];
+  const renglones =
+    eventosDePedidoEntero.length === 0
+      ? []
+      : await prisma.orderLine.findMany({
+          where: { eventId: { in: eventosDePedidoEntero }, productId: { in: productIds } },
+          select: { eventId: true, productId: true },
+        });
+  const pide = new Set(renglones.map((r) => `${r.eventId}|${r.productId}`));
   const out = new Map<string, { causa: CausaDeFaltante; eventId: string | null }>();
   for (const f of faltantes) {
     const ultimoAviso = avisadoEn.get(f.productId);
     const despuesDelAviso = (x: { createdAt: Date }) => !ultimoAviso || x.createdAt > ultimoAviso;
     const posibles = cambios.filter(despuesDelAviso);
     const c =
-      posibles.find((x) => x.itemName === f.name && subioLoPedido(x)) ?? posibles.find((x) => DE_TODO_EL_PEDIDO.has(x.kind));
-    const huboStock = movimientos.some((m) => m.productId === f.productId && despuesDelAviso(m));
+      posibles.find((x) => x.itemName === f.name && subioLoPedido(x)) ??
+      posibles.find((x) => DE_TODO_EL_PEDIDO.has(x.kind) && pide.has(`${x.event.id}|${f.productId}`));
+    const huboStock =
+      movimientos.some((m) => m.productId === f.productId && despuesDelAviso(m)) ||
+      cambiosDeTipo.some((t) => t.productId === f.productId && despuesDelAviso(t));
     const causa: CausaDeFaltante = c ? { tipo: "pedido", lugar: c.event.lugar } : huboStock ? { tipo: "stock" } : { tipo: "otro" };
     out.set(f.productId, { causa, eventId: c?.event.id ?? null });
   }

@@ -12,6 +12,11 @@ import { diaDe, instanteDe, sumarDias } from "../lib/dates";
 const base = crearBaseDescartable("faltantes-db");
 let prisma: typeof import("../lib/db").prisma;
 let barrer: typeof import("../lib/faltantes-db").barrerFaltantes;
+// La ventana en que un cambio todavía explica un faltante, y los dos topes que
+// la arman: se usan los de verdad para que las pruebas de borde sigan en el borde.
+let ventana: number;
+let maxEspera: number;
+let quietud: number;
 const enviados: { title: string; body: string; url?: string; tag?: string; endpoint: string }[] = [];
 let ids: { periodo: string; evento: string; ana: string; pablo: string; dante: string; enrique: string; copa: string; mesa: string };
 
@@ -24,7 +29,11 @@ const dentroDeMin = (min: number) => new Date(ahora.getTime() + min * 60_000);
 
 before(async () => {
   ({ prisma } = await import("../lib/db"));
-  ({ barrerFaltantes: barrer } = await import("../lib/faltantes-db"));
+  const faltantesDb = await import("../lib/faltantes-db");
+  barrer = faltantesDb.barrerFaltantes;
+  ventana = faltantesDb.CAUSA_RECIENTE_MIN;
+  maxEspera = faltantesDb.MAX_ESPERA_MIN;
+  quietud = (await import("../lib/notify")).QUIET_MINUTES;
   const push = await import("../lib/push");
   push.transporte.listo = () => true;
   push.transporte.enviar = async (destino, cuerpo) => {
@@ -557,6 +566,184 @@ test("mientras alguien sigue tocando el stock, el barrido espera, y después avi
     assert.equal((await barrer(dentroDeMin(13))).avisos, 4);
     const segundo = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
     assert.equal(segundo.body, "Bandeja aparte inventario: faltan 4 (piden 12, hay 8). Lo empujó el pedido de El Carmen.");
+  } finally {
+    await retirar([periodo.id], [producto.id, otro.id]);
+  }
+});
+
+/** Un período con un evento que pide 12 de un producto con stock 10 (faltan 2),
+ *  al que `preparar` le deja los rastros que se quieran probar. Barre en "ahora"
+ *  y devuelve lo que le llegó al depósito. */
+const lineaDeCausa = async (
+  label: string,
+  preparar: (c: { eventoId: string; producto: { id: string; name: string } }) => Promise<void>,
+) => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo(label);
+  const producto = await nuevoProducto(`Fuente ${label}`, 10);
+  try {
+    const evento = await nuevoEvento(periodo.id, "El Carmen");
+    await piden(evento.id, producto.id, 12);
+    await preparar({ eventoId: evento.id, producto });
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    return { body: dante.body, url: dante.url, eventoId: evento.id, nombre: producto.name };
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+};
+const FALTAN_DOS = "faltan 2 (piden 12, hay 10).";
+
+test("un pedido entero copiado a un evento que no pide el producto no lo explica", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte copia ajena");
+  const producto = await nuevoProducto("Fuente aparte copia ajena", 10);
+  try {
+    // El que pide la fuente es el almuerzo (el primero por fecha) y la copia cayó
+    // en la cena: si la cena fuera la causa, el aviso la nombraría y el depósito
+    // iría a ella, a un pedido donde la fuente ni está.
+    const almuerzo = await nuevoEvento(periodo.id, "Almuerzo", "12:00");
+    const cena = await nuevoEvento(periodo.id, "Cena", "21:00");
+    await piden(almuerzo.id, producto.id, 12);
+    await cambioEn(cena.id, "Todo el pedido", haceMin(10), "COPIADO", "pedido vacío", "3 productos copiados de Brunch");
+    // Y se rompieron dos fuentes: eso sí explica el faltante.
+    await movimiento(producto.id, -2, haceMin(5));
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, `Fuente aparte copia ajena: ${FALTAN_DOS} Por un ajuste de stock.`);
+    assert.doesNotMatch(dante.body, /Cena/);
+    assert.notEqual(dante.url, `/preparar/${cena.id}#faltantes`);
+    assert.equal(dante.url, `/preparar/${almuerzo.id}#faltantes`, "sin causa de pedido, el primer evento del período");
+    assert.ok((await avisosDe("Aparte copia ajena")).every((a) => a.eventId === almuerzo.id));
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("restaurar una versión en un evento que pide el producto nombra a ese evento", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte restaurado");
+  const producto = await nuevoProducto("Banco aparte restaurado", 10);
+  try {
+    const primero = await nuevoEvento(periodo.id, "Almuerzo", "12:00");
+    const restaurado = await nuevoEvento(periodo.id, "Cena", "21:00");
+    await piden(restaurado.id, producto.id, 12);
+    await cambioEn(primero.id, "Otra cosa", haceMin(30));
+    await cambioEn(restaurado.id, "Todo el pedido", haceMin(10), "RESTAURADO", "pedido actual", "versión del jueves");
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, `Banco aparte restaurado: ${FALTAN_DOS} Lo empujó el pedido de Cena.`);
+    assert.equal(dante.url, `/preparar/${restaurado.id}#faltantes`);
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("pasar un producto de consumible a reutilizable, y que quede corto, cuenta como un ajuste de stock", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte cambio de tipo");
+  const producto = await prisma.product.create({
+    data: { name: "Bandeja aparte cambio de tipo", category: "ENSERES", type: "CONSUMIBLE", stock: 10 },
+  });
+  try {
+    const evento = await nuevoEvento(periodo.id, "El Carmen");
+    await piden(evento.id, producto.id, 12);
+    assert.equal((await barrer(ahora)).avisos, 0, "mientras es consumible no se cuenta");
+
+    // Lo que deja `updateProduct` al cambiar el tipo: el producto y su cambio,
+    // con el nombre de campo del código ("type"). El stock no se toca.
+    await prisma.$transaction([
+      prisma.product.update({ where: { id: producto.id }, data: { type: "REUTILIZABLE" } }),
+      prisma.productChange.create({
+        data: { productId: producto.id, actorName: "Enrique", field: "type", before: "CONSUMIBLE", after: "REUTILIZABLE", createdAt: haceMin(5) },
+      }),
+    ]);
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, `Bandeja aparte cambio de tipo: ${FALTAN_DOS} Por un ajuste de stock.`);
+    assert.equal(dante.url, `/preparar/${evento.id}#faltantes`);
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("otro cambio del producto, o un cambio de tipo viejo, no explican el faltante", async () => {
+  // Un cambio de nombre no mueve el stock; y un cambio de tipo de antes de la
+  // ventana ya no es lo que lo empujó.
+  const casos = [
+    { label: "Aparte renombrado", field: "nombre", antes: 5 },
+    { label: "Aparte tipo viejo", field: "type", antes: ventana + 1 },
+  ];
+  for (const { label, field, antes } of casos) {
+    const r = await lineaDeCausa(label, async ({ producto }) => {
+      await prisma.productChange.create({
+        data: { productId: producto.id, actorName: "Enrique", field, before: "a", after: "b", createdAt: haceMin(antes) },
+      });
+    });
+    assert.equal(r.body, `${r.nombre}: ${FALTAN_DOS} Cambió el pedido del período.`, label);
+  }
+});
+
+test("la ventana de la causa cubre la espera máxima, y no más que eso", async () => {
+  // Una hora entera de edición: el cambio que empujó el faltante quedó atrás,
+  // más viejo que la espera máxima, y el barrido recién ahora lo avisa. Si la
+  // ventana midiera lo mismo que la espera, acá se perdería la causa.
+  assert.ok(ventana >= maxEspera + quietud, "la ventana cubre la espera máxima más la quietud");
+  const dentro = await lineaDeCausa("Aparte ventana dentro", async ({ eventoId, producto }) => {
+    await cambioEn(eventoId, producto.name, haceMin(maxEspera + quietud + 1));
+  });
+  assert.equal(dentro.body, `${dentro.nombre}: ${FALTAN_DOS} Lo empujó el pedido de El Carmen.`);
+
+  const justo = await lineaDeCausa("Aparte ventana borde", async ({ eventoId, producto }) => {
+    await cambioEn(eventoId, producto.name, haceMin(ventana - 1));
+  });
+  assert.equal(justo.body, `${justo.nombre}: ${FALTAN_DOS} Lo empujó el pedido de El Carmen.`);
+
+  const fuera = await lineaDeCausa("Aparte ventana fuera", async ({ eventoId, producto }) => {
+    await cambioEn(eventoId, producto.name, haceMin(ventana + 1));
+  });
+  assert.equal(fuera.body, `${fuera.nombre}: ${FALTAN_DOS} Cambió el pedido del período.`, "más viejo que la ventana, no se culpa a nadie");
+});
+
+test("un movimiento de stock más viejo que la ventana no explica el faltante", async () => {
+  const dentro = await lineaDeCausa("Aparte stock dentro", async ({ producto }) => {
+    await movimiento(producto.id, -2, haceMin(ventana - 1));
+  });
+  assert.equal(dentro.body, `${dentro.nombre}: ${FALTAN_DOS} Por un ajuste de stock.`);
+
+  const fuera = await lineaDeCausa("Aparte stock fuera", async ({ producto }) => {
+    await movimiento(producto.id, -2, haceMin(ventana + 1));
+  });
+  assert.equal(fuera.body, `${fuera.nombre}: ${FALTAN_DOS} Cambió el pedido del período.`);
+});
+
+test("la espera máxima también corta una espera causada por el stock", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte techo stock");
+  const producto = await nuevoProducto("Plato aparte techo stock", 10);
+  const otro = await nuevoProducto("Cubetera aparte techo stock", 50);
+  try {
+    const evento = await nuevoEvento(periodo.id, "El Carmen");
+    await piden(evento.id, producto.id, 12);
+    const haceSegundos = (t: Date) => new Date(t.getTime() - 30_000);
+
+    // Un inventario que no termina: cada barrido encuentra un recuento de hace 30
+    // segundos. Los movimientos son de otro producto y quedan atados a él: al
+    // retirarlo se van, y no hacen esperar a las pruebas que siguen.
+    await movimiento(otro.id, -1, haceSegundos(ahora));
+    assert.equal((await barrer(ahora)).avisos, 0, "arranca la espera");
+    const alos30 = dentroDeMin(maxEspera / 2);
+    await movimiento(otro.id, -1, haceSegundos(alos30));
+    assert.equal((await barrer(alos30)).avisos, 0, "a mitad de la espera máxima, sigue esperando");
+    assert.equal(pushesDe(periodo.id).length, 0);
+
+    const pasada = dentroDeMin(maxEspera + 1);
+    await movimiento(otro.id, -1, haceSegundos(pasada));
+    assert.equal((await barrer(pasada)).avisos, 4, "pasada la espera máxima, sale aunque el stock siga moviéndose");
+    assert.equal((await avisosDe("Aparte techo stock")).length, 4);
   } finally {
     await retirar([periodo.id], [producto.id, otro.id]);
   }
