@@ -55,8 +55,21 @@ after(async () => {
 });
 
 const filas = () => prisma.faltanteAvisado.findMany({ where: { periodId: ids.periodo }, orderBy: { productId: "asc" } });
-const cambio = (itemName: string, createdAt: Date) =>
-  prisma.orderChange.create({ data: { eventId: ids.evento, actorName: "Enrique", itemName, kind: "CANTIDAD", createdAt } });
+/** Un cambio del pedido de El Carmen que SUBIÓ lo pedido (`before` nulo: un
+ *  renglón nuevo), como los que deja `setLine`. Solo un cambio así puede
+ *  empujar un faltante. */
+const cambio = (itemName: string, createdAt: Date, before: number | null, after: number) =>
+  prisma.orderChange.create({
+    data: {
+      eventId: ids.evento,
+      actorName: "Enrique",
+      itemName,
+      kind: before === null ? "AGREGADO" : "CANTIDAD",
+      before: before === null ? null : String(before),
+      after: String(after),
+      createdAt,
+    },
+  });
 
 test("la primera corrida registra lo que ya falta sin avisar", async () => {
   // Media hora antes de "ahora": la causa de un aviso tiene que ser un cambio
@@ -72,7 +85,7 @@ test("la primera corrida registra lo que ya falta sin avisar", async () => {
 
 test("un faltante nuevo avisa una vez, a todos, con prioridad y con su causa", async () => {
   await prisma.orderLine.create({ data: { eventId: ids.evento, productId: ids.mesa, qty: 12 } });
-  await cambio("Mesa", haceMin(5));
+  await cambio("Mesa", haceMin(5), null, 12);
   const r = await barrer(ahora);
   assert.equal(r.avisos, 4, "uno por persona: nadie queda afuera, ni quien hizo el cambio");
   assert.equal(enviados.length, 2, "Pablo y Dante tienen teléfono");
@@ -99,7 +112,7 @@ test("un faltante nuevo avisa una vez, a todos, con prioridad y con su causa", a
 test("empeorar avisa otra vez; mejorar no avisa ni baja lo guardado", async () => {
   enviados.length = 0;
   await prisma.orderLine.updateMany({ where: { eventId: ids.evento, productId: ids.copa }, data: { qty: 320 } });
-  await cambio("Copa de agua", haceMin(5));
+  await cambio("Copa de agua", haceMin(5), 300, 320);
   assert.equal((await barrer(ahora)).avisos, 4);
   assert.equal(enviados[0].body, "Copa de agua: faltan 70 (piden 320, hay 250). Lo empujó el pedido de El Carmen.");
 
@@ -123,7 +136,7 @@ test("mientras alguien sigue cambiando pedidos del período, el barrido espera",
   // Diez minutos después de la prueba anterior: el cambio tiene que ser posterior
   // al último aviso de la copa para ser su causa.
   const t = dentroDeMin(10);
-  const reciente = await cambio("Copa de agua", new Date(t.getTime() - 30_000));
+  const reciente = await cambio("Copa de agua", new Date(t.getTime() - 30_000), 310, 330);
   assert.equal((await barrer(t)).avisos, 0, "hace 30 segundos que se cambió: todavía no");
   await prisma.orderChange.update({ where: { id: reciente.id }, data: { createdAt: new Date(t.getTime() - 3 * 60_000) } });
   assert.equal((await barrer(t)).avisos, 4, "pasada la quietud, sale");
@@ -133,7 +146,10 @@ test("mientras alguien sigue cambiando pedidos del período, el barrido espera",
 test("sin un cambio de pedido reciente, la causa es un ajuste de stock", async () => {
   enviados.length = 0;
   await prisma.orderChange.updateMany({ data: { createdAt: haceMin(120) } });
+  // Lo que deja `saveStock`: el stock nuevo y su movimiento, posterior al último
+  // aviso de la copa (el de la prueba anterior, diez minutos después de "ahora").
   await prisma.product.update({ where: { id: ids.copa }, data: { stock: 200 } });
+  await prisma.stockMovement.create({ data: { productId: ids.copa, delta: -50, reason: "ROTURA", createdAt: dentroDeMin(15) } });
   assert.equal((await barrer(dentroDeMin(20))).avisos, 4);
   assert.match(enviados[0].body, /Copa de agua: faltan 130 \(piden 330, hay 200\)\. Por un ajuste de stock\.$/);
   const deDante = enviados.find((p) => p.endpoint.endsWith("Dante"))!;
@@ -172,8 +188,19 @@ const nuevoEvento = (periodId: string, lugar: string, hora = "21:00", dia = hoyD
 const nuevoProducto = (name: string, stock: number) =>
   prisma.product.create({ data: { name, category: "ENSERES", type: "REUTILIZABLE", stock } });
 const piden = (eventId: string, productId: string, qty: number) => prisma.orderLine.create({ data: { eventId, productId, qty } });
-const cambioEn = (eventId: string, itemName: string, createdAt: Date, kind = "CANTIDAD") =>
-  prisma.orderChange.create({ data: { eventId, actorName: "Enrique", itemName, kind, createdAt } });
+/** Un cambio de pedido. Por defecto, uno de cantidad que SUBIÓ lo pedido (de 10
+ *  a 12): el único tipo de cambio sobre un producto que puede empujar un faltante. */
+const cambioEn = (
+  eventId: string,
+  itemName: string,
+  createdAt: Date,
+  kind = "CANTIDAD",
+  before: string | null = "10",
+  after: string | null = "12",
+) => prisma.orderChange.create({ data: { eventId, actorName: "Enrique", itemName, kind, before, after, createdAt } });
+/** Un movimiento de stock del producto, como el que deja `saveStock`. */
+const movimiento = (productId: string, delta: number, createdAt: Date) =>
+  prisma.stockMovement.create({ data: { productId, delta, reason: delta < 0 ? "ROTURA" : "AJUSTE", createdAt } });
 /** Lo último que se avisó de un producto, como si ya hubiera habido un aviso. */
 const avisadoAntes = (periodId: string, productId: string, missing: number, at = haceMin(120)) =>
   prisma.faltanteAvisado.create({ data: { periodId, productId, missing, at } });
@@ -206,13 +233,15 @@ test("la causa nunca es un evento borrado, ni el aviso lleva a él", async () =>
     assert.equal(dante.url, `/preparar/${vivo.id}#faltantes`);
     assert.ok((await avisosDe("Aparte borrado")).every((a) => a.eventId === vivo.id && !a.linkUrl?.includes(borrado.id)));
 
-    // Y si el único cambio reciente era del evento borrado, no hay causa de pedido.
+    // Y si el único cambio reciente era del evento borrado, no hay causa de
+    // pedido (ni de stock: nadie lo tocó).
     enviados.length = 0;
     await prisma.orderChange.deleteMany({ where: { eventId: vivo.id } });
     await prisma.orderLine.updateMany({ where: { eventId: vivo.id }, data: { qty: 20 } });
     assert.equal((await barrer(dentroDeMin(5))).avisos, 4);
     const segundo = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
-    assert.match(segundo.body, /Por un ajuste de stock\.$/);
+    assert.match(segundo.body, /\(piden 20, hay 10\)\. Cambió el pedido del período\.$/);
+    assert.doesNotMatch(segundo.body, /Quinta Borrada/);
     assert.equal(segundo.url, `/preparar/${vivo.id}#faltantes`, "sin causa, el primer evento VIVO del período");
   } finally {
     await retirar([periodo.id], [producto.id]);
@@ -250,7 +279,7 @@ test("sin un cambio sobre el producto, un 'Todo el pedido' reciente es la causa"
     // Otro producto cambió antes, y el pedido entero se copió después: nada
     // nombra al banco, pero la copia es lo que lo empujó.
     await cambioEn(primero.id, "Otra cosa", haceMin(30));
-    await cambioEn(copiado.id, "Todo el pedido", haceMin(10), "COPIADO");
+    await cambioEn(copiado.id, "Todo el pedido", haceMin(10), "COPIADO", "pedido vacío", "1 producto copiados de Almuerzo");
 
     assert.equal((await barrer(ahora)).avisos, 4);
     const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
@@ -280,15 +309,18 @@ test("la causa tiene que ser posterior al último aviso del producto", async () 
     // arriba: este empeoramiento lo causó el stock.
     enviados.length = 0;
     await prisma.product.update({ where: { id: producto.id }, data: { stock: 5 } });
+    await movimiento(producto.id, -5, dentroDeMin(5));
     assert.equal((await barrer(dentroDeMin(10))).avisos, 4);
     const dos = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
     assert.match(dos.body, /faltan 7 \(piden 12, hay 5\)\. Por un ajuste de stock\.$/);
     assert.equal(dos.url, `/preparar/${primero.id}#faltantes`, "sin causa, el primer evento del período");
 
-    // Un cambio de pedido nuevo, posterior al aviso, vuelve a ser causa.
+    // Un cambio de pedido nuevo, posterior al aviso, vuelve a ser causa, aunque
+    // en el mismo rato también haya bajado el stock.
     enviados.length = 0;
     await cambioEn(carmen.id, producto.name, dentroDeMin(12));
     await prisma.product.update({ where: { id: producto.id }, data: { stock: 2 } });
+    await movimiento(producto.id, -3, dentroDeMin(12));
     assert.equal((await barrer(dentroDeMin(15))).avisos, 4);
     const tres = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
     assert.match(tres.body, /faltan 10 \(piden 12, hay 2\)\. Lo empujó el pedido de El Carmen\.$/);
@@ -381,7 +413,7 @@ test("un período creado después del deploy avisa los faltantes de su primer pe
     // Se crea el evento y se le copia un pedido de otro: un toque, enseguida.
     const evento = await nuevoEvento(periodo.id, "Quinta");
     await piden(evento.id, producto.id, 180);
-    await cambioEn(evento.id, "Todo el pedido", ahora, "COPIADO");
+    await cambioEn(evento.id, "Todo el pedido", ahora, "COPIADO", "pedido vacío", "1 producto copiados de El Carmen");
 
     const r1 = await barrer(new Date(ahora.getTime() + 30_000));
     assert.equal(r1.avisos, 0, "30 segundos después de copiar: todavía no");
@@ -391,6 +423,101 @@ test("un período creado después del deploy avisa los faltantes de su primer pe
     const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
     assert.equal(dante.body, "Silla aparte recien creado: faltan 80 (piden 180, hay 100). Lo empujó el pedido de Quinta.");
     assert.equal(dante.url, `/preparar/${evento.id}#faltantes`);
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("la causa es el cambio que subió lo pedido, nunca uno que lo bajó o le cambió la nota", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte baja");
+  const producto = await nuevoProducto("Mesa aparte baja", 100);
+  try {
+    const baja = await nuevoEvento(periodo.id, "Baja", "12:00");
+    const sube = await nuevoEvento(periodo.id, "Sube", "21:00");
+    await piden(baja.id, producto.id, 20);
+    await piden(sube.id, producto.id, 150);
+    await cambioEn(sube.id, producto.name, haceMin(8), "CANTIDAD", "50", "150");
+    // Después, otro evento bajó lo suyo y le cambió la nota: son los cambios más
+    // nuevos sobre la mesa, pero ninguno puede haber empujado el faltante.
+    await cambioEn(baja.id, producto.name, haceMin(6), "CANTIDAD", "50", "20");
+    await cambioEn(baja.id, producto.name, haceMin(5), "NOTA", null, "Las redondas");
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, "Mesa aparte baja: faltan 70 (piden 170, hay 100). Lo empujó el pedido de Sube.");
+    assert.equal(dante.url, `/preparar/${sube.id}#faltantes`, "el depósito va al que subió, no al primero por fecha");
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("mudar un evento a este período es la causa, y el depósito va a ese evento", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte mudanza");
+  const producto = await nuevoProducto("Copa aparte mudanza", 100);
+  try {
+    const quieto = await nuevoEvento(periodo.id, "Ya estaba", "12:00");
+    const movido = await nuevoEvento(periodo.id, "Movido", "21:00");
+    await piden(quieto.id, producto.id, 80);
+    await piden(movido.id, producto.id, 80);
+    // Lo que deja `updateEvent` al mudar el evento: un solo cambio, sobre el
+    // período, y el evento llega con todo su pedido (`lib/event-edit.ts`).
+    await cambioEn(movido.id, "Período operativo", haceMin(5), "PERIODO", "Otro finde", "Aparte mudanza");
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, "Copa aparte mudanza: faltan 60 (piden 160, hay 100). Lo empujó el pedido de Movido.");
+    assert.equal(dante.url, `/preparar/${movido.id}#faltantes`);
+    assert.ok((await avisosDe("Aparte mudanza")).every((a) => a.eventId === movido.id));
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("una baja de stock con su movimiento reciente dice 'ajuste de stock'", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte rotura");
+  const producto = await nuevoProducto("Fuente aparte rotura", 10);
+  try {
+    const evento = await nuevoEvento(periodo.id, "El Carmen");
+    await piden(evento.id, producto.id, 10);
+    // Se rompieron tres: lo que deja `saveStock`, el stock nuevo y su movimiento.
+    await prisma.product.update({ where: { id: producto.id }, data: { stock: 7 } });
+    await movimiento(producto.id, -3, haceMin(5));
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, "Fuente aparte rotura: faltan 3 (piden 10, hay 7). Por un ajuste de stock.");
+    assert.equal(dante.url, `/preparar/${evento.id}#faltantes`, "sin un evento que lo cause, el primero del período");
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("sin un cambio de pedido ni un movimiento de stock que lo expliquen, no se culpa a nadie", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte sin rastro");
+  const producto = await nuevoProducto("Bowl aparte sin rastro", 10);
+  try {
+    const vivo = await nuevoEvento(periodo.id, "El Carmen", "12:00");
+    const enPapelera = await nuevoEvento(periodo.id, "Quinta", "21:00");
+    await piden(vivo.id, producto.id, 12);
+    await piden(enPapelera.id, producto.id, 3);
+    await prisma.event.update({ where: { id: enPapelera.id }, data: { deletedAt: haceMin(60) } });
+    await avisadoAntes(periodo.id, producto.id, 2, haceMin(30));
+    // Un recuento y un cambio de pedido anteriores al último aviso ya se
+    // explicaron en él: no cuentan para este.
+    await movimiento(producto.id, -1, haceMin(40));
+    await cambioEn(vivo.id, producto.name, haceMin(40));
+    // Recuperar el evento de la papelera vuelve a sumar su pedido sin dejar un
+    // cambio (igual que descartar o restaurar una versión sin nada tildado).
+    await prisma.event.update({ where: { id: enPapelera.id }, data: { deletedAt: null } });
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.equal(dante.body, "Bowl aparte sin rastro: faltan 5 (piden 15, hay 10). Cambió el pedido del período.");
+    assert.equal(dante.url, `/preparar/${vivo.id}#faltantes`, "sin causa, el primer evento vivo del período");
   } finally {
     await retirar([periodo.id], [producto.id]);
   }

@@ -205,16 +205,29 @@ export function esTituloSinPendientes(title: unknown): boolean {
   return typeof title === "string" && title.startsWith(TITULO_SIN_PENDIENTES);
 }
 
-/** Un faltante a avisar, con lo que lo explica: el lugar del evento cuyo pedido
- *  lo empujó, o `null` si no hubo un cambio de pedido reciente (bajó el stock). */
-export type FaltanteConCausa = { name: string; totalRequested: number; stock: number; missing: number; causa: string | null };
+/** Qué explica un faltante. La línea del aviso no puede mentir: si no se sabe,
+ *  no se culpa a nadie.
+ *  - `pedido`: un evento cuyo pedido lo empujó (subió lo pedido, o cambió entero);
+ *  - `stock`: no hubo un cambio así, pero sí un movimiento de stock del producto;
+ *  - `otro`: ninguna de las dos. Pasa con lo que cambia el pedido sin dejar un
+ *    cambio registrado: recuperar un evento de la papelera, descartar los
+ *    cambios o restaurar una versión. */
+export type CausaDeFaltante = { tipo: "pedido"; lugar: string } | { tipo: "stock" } | { tipo: "otro" };
+
+/** Un faltante a avisar, con lo que lo explica. */
+export type FaltanteConCausa = { name: string; totalRequested: number; stock: number; missing: number; causa: CausaDeFaltante };
+
+function fraseDeCausa(c: CausaDeFaltante): string {
+  if (c.tipo === "pedido") return `Lo empujó el pedido de ${c.lugar}.`;
+  if (c.tipo === "stock") return "Por un ajuste de stock.";
+  return "Cambió el pedido del período.";
+}
 
 /** "Copa de agua: faltan 50 (piden 300, hay 250). Lo empujó el pedido de El Carmen Center."
  *  El producto va primero porque los nombres del catálogo están en singular:
  *  "faltan 50 Copa de agua" se lee mal. */
 function lineaDeFaltante(f: FaltanteConCausa): string {
-  const causa = f.causa ? `Lo empujó el pedido de ${f.causa}.` : "Por un ajuste de stock.";
-  return `${f.name}: faltan ${f.missing} (piden ${f.totalRequested}, hay ${f.stock}). ${causa}`;
+  return `${f.name}: faltan ${f.missing} (piden ${f.totalRequested}, hay ${f.stock}). ${fraseDeCausa(f.causa)}`;
 }
 
 /**

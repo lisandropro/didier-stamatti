@@ -9,13 +9,13 @@ import { diaDe } from "@/lib/dates";
 import { nombreDe } from "@/lib/period-fit";
 import { periodShortages } from "@/lib/shortages";
 import { decidirFaltantes, type Faltante } from "@/lib/faltantes";
-import { resumenDeFaltantes, textoDeFaltantes, type FaltanteConCausa } from "@/lib/aviso-texto";
+import { resumenDeFaltantes, textoDeFaltantes, type CausaDeFaltante, type FaltanteConCausa } from "@/lib/aviso-texto";
 import { sendPushToUser } from "@/lib/push";
 import { ROLES, canVerStock, sortByNotificationPriority } from "@/lib/permissions";
 import { QUIET_MINUTES } from "@/lib/notify";
 
-/** Un cambio de pedido más viejo que esto ya no explica un faltante: si nada
- *  se movió en la última hora, lo que cambió fue el stock. */
+/** Un cambio de pedido o un movimiento de stock más viejo que esto ya no
+ *  explica un faltante. */
 export const CAUSA_RECIENTE_MIN = 60;
 
 /** Cuánto como máximo se espera a que una persona termine de editar. Pasado
@@ -38,32 +38,55 @@ const esperandoDesde = new Map<string, number>();
 
 type Periodo = { id: string; label: string | null; startDay: string; endDay: string; faltantesDesde: Date | null };
 
-/** Por qué falta cada producto: el lugar del último cambio de pedido del
- *  período sobre ese producto en la última hora, o el de un "Todo el pedido"
- *  (copiar o restaurar), o nada. Devuelve también el evento de esa causa.
+/** Los cambios que traen un pedido entero: copiar otro encima, restaurar una
+ *  versión o mudar un evento a este período (llega con todo lo suyo). Se
+ *  reconocen por el tipo y no por el nombre del renglón ("Todo el pedido",
+ *  "Período operativo"), que es texto para la pantalla. */
+const DE_TODO_EL_PEDIDO = new Set(["COPIADO", "RESTAURADO", "PERIODO"]);
+
+/** ¿Este cambio subió lo que se pide del producto? Solo eso puede empujar un
+ *  faltante: bajar una cantidad, sacar el renglón o tocarle la nota, no. */
+function subioLoPedido(c: { kind: string; before: string | null; after: string | null }): boolean {
+  if (c.kind === "AGREGADO") return true;
+  if (c.kind !== "CANTIDAD") return false;
+  const antes = Number(c.before);
+  const despues = Number(c.after);
+  return Number.isFinite(antes) && Number.isFinite(despues) && despues > antes;
+}
+
+/** Por qué falta cada producto, en este orden:
+ *  1. el último cambio de pedido del período que subió lo pedido de ese
+ *     producto (por nombre), o si no, el último que trajo un pedido entero:
+ *     la causa es ese evento, y el aviso lleva a él;
+ *  2. si no, un movimiento de stock del producto: "por un ajuste de stock";
+ *  3. si no, nada que lo explique: no se culpa a nadie ("cambió el pedido").
  *
- *  Dos recortes para no culpar a quien no fue:
- *  - un evento borrado nunca es la causa (ni el destino del aviso): ya no está
- *    en el pedido, y mandar al depósito a una pantalla que no existe es peor
- *    que decir "por un ajuste de stock";
- *  - el cambio tiene que ser posterior al último aviso de ese producto
- *    (`avisadoEn`): lo que ya se explicó en un aviso anterior no puede explicar
- *    un empeoramiento posterior, ese lo causó otra cosa (el stock). */
+ *  Todo dentro de la última hora y después del último aviso de ese producto
+ *  (`avisadoEn`): lo que ya se explicó en un aviso anterior no puede explicar
+ *  un empeoramiento posterior. Y un evento borrado nunca es la causa (ni el
+ *  destino del aviso): ya no está en el pedido, y mandar al depósito a una
+ *  pantalla que no existe es peor que no nombrar a nadie. */
 async function causas(periodId: string, faltantes: Faltante[], ahora: Date, avisadoEn: Map<string, Date>) {
+  const desde = new Date(ahora.getTime() - CAUSA_RECIENTE_MIN * 60_000);
   const cambios = await prisma.orderChange.findMany({
-    where: {
-      event: { periodId, deletedAt: null },
-      createdAt: { gte: new Date(ahora.getTime() - CAUSA_RECIENTE_MIN * 60_000) },
-    },
+    where: { event: { periodId, deletedAt: null }, createdAt: { gte: desde } },
     orderBy: { createdAt: "desc" },
-    select: { itemName: true, createdAt: true, event: { select: { id: true, lugar: true } } },
+    select: { itemName: true, kind: true, before: true, after: true, createdAt: true, event: { select: { id: true, lugar: true } } },
   });
-  const out = new Map<string, { lugar: string; eventId: string } | null>();
+  const movimientos = await prisma.stockMovement.findMany({
+    where: { productId: { in: faltantes.map((f) => f.productId) }, createdAt: { gte: desde } },
+    select: { productId: true, createdAt: true },
+  });
+  const out = new Map<string, { causa: CausaDeFaltante; eventId: string | null }>();
   for (const f of faltantes) {
     const ultimoAviso = avisadoEn.get(f.productId);
-    const posibles = ultimoAviso ? cambios.filter((x) => x.createdAt > ultimoAviso) : cambios;
-    const c = posibles.find((x) => x.itemName === f.name) ?? posibles.find((x) => x.itemName === "Todo el pedido");
-    out.set(f.productId, c ? { lugar: c.event.lugar, eventId: c.event.id } : null);
+    const despuesDelAviso = (x: { createdAt: Date }) => !ultimoAviso || x.createdAt > ultimoAviso;
+    const posibles = cambios.filter(despuesDelAviso);
+    const c =
+      posibles.find((x) => x.itemName === f.name && subioLoPedido(x)) ?? posibles.find((x) => DE_TODO_EL_PEDIDO.has(x.kind));
+    const huboStock = movimientos.some((m) => m.productId === f.productId && despuesDelAviso(m));
+    const causa: CausaDeFaltante = c ? { tipo: "pedido", lugar: c.event.lugar } : huboStock ? { tipo: "stock" } : { tipo: "otro" };
+    out.set(f.productId, { causa, eventId: c?.event.id ?? null });
   }
   return out;
 }
@@ -78,7 +101,7 @@ async function avisar(
   ahora: Date,
 ) {
   const porProducto = await causas(p.id, aAvisar, ahora, avisadoEn);
-  const items: FaltanteConCausa[] = aAvisar.map((f) => ({ ...f, causa: porProducto.get(f.productId)?.lugar ?? null }));
+  const items: FaltanteConCausa[] = aAvisar.map((f) => ({ ...f, causa: porProducto.get(f.productId)?.causa ?? { tipo: "otro" } }));
   const nombre = nombreDe(p);
   const texto = textoDeFaltantes(nombre, items);
   if (!texto) return 0;

@@ -11,6 +11,7 @@ import {
   textoSinPendientes,
   textoTardio,
   type Cambio,
+  type FaltanteConCausa,
 } from "../lib/aviso-texto";
 
 /**
@@ -283,20 +284,24 @@ test("la corrección se reconoce por su título, aunque el lugar haya cambiado",
 
 test("aviso de faltante: título con el período, una línea por producto con su causa", () => {
   const t = textoDeFaltantes("Finde 24/10", [
-    { name: "Copa de agua", totalRequested: 300, stock: 250, missing: 50, causa: "El Carmen Center" },
-    { name: "Brasero", totalRequested: 12, stock: 10, missing: 2, causa: null },
+    { name: "Copa de agua", totalRequested: 300, stock: 250, missing: 50, causa: { tipo: "pedido", lugar: "El Carmen Center" } },
+    { name: "Brasero", totalRequested: 12, stock: 10, missing: 2, causa: { tipo: "stock" } },
+    { name: "Mesa", totalRequested: 30, stock: 20, missing: 10, causa: { tipo: "otro" } },
   ]);
   assert.deepEqual(t, {
     title: "Falta stock · Finde 24/10",
     body:
       "Copa de agua: faltan 50 (piden 300, hay 250). Lo empujó el pedido de El Carmen Center.\n" +
-      "Brasero: faltan 2 (piden 12, hay 10). Por un ajuste de stock.",
+      "Brasero: faltan 2 (piden 12, hay 10). Por un ajuste de stock.\n" +
+      // Ni un cambio de pedido que lo explique ni un movimiento de stock (se
+      // restauró un evento o una versión): no se culpa a nadie ni al stock.
+      "Mesa: faltan 10 (piden 30, hay 20). Cambió el pedido del período.",
   });
 });
 
 test("aviso de faltante: tres productos y cuántos más, sin pasar de 500", () => {
-  const items = Array.from({ length: 5 }, (_, i) => ({
-    name: `Producto ${i} ${"x".repeat(200)}`, totalRequested: 10, stock: 5, missing: 5, causa: "Salón",
+  const items: FaltanteConCausa[] = Array.from({ length: 5 }, (_, i) => ({
+    name: `Producto ${i} ${"x".repeat(200)}`, totalRequested: 10, stock: 5, missing: 5, causa: { tipo: "pedido", lugar: "Salón" },
   }));
   const t = textoDeFaltantes("P", items)!;
   assert.ok(t.body.length <= 500);
@@ -310,15 +315,15 @@ test("sin faltantes no hay aviso", () => {
 test("el resumen para la lista de avisos entra en una línea", () => {
   assert.equal(
     resumenDeFaltantes("Finde 24/10", [
-      { name: "Copa de agua", totalRequested: 300, stock: 250, missing: 50, causa: "El Carmen Center" },
-      { name: "Brasero", totalRequested: 12, stock: 10, missing: 2, causa: null },
+      { name: "Copa de agua", totalRequested: 300, stock: 250, missing: 50, causa: { tipo: "pedido", lugar: "El Carmen Center" } },
+      { name: "Brasero", totalRequested: 12, stock: 10, missing: 2, causa: { tipo: "stock" } },
     ]),
     "Falta stock en Finde 24/10: Copa de agua (faltan 50) · Brasero (faltan 2)",
   );
 });
 
 test("aviso de faltante: con tres productos no hay 'y más'; con cuatro, 'y 1 más'", () => {
-  const item = (n: number) => ({ name: `P${n}`, totalRequested: 10, stock: 5, missing: 5, causa: null });
+  const item = (n: number): FaltanteConCausa => ({ name: `P${n}`, totalRequested: 10, stock: 5, missing: 5, causa: { tipo: "stock" } });
   assert.ok(!textoDeFaltantes("P", [1, 2, 3].map(item))!.body.includes("más"));
   assert.ok(textoDeFaltantes("P", [1, 2, 3, 4].map(item))!.body.endsWith("\ny 1 más"));
   assert.equal(
@@ -329,7 +334,7 @@ test("aviso de faltante: con tres productos no hay 'y más'; con cuatro, 'y 1 m�
 
 test("aviso de faltante: un nombre de período larguísimo no se come el aviso", () => {
   const largo = "Período ".repeat(40);
-  const t = textoDeFaltantes(largo, [{ name: "Copa", totalRequested: 10, stock: 5, missing: 5, causa: null }])!;
+  const t = textoDeFaltantes(largo, [{ name: "Copa", totalRequested: 10, stock: 5, missing: 5, causa: { tipo: "stock" } }])!;
   assert.ok(t.title.length <= "Falta stock · ".length + 60);
-  assert.match(resumenDeFaltantes(largo, [{ name: "Copa", totalRequested: 10, stock: 5, missing: 5, causa: null }]), /: Copa \(faltan 5\)$/);
+  assert.match(resumenDeFaltantes(largo, [{ name: "Copa", totalRequested: 10, stock: 5, missing: 5, causa: { tipo: "stock" } }]), /: Copa \(faltan 5\)$/);
 });
