@@ -20,6 +20,7 @@ let ids: { periodo: string; evento: string; ana: string; pablo: string; dante: s
 const ahora = new Date();
 const hoyDia = diaDe(ahora);
 const haceMin = (min: number) => new Date(ahora.getTime() - min * 60_000);
+const dentroDeMin = (min: number) => new Date(ahora.getTime() + min * 60_000);
 
 before(async () => {
   ({ prisma } = await import("../lib/db"));
@@ -57,7 +58,10 @@ const cambio = (itemName: string, createdAt: Date) =>
   prisma.orderChange.create({ data: { eventId: ids.evento, actorName: "Enrique", itemName, kind: "CANTIDAD", createdAt } });
 
 test("la primera corrida registra lo que ya falta sin avisar", async () => {
-  const r = await barrer(ahora);
+  // Media hora antes de "ahora": la causa de un aviso tiene que ser un cambio
+  // posterior a lo último que se registró de ese producto, y las pruebas que
+  // siguen fechan sus cambios unos minutos antes de "ahora".
+  const r = await barrer(haceMin(30));
   assert.equal(r.avisos, 0);
   assert.equal(r.registrados, 1);
   assert.deepEqual((await filas()).map((f) => [f.productId, f.missing]), [[ids.copa, 50]]);
@@ -96,7 +100,7 @@ test("empeorar avisa otra vez; mejorar no avisa ni baja lo guardado", async () =
   await prisma.orderLine.updateMany({ where: { eventId: ids.evento, productId: ids.copa }, data: { qty: 320 } });
   await cambio("Copa de agua", haceMin(5));
   assert.equal((await barrer(ahora)).avisos, 4);
-  assert.match(enviados[0].body, /^Copa de agua: faltan 70 \(piden 320, hay 250\)/);
+  assert.equal(enviados[0].body, "Copa de agua: faltan 70 (piden 320, hay 250). Lo empujó el pedido de El Carmen.");
 
   enviados.length = 0;
   await prisma.orderLine.updateMany({ where: { eventId: ids.evento, productId: ids.copa }, data: { qty: 310 } });
@@ -115,17 +119,21 @@ test("resolverse no avisa y borra la fila", async () => {
 test("mientras alguien sigue cambiando pedidos del período, el barrido espera", async () => {
   enviados.length = 0;
   await prisma.orderLine.updateMany({ where: { eventId: ids.evento, productId: ids.copa }, data: { qty: 330 } });
-  const reciente = await cambio("Copa de agua", haceMin(0.5));
-  assert.equal((await barrer(ahora)).avisos, 0, "hace 30 segundos que se cambió: todavía no");
-  await prisma.orderChange.update({ where: { id: reciente.id }, data: { createdAt: haceMin(3) } });
-  assert.equal((await barrer(ahora)).avisos, 4, "pasada la quietud, sale");
+  // Diez minutos después de la prueba anterior: el cambio tiene que ser posterior
+  // al último aviso de la copa para ser su causa.
+  const t = dentroDeMin(10);
+  const reciente = await cambio("Copa de agua", new Date(t.getTime() - 30_000));
+  assert.equal((await barrer(t)).avisos, 0, "hace 30 segundos que se cambió: todavía no");
+  await prisma.orderChange.update({ where: { id: reciente.id }, data: { createdAt: new Date(t.getTime() - 3 * 60_000) } });
+  assert.equal((await barrer(t)).avisos, 4, "pasada la quietud, sale");
+  assert.match(enviados[0].body, /^Copa de agua: faltan 80 \(piden 330, hay 250\)\. Lo empujó el pedido de El Carmen\.$/);
 });
 
 test("sin un cambio de pedido reciente, la causa es un ajuste de stock", async () => {
   enviados.length = 0;
   await prisma.orderChange.updateMany({ data: { createdAt: haceMin(120) } });
   await prisma.product.update({ where: { id: ids.copa }, data: { stock: 200 } });
-  assert.equal((await barrer(ahora)).avisos, 4);
+  assert.equal((await barrer(dentroDeMin(20))).avisos, 4);
   assert.match(enviados[0].body, /Copa de agua: faltan 130 \(piden 330, hay 200\)\. Por un ajuste de stock\.$/);
   const deDante = enviados.find((p) => p.endpoint.endsWith("Dante"))!;
   assert.equal(deDante.url, `/preparar/${ids.evento}#faltantes`, "sin causa, el primer evento del período");
@@ -151,4 +159,211 @@ test("un período que ya terminó no se barre", async () => {
   await barrer(ahora);
   assert.equal(await prisma.faltanteAvisado.count({ where: { periodId: viejo.id } }), 0);
   assert.equal(enviados.length, 0);
+});
+
+// Las pruebas que siguen arman su propio período y sus propios productos: así no
+// dependen del estado que dejaron las anteriores (filas avisadas, cambios,
+// stock) ni el orden las afecta. Cada una lo retira en su `finally`.
+const nuevoPeriodo = (label: string, dia = hoyDia, hasta = sumarDias(hoyDia, 2)) =>
+  prisma.operationalPeriod.create({ data: { label, startDay: dia, endDay: hasta, faltantesDesde: haceMin(9999) } });
+const nuevoEvento = (periodId: string, lugar: string, hora = "21:00", dia = hoyDia) =>
+  prisma.event.create({ data: { periodId, lugar, date: instanteDe(dia, hora) } });
+const nuevoProducto = (name: string, stock: number) =>
+  prisma.product.create({ data: { name, category: "ENSERES", type: "REUTILIZABLE", stock } });
+const piden = (eventId: string, productId: string, qty: number) => prisma.orderLine.create({ data: { eventId, productId, qty } });
+const cambioEn = (eventId: string, itemName: string, createdAt: Date, kind = "CANTIDAD") =>
+  prisma.orderChange.create({ data: { eventId, actorName: "Enrique", itemName, kind, createdAt } });
+/** Lo último que se avisó de un producto, como si ya hubiera habido un aviso. */
+const avisadoAntes = (periodId: string, productId: string, missing: number, at = haceMin(120)) =>
+  prisma.faltanteAvisado.create({ data: { periodId, productId, missing, at } });
+const retirar = async (periodIds: string[], productIds: string[]) => {
+  for (const id of periodIds) await prisma.operationalPeriod.delete({ where: { id } });
+  for (const id of productIds) await prisma.product.delete({ where: { id } });
+};
+const pushesDe = (periodId: string) => enviados.filter((p) => p.tag === `faltante-${periodId}`);
+const avisosDe = (label: string) => prisma.notification.findMany({ where: { type: "FALTANTE", message: { contains: label } } });
+
+test("la causa nunca es un evento borrado, ni el aviso lleva a él", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte borrado");
+  const producto = await nuevoProducto("Silla aparte borrado", 10);
+  try {
+    const vivo = await nuevoEvento(periodo.id, "El Carmen", "21:00");
+    const borrado = await nuevoEvento(periodo.id, "Quinta Borrada", "18:00");
+    await piden(vivo.id, producto.id, 12);
+    await avisadoAntes(periodo.id, producto.id, 2);
+    await cambioEn(vivo.id, producto.name, haceMin(20));
+    // El cambio más nuevo sobre la silla es del evento que después se borra.
+    await cambioEn(borrado.id, producto.name, haceMin(10));
+    await prisma.event.update({ where: { id: borrado.id }, data: { deletedAt: new Date() } });
+    await prisma.orderLine.updateMany({ where: { eventId: vivo.id }, data: { qty: 15 } });
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.match(dante.body, /Lo empujó el pedido de El Carmen\.$/, "la causa es el evento vivo, no el borrado");
+    assert.doesNotMatch(dante.body, /Quinta Borrada/);
+    assert.equal(dante.url, `/preparar/${vivo.id}#faltantes`);
+    assert.ok((await avisosDe("Aparte borrado")).every((a) => a.eventId === vivo.id && !a.linkUrl?.includes(borrado.id)));
+
+    // Y si el único cambio reciente era del evento borrado, no hay causa de pedido.
+    enviados.length = 0;
+    await prisma.orderChange.deleteMany({ where: { eventId: vivo.id } });
+    await prisma.orderLine.updateMany({ where: { eventId: vivo.id }, data: { qty: 20 } });
+    assert.equal((await barrer(dentroDeMin(5))).avisos, 4);
+    const segundo = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.match(segundo.body, /Por un ajuste de stock\.$/);
+    assert.equal(segundo.url, `/preparar/${vivo.id}#faltantes`, "sin causa, el primer evento VIVO del período");
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("el depósito va al evento de la causa, no al primero por fecha", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte dos eventos");
+  const producto = await nuevoProducto("Mesa aparte dos eventos", 10);
+  try {
+    const primero = await nuevoEvento(periodo.id, "Almuerzo", "12:00");
+    const segundo = await nuevoEvento(periodo.id, "Cena", "21:00");
+    await piden(segundo.id, producto.id, 12);
+    await cambioEn(segundo.id, producto.name, haceMin(5));
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.match(dante.body, /Lo empujó el pedido de Cena\.$/);
+    assert.equal(dante.url, `/preparar/${segundo.id}#faltantes`);
+    assert.notEqual(dante.url, `/preparar/${primero.id}#faltantes`);
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("sin un cambio sobre el producto, un 'Todo el pedido' reciente es la causa", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte todo el pedido");
+  const producto = await nuevoProducto("Banco aparte todo el pedido", 10);
+  try {
+    const primero = await nuevoEvento(periodo.id, "Almuerzo", "12:00");
+    const copiado = await nuevoEvento(periodo.id, "Cena", "21:00");
+    await piden(copiado.id, producto.id, 12);
+    // Otro producto cambió antes, y el pedido entero se copió después: nada
+    // nombra al banco, pero la copia es lo que lo empujó.
+    await cambioEn(primero.id, "Otra cosa", haceMin(30));
+    await cambioEn(copiado.id, "Todo el pedido", haceMin(10), "COPIADO");
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const dante = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.match(dante.body, /Lo empujó el pedido de Cena\.$/);
+    assert.equal(dante.url, `/preparar/${copiado.id}#faltantes`);
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("la causa tiene que ser posterior al último aviso del producto", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte ancla");
+  const producto = await nuevoProducto("Copa aparte ancla", 10);
+  try {
+    const primero = await nuevoEvento(periodo.id, "Almuerzo", "12:00");
+    const carmen = await nuevoEvento(periodo.id, "El Carmen", "21:00");
+    await piden(carmen.id, producto.id, 12);
+    await cambioEn(carmen.id, producto.name, haceMin(5));
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    const uno = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.match(uno.body, /Lo empujó el pedido de El Carmen\.$/);
+
+    // Diez minutos después baja el stock, sin ningún cambio de pedido nuevo. El
+    // de El Carmen sigue dentro de la hora, pero ya se explicó en el aviso de
+    // arriba: este empeoramiento lo causó el stock.
+    enviados.length = 0;
+    await prisma.product.update({ where: { id: producto.id }, data: { stock: 5 } });
+    assert.equal((await barrer(dentroDeMin(10))).avisos, 4);
+    const dos = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.match(dos.body, /faltan 7 \(piden 12, hay 5\)\. Por un ajuste de stock\.$/);
+    assert.equal(dos.url, `/preparar/${primero.id}#faltantes`, "sin causa, el primer evento del período");
+
+    // Un cambio de pedido nuevo, posterior al aviso, vuelve a ser causa.
+    enviados.length = 0;
+    await cambioEn(carmen.id, producto.name, dentroDeMin(12));
+    await prisma.product.update({ where: { id: producto.id }, data: { stock: 2 } });
+    assert.equal((await barrer(dentroDeMin(15))).avisos, 4);
+    const tres = pushesDe(periodo.id).find((p) => p.endpoint.endsWith("Dante"))!;
+    assert.match(tres.body, /faltan 10 \(piden 12, hay 2\)\. Lo empujó el pedido de El Carmen\.$/);
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("la espera por la quietud tiene techo: si los cambios no paran, se barre igual", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte techo");
+  const producto = await nuevoProducto("Plato aparte techo", 10);
+  try {
+    const evento = await nuevoEvento(periodo.id, "El Carmen");
+    await piden(evento.id, producto.id, 14);
+    await avisadoAntes(periodo.id, producto.id, 2);
+    const haceSegundos = (t: Date) => new Date(t.getTime() - 30_000);
+
+    // Cada barrido encuentra un cambio de hace 30 segundos: alguien no deja de editar.
+    await cambioEn(evento.id, producto.name, haceSegundos(ahora));
+    assert.equal((await barrer(ahora)).avisos, 0, "arranca la espera");
+    const alos30 = dentroDeMin(30);
+    await cambioEn(evento.id, producto.name, haceSegundos(alos30));
+    assert.equal((await barrer(alos30)).avisos, 0, "media hora después, sigue esperando");
+    assert.equal(pushesDe(periodo.id).length, 0);
+
+    const alos61 = dentroDeMin(61);
+    await cambioEn(evento.id, producto.name, haceSegundos(alos61));
+    assert.equal((await barrer(alos61)).avisos, 4, "pasada la hora de espera, sale aunque sigan los cambios");
+    assert.equal((await avisosDe("Aparte techo")).length, 4);
+
+    // Al barrerse, la espera se olvida: si los cambios siguen, arranca otra desde cero.
+    await prisma.orderLine.updateMany({ where: { eventId: evento.id }, data: { qty: 16 } });
+    const alos62 = dentroDeMin(62);
+    await cambioEn(evento.id, producto.name, haceSegundos(alos62));
+    assert.equal((await barrer(alos62)).avisos, 0, "la espera nueva arranca de cero");
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("dos barridos a la vez avisan una sola vez", async () => {
+  enviados.length = 0;
+  const periodo = await nuevoPeriodo("Aparte simultaneo");
+  const producto = await nuevoProducto("Jarra aparte simultaneo", 10);
+  try {
+    const evento = await nuevoEvento(periodo.id, "El Carmen");
+    await piden(evento.id, producto.id, 12);
+
+    const [uno, dos] = await Promise.all([barrer(ahora), barrer(ahora)]);
+    assert.equal(uno.avisos + dos.avisos, 4, "el segundo se descarta mientras el primero barre");
+    assert.equal((await avisosDe("Aparte simultaneo")).length, 4);
+    assert.equal(pushesDe(periodo.id).length, 2, "Pablo y Dante, una vez cada uno");
+  } finally {
+    await retirar([periodo.id], [producto.id]);
+  }
+});
+
+test("un período que termina hoy se barre; uno que terminó ayer, no", async () => {
+  enviados.length = 0;
+  const ayer = sumarDias(hoyDia, -1);
+  const hasta = await nuevoPeriodo("Aparte termina hoy", hoyDia, hoyDia);
+  const termino = await nuevoPeriodo("Aparte termino ayer", ayer, ayer);
+  const producto = await nuevoProducto("Bandeja aparte bordes", 10);
+  try {
+    const deHoy = await nuevoEvento(hasta.id, "Hoy", "21:00");
+    const deAyer = await nuevoEvento(termino.id, "Ayer", "21:00", ayer);
+    await piden(deHoy.id, producto.id, 12);
+    await piden(deAyer.id, producto.id, 12);
+
+    assert.equal((await barrer(ahora)).avisos, 4);
+    assert.equal(await prisma.faltanteAvisado.count({ where: { periodId: hasta.id } }), 1);
+    assert.equal(await prisma.faltanteAvisado.count({ where: { periodId: termino.id } }), 0);
+    assert.equal(pushesDe(hasta.id).length, 2);
+    assert.equal(pushesDe(termino.id).length, 0);
+  } finally {
+    await retirar([hasta.id, termino.id], [producto.id]);
+  }
 });
