@@ -316,3 +316,20 @@ test("el resumen para la lista de avisos entra en una línea", () => {
     "Falta stock en Finde 24/10: Copa de agua (faltan 50) · Brasero (faltan 2)",
   );
 });
+
+test("aviso de faltante: con tres productos no hay 'y más'; con cuatro, 'y 1 más'", () => {
+  const item = (n: number) => ({ name: `P${n}`, totalRequested: 10, stock: 5, missing: 5, causa: null });
+  assert.ok(!textoDeFaltantes("P", [1, 2, 3].map(item))!.body.includes("más"));
+  assert.ok(textoDeFaltantes("P", [1, 2, 3, 4].map(item))!.body.endsWith("\ny 1 más"));
+  assert.equal(
+    resumenDeFaltantes("P", [1, 2, 3, 4, 5].map(item)),
+    "Falta stock en P: P1 (faltan 5) · P2 (faltan 5) · P3 (faltan 5) · y 2 más",
+  );
+});
+
+test("aviso de faltante: un nombre de período larguísimo no se come el aviso", () => {
+  const largo = "Período ".repeat(40);
+  const t = textoDeFaltantes(largo, [{ name: "Copa", totalRequested: 10, stock: 5, missing: 5, causa: null }])!;
+  assert.ok(t.title.length <= "Falta stock · ".length + 60);
+  assert.match(resumenDeFaltantes(largo, [{ name: "Copa", totalRequested: 10, stock: 5, missing: 5, causa: null }]), /: Copa \(faltan 5\)$/);
+});

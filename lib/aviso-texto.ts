@@ -12,6 +12,9 @@ const MAX_CUERPO = 500;
 // El nombre de quién lo hizo lo escribe una persona y no tiene tope: si no se
 // acota, un nombre larguísimo se come el presupuesto del cuerpo entero.
 const MAX_QUIEN = 60;
+// Lo mismo con el nombre de un período: acotado, no se come el título del aviso
+// de faltante ni la lista de productos del resumen.
+const MAX_PERIODO = 60;
 
 /**
  * Junta los cambios de cada ítem en uno solo, del primer "antes" al último
@@ -223,12 +226,15 @@ export function textoDeFaltantes(periodo: string, items: FaltanteConCausa[]): { 
   if (items.length === 0) return null;
   const visibles = items.slice(0, MAX_EN_EL_PUSH).map(lineaDeFaltante).join("\n");
   const resto = items.length > MAX_EN_EL_PUSH ? `\ny ${items.length - MAX_EN_EL_PUSH} más` : "";
-  return { title: `Falta stock · ${periodo}`, body: recortar(visibles, MAX_CUERPO - resto.length) + resto };
+  return {
+    title: `Falta stock · ${recortar(periodo, MAX_PERIODO)}`,
+    body: recortar(visibles, MAX_CUERPO - resto.length) + resto,
+  };
 }
 
 /** Lo mismo en una línea, para la lista de avisos de la app. */
 export function resumenDeFaltantes(periodo: string, items: FaltanteConCausa[]): string {
   const partes = items.slice(0, MAX_EN_EL_PUSH).map((f) => `${f.name} (faltan ${f.missing})`);
   const resto = items.length > MAX_EN_EL_PUSH ? ` · y ${items.length - MAX_EN_EL_PUSH} más` : "";
-  return recortar(`Falta stock en ${periodo}: ${partes.join(" · ")}`, MAX_CUERPO - resto.length) + resto;
+  return recortar(`Falta stock en ${recortar(periodo, MAX_PERIODO)}: ${partes.join(" · ")}`, MAX_CUERPO - resto.length) + resto;
 }

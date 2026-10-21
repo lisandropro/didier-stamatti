@@ -53,3 +53,19 @@ test("la primera corrida también borra lo que ya no falta", () => {
   assert.deepEqual(d.borrar, ["z"]);
   assert.deepEqual(d.avisar, []);
 });
+
+test("un barrido con todo mezclado: cada lista lleva solo lo suyo y en el orden de lo que falta", () => {
+  // Nuevo (b), igual (a), peor (c), mejor (d) y resuelto (e), en un solo barrido.
+  const actuales = [F("c", 40), F("b", 9), F("a", 10), F("d", 2)];
+  const avisados = [
+    { productId: "a", missing: 10 },
+    { productId: "c", missing: 30 },
+    { productId: "d", missing: 5 },
+    { productId: "e", missing: 7 },
+  ];
+  const d = decidirFaltantes(actuales, avisados, false);
+  // El orden de `actuales` se respeta: el barrido los recibe de mayor a menor faltante.
+  assert.deepEqual(d.avisar.map((f) => f.productId), ["c", "b"]);
+  assert.deepEqual(d.guardar, [{ productId: "c", missing: 40 }, { productId: "b", missing: 9 }]);
+  assert.deepEqual(d.borrar, ["e"]);
+});
