@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { stockAlPasarAReutilizable } from "@/lib/stock-al-cambiar-tipo";
 
 export type ProductResult = { ok: boolean; error?: string; id?: string };
 
@@ -196,8 +197,27 @@ export async function updateProduct(input: {
   // El stock NO se toca al cambiar de tipo: si pasa a consumible deja de
   // contarse, y si vuelve a reutilizable la cantidad sigue estando. Pisarlo acá
   // sería perder el conteo sin dejar un movimiento que lo explique.
+  // La excepción es el 0 de un consumible que nunca se contó: no es un dato, y
+  // como reutilizable inventaría un faltante. Ese pasa a SIN CONTAR. Solo se
+  // escribe el stock cuando cambia: escribirlo siempre pisaría un recuento
+  // guardado entre la lectura y esta escritura. Mientras es consumible no hay
+  // recuento posible (`saveStock` exige reutilizable), así que acá no hay carrera.
+  const sinContar: { stock?: null } = {};
+  if (p.type === "CONSUMIBLE" && nuevos.type === "REUTILIZABLE") {
+    const [movimientos, fueReutilizable] = await Promise.all([
+      prisma.stockMovement.count({ where: { productId: p.id } }),
+      prisma.productChange.count({ where: { productId: p.id, field: "type", before: "REUTILIZABLE" } }),
+    ]);
+    const stock = stockAlPasarAReutilizable({
+      stock: p.stock,
+      tieneMovimientos: movimientos > 0,
+      fueReutilizable: fueReutilizable > 0,
+    });
+    if (stock === null && p.stock !== null) sinContar.stock = null;
+  }
+
   await prisma.$transaction([
-    prisma.product.update({ where: { id: p.id }, data: nuevos }),
+    prisma.product.update({ where: { id: p.id }, data: { ...nuevos, ...sinContar } }),
     prisma.productChange.createMany({ data: cambios }),
   ]);
 
