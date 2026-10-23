@@ -694,7 +694,11 @@ tbody tr:hover{background:var(--surface-2)}
 .empty-card .btn{margin-top:var(--sp-3)}
 
 @media(max-width:860px){
-  .tiles{grid-template-columns:1fr}
+  /* Los tres números en una línea: apilados ocupaban media pantalla. */
+  .tiles{grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--sp-2); margin-bottom:var(--sp-3)}
+  .tile{padding:var(--sp-3)}
+  .tile .k{font-size:var(--t-xs)}
+  .tile .v{font-size:var(--t-xl); margin-top:var(--sp-1)}
   .event-grid{grid-template-columns:1fr}
   .wk-select{max-width:none; flex:1}
 }
@@ -2403,4 +2407,20 @@ tbody tr:hover{background:var(--surface-2)}
   .ro-tabla tbody td:nth-child(3){grid-column:1/-1; font-size:var(--t-sm)}
   /* Sin nota no queda un renglón vacío. */
   .ro-tabla tbody td:empty{display:none}
+}
+
+/* La portada en el celular: la cabecera no queda fija (no es una lista larga) y
+   los eventos van antes que el aviso del período, que repite lo que cada
+   tarjeta ya dice con su propio botón de faltantes. */
+@media (max-width:860px){
+  .topbar-hub{position:static; gap:var(--sp-2)}
+  .topbar-hub .spacer{display:none}
+  /* El título y el menú en la primera línea; el período y "Nuevo evento", en la segunda. */
+  .topbar-hub .topbar-titulo{flex:1 1 calc(100% - var(--tap) - var(--sp-2))}
+  .topbar-hub h1{font-size:var(--t-xl)}
+  .topbar-hub .wk-select{flex:1 1 0; min-width:0}
+  .hub-cuerpo{display:flex; flex-direction:column}
+  .hub-eventos{order:1}
+  .hub-banner{order:2; margin-top:var(--sp-5); margin-bottom:0}
+  .hub-cuerpo > .pasados{order:3}
 }

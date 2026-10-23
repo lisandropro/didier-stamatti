@@ -34,12 +34,14 @@ export default async function CambiosTardiosPage({ searchParams }: { searchParam
       </div>
       <div className="content">
         <div className="searchbar">
-          <Link className={`tab${elegido ? "" : " active"}`} href="/cambios-tardios">Todos</Link>
-          {periodos.map((x) => (
-            <Link key={x.id} className={`tab${elegido?.id === x.id ? " active" : ""}`} href={`/cambios-tardios?p=${x.id}`}>
-              {nombreDe(x)}
-            </Link>
-          ))}
+          <div className="filtros-scroll">
+            <Link className={`tab${elegido ? "" : " active"}`} href="/cambios-tardios">Todos</Link>
+            {periodos.map((x) => (
+              <Link key={x.id} className={`tab${elegido?.id === x.id ? " active" : ""}`} href={`/cambios-tardios?p=${x.id}`}>
+                {nombreDe(x)}
+              </Link>
+            ))}
+          </div>
         </div>
 
         {r.total === 0 ? (

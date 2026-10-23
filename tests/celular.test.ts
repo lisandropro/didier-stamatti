@@ -115,3 +115,19 @@ test("la vista de solo lectura sigue sin ningún control que escriba en el pedid
   assert.ok(!s.includes("@/app/actions/order"), "la vista de solo lectura importa acciones del pedido");
   assert.ok(s.includes('className="ro-tabla"'), "la tabla no tiene la clase que la vuelve lista en el celular");
 });
+
+test("en el celular, lo que el período esconde de la cabecera está en su menú", () => {
+  const s = fuente("components/PeriodHub.tsx");
+  const desde = s.indexOf('label="Más acciones del período"');
+  assert.notEqual(desde, -1, "la portada no tiene el menú del período");
+  // Los ítems van después de la etiqueta, hasta el cierre del componente.
+  const menu = s.slice(desde, s.indexOf("/>", desde));
+  for (const label of ["Nuevo período", "Editar período", "Papelera", "Borrar período"]) {
+    assert.ok(menu.includes(label), `falta "${label}" en el menú del período`);
+  }
+});
+
+test("las pestañas de Cambios tardíos van en una fila que se desliza", () => {
+  const s = fuente("app/(app)/cambios-tardios/page.tsx");
+  assert.ok(s.includes('className="filtros-scroll"'), "las pestañas de períodos se apilan en el celular");
+});

@@ -16,6 +16,7 @@ import {
 import { savePeriodSnapshot, discardPeriodChanges, restorePeriodVersion } from "@/app/actions/snapshot";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditPeriodModal } from "@/components/EditPeriodModal";
+import { RowMenu } from "@/components/RowMenu";
 
 type EventItem = {
   id: string;
@@ -183,8 +184,8 @@ export function PeriodHub({ data }: { data: HubData }) {
 
   return (
     <>
-      <div className="topbar">
-        <div>
+      <div className="topbar topbar-hub">
+        <div className="topbar-titulo">
           <h1>{selected ? selected.label : "Período"}</h1>
           <div className="sub">
             {selected
@@ -193,6 +194,22 @@ export function PeriodHub({ data }: { data: HubData }) {
           </div>
         </div>
         <div className="spacer" />
+        {/* En el celular, lo que se usa poco va a un menú: los botones apilados
+            empujaban los eventos al final de la primera pantalla. */}
+        {canManage && (
+          <div className="solo-celular">
+            <RowMenu
+              grande
+              label="Más acciones del período"
+              items={[
+                { label: "Nuevo período", onSelect: () => setShowPeriodo(true) },
+                ...(selected ? [{ label: "Editar período", onSelect: () => setShowEditPeriodo(true) }] : []),
+                ...(trashCount > 0 ? [{ label: `Papelera (${trashCount})`, onSelect: () => setShowTrash(true) }] : []),
+                ...(selected ? [{ label: "Borrar período", onSelect: () => setShowDelete(true), peligro: true }] : []),
+              ]}
+            />
+          </div>
+        )}
         {periodos.length > 1 && selected && (
           <select
             className="wk-select"
@@ -208,7 +225,7 @@ export function PeriodHub({ data }: { data: HubData }) {
           </select>
         )}
         {canManage && (
-          <button className="btn ghost" onClick={() => setShowPeriodo(true)}>
+          <button className="btn ghost solo-ancho" onClick={() => setShowPeriodo(true)}>
             {IconPlus} Nuevo período
           </button>
         )}
@@ -218,17 +235,17 @@ export function PeriodHub({ data }: { data: HubData }) {
           </button>
         )}
         {canManage && trashCount > 0 && (
-          <button className="btn ghost" onClick={() => setShowTrash(true)} title="Recuperar algo borrado">
+          <button className="btn ghost solo-ancho" onClick={() => setShowTrash(true)} title="Recuperar algo borrado">
             {IconUndo} Papelera <span className="count-pill">{trashCount}</span>
           </button>
         )}
         {canManage && selected && (
-          <button className="btn ghost" onClick={() => setShowEditPeriodo(true)} title="Editar las fechas o el nombre">
+          <button className="btn ghost solo-ancho" onClick={() => setShowEditPeriodo(true)} title="Editar las fechas o el nombre">
             {IconEdit} Editar período
           </button>
         )}
         {canManage && selected && (
-          <button className="btn btn-del" onClick={() => setShowDelete(true)} title="Borrar período">
+          <button className="btn btn-del solo-ancho" onClick={() => setShowDelete(true)} title="Borrar período">
             {IconTrash} Borrar
           </button>
         )}
@@ -266,18 +283,26 @@ export function PeriodHub({ data }: { data: HubData }) {
             )}
           </div>
         ) : (
-          <>
+          <div className="hub-cuerpo">
             <div className="tiles">
               <div className="tile">
                 <div className="k"><span className="dot" style={{ background: "var(--ink)" }} />Eventos</div>
                 <div className="v">{totalEventos}</div>
               </div>
               <div className="tile">
-                <div className="k"><span className="dot" style={{ background: "var(--ok)" }} />Productos que alcanzan</div>
+                <div className="k">
+                  <span className="dot" style={{ background: "var(--ok)" }} />
+                  <span className="solo-ancho">Productos que alcanzan</span>
+                  <span className="solo-celular">Alcanzan</span>
+                </div>
                 <div className="v">{alert.okCount}<small> / {alert.totalReut}</small></div>
               </div>
               <div className="tile">
-                <div className="k"><span className="dot" style={{ background: "var(--crit)" }} />Sin stock suficiente</div>
+                <div className="k">
+                  <span className="dot" style={{ background: "var(--crit)" }} />
+                  <span className="solo-ancho">Sin stock suficiente</span>
+                  <span className="solo-celular">Sin stock</span>
+                </div>
                 <div className="v" style={{ color: alert.overProducts.length ? "var(--crit)" : "var(--ink)" }}>
                   {alert.overProducts.length}
                 </div>
@@ -285,7 +310,7 @@ export function PeriodHub({ data }: { data: HubData }) {
             </div>
 
             {alert.overProducts.length > 0 ? (
-              <div className="banner crit">
+              <div className="banner crit hub-banner">
                 {IconWarn}
                 <div>
                   <b>Sumando todos los eventos, {alert.overProducts.length} producto{alert.overProducts.length > 1 ? "s se pasan" : " se pasa"} del stock</b>
@@ -296,7 +321,7 @@ export function PeriodHub({ data }: { data: HubData }) {
                 </div>
               </div>
             ) : (
-              <div className="banner ok">
+              <div className="banner ok hub-banner">
                 {IconCheck}
                 <div>
                   <b>Todo alcanza para este período</b>
@@ -305,35 +330,37 @@ export function PeriodHub({ data }: { data: HubData }) {
               </div>
             )}
 
-            <div className="section-title">
-              Por hacer <span className="count-pill">{selected.events.length}</span>
-              <span className="spacer" style={{ flex: 1 }} />
-              {totalEventos > 0 && (
-                <Link className="btn ghost" href={`/periodo/${selected.id}`}>
-                  {IconList} Resumen del depósito
-                </Link>
+            <div className="hub-eventos">
+              <div className="section-title">
+                Por hacer <span className="count-pill">{selected.events.length}</span>
+                <span className="spacer" style={{ flex: 1 }} />
+                {totalEventos > 0 && (
+                  <Link className="btn ghost" href={`/periodo/${selected.id}`}>
+                    {IconList} Resumen del depósito
+                  </Link>
+                )}
+              </div>
+
+              {totalEventos === 0 ? (
+                <div className="empty-card">
+                  <p className="empty-title">Este período no tiene eventos todavía</p>
+                  {canManage && <button className="btn primary" onClick={() => setShowEvent(true)}>{IconPlus} Agregar evento</button>}
+                </div>
+              ) : selected.events.length === 0 ? (
+                // El período sigue abierto pero ya se hizo todo lo que tenía.
+                // Decir "no tiene eventos" sería mentira: están abajo, plegados.
+                <div className="empty-card">
+                  <p className="empty-title">No queda nada por hacer en este período</p>
+                  <p>
+                    {selected.pasados.length === 1
+                      ? "Su único evento ya se hizo y está acá abajo."
+                      : `Sus ${selected.pasados.length} eventos ya se hicieron y están acá abajo.`}
+                  </p>
+                </div>
+              ) : (
+                <div className="event-grid">{selected.events.map(tarjetaDeEvento)}</div>
               )}
             </div>
-
-            {totalEventos === 0 ? (
-              <div className="empty-card">
-                <p className="empty-title">Este período no tiene eventos todavía</p>
-                {canManage && <button className="btn primary" onClick={() => setShowEvent(true)}>{IconPlus} Agregar evento</button>}
-              </div>
-            ) : selected.events.length === 0 ? (
-              // El período sigue abierto pero ya se hizo todo lo que tenía.
-              // Decir "no tiene eventos" sería mentira: están abajo, plegados.
-              <div className="empty-card">
-                <p className="empty-title">No queda nada por hacer en este período</p>
-                <p>
-                  {selected.pasados.length === 1
-                    ? "Su único evento ya se hizo y está acá abajo."
-                    : `Sus ${selected.pasados.length} eventos ya se hicieron y están acá abajo.`}
-                </p>
-              </div>
-            ) : (
-              <div className="event-grid">{selected.events.map(tarjetaDeEvento)}</div>
-            )}
 
             {selected.pasados.length > 0 && (
               // <details> nativo: se pliega sin estado propio y anda con el teclado.
@@ -346,7 +373,7 @@ export function PeriodHub({ data }: { data: HubData }) {
                 <div className="event-grid">{selected.pasados.map(tarjetaDeEvento)}</div>
               </details>
             )}
-          </>
+          </div>
         )}
       </div>
 
