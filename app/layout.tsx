@@ -19,11 +19,16 @@ export const metadata: Metadata = {
 // que está fijo abajo (las hojas), y un campo de la hoja podía quedar tapado.
 // Con "resizes-content" la pantalla se achica al abrirse el teclado y lo fijo
 // abajo queda arriba del teclado, como en una app.
+//
+// `viewportFit: "cover"`: sin esto, en iPhone `env(safe-area-inset-*)` vale 0 y
+// lo que va pegado abajo no sabe dónde está la barra de gestos ni las esquinas
+// redondeadas de la pantalla. Así la barra de abajo y las hojas se apartan solas.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
   interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#FBFAF8" },

@@ -247,3 +247,32 @@ test("tocar responde también en avisos, sugerencias, segmentos y el resto de lo
   assert.ok(!/\.event, \.event-falta,/.test(seccion), ".event-falta está adentro de .event: se apagaban los dos a la vez");
   assert.ok(seccion.includes(".pasados .event:active{opacity:.45}"), "las tarjetas pasadas (.72) le ganan al estado apretado");
 });
+
+/**
+ * iPhone, 23/10: "el botón de período se ve cortado". La barra de abajo iba de
+ * borde a borde y pegada al fondo, con esquinas rectas: las esquinas redondeadas
+ * de la pantalla del iPhone se comían el primer botón. Y el margen para la
+ * barra de gestos (`env(safe-area-inset-bottom)`) valía 0, porque el viewport no
+ * pedía `viewport-fit=cover`.
+ */
+test("el viewport pide la pantalla entera, así el margen de la barra de gestos vale", () => {
+  assert.ok(fuente("app/layout.tsx").includes('viewportFit: "cover"'), "en iPhone el margen de abajo vale 0");
+});
+
+test("la barra de abajo flota redondeada, lejos de las esquinas de la pantalla", () => {
+  const css = fuente("app/globals.css");
+  const desde = css.indexOf("  .mobnav{\r\n    display:flex; position:fixed;") !== -1
+    ? css.indexOf("  .mobnav{\r\n    display:flex; position:fixed;")
+    : css.indexOf("  .mobnav{\n    display:flex; position:fixed;");
+  assert.notEqual(desde, -1, "no está la regla de la barra de abajo");
+  const regla = css.slice(desde, css.indexOf("}", desde));
+  assert.ok(regla.includes("border-radius:"), "la barra tiene esquinas rectas que el iPhone recorta");
+  assert.ok(/bottom:calc\(\d+px \+ env\(safe-area-inset-bottom\)\)/.test(regla), "la barra queda pegada al fondo, sobre la barra de gestos");
+  assert.ok(/left:calc\(\d+px \+ env\(safe-area-inset-left\)\)/.test(regla), "la barra toca el borde de la pantalla");
+});
+
+test("el selector de período se dibuja igual en iPhone que en Android", () => {
+  const css = fuente("app/globals.css");
+  const regla = css.slice(css.indexOf(".wk-select{"), css.indexOf("}", css.indexOf(".wk-select{")));
+  assert.ok(regla.includes("appearance:none"), "Safari le pone su propio dibujo al selector y lo corta");
+});

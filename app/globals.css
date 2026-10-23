@@ -360,11 +360,20 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 @media(max-width:860px){
   .app{grid-template-columns:1fr}
   .side{display:none}
-  .content{padding:18px 16px 92px}
+  /* Con la pantalla entera (viewport-fit=cover), en horizontal el contenido no
+     se mete debajo de la muesca del iPhone. */
+  .app{padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right)}
+  .content{padding:18px 16px calc(96px + env(safe-area-inset-bottom))}
   .topbar{padding:14px 16px}
+  /* La barra de abajo flota, redondeada y separada de los bordes: de borde a
+     borde y pegada al fondo, las esquinas redondeadas del iPhone se comían el
+     primer botón ("Período") y quedaba encima de la barra de gestos. */
   .mobnav{
-    display:flex; position:fixed; bottom:0; left:0; right:0; z-index:20; background:var(--surface);
-    border-top:1px solid var(--hair); padding:8px 6px calc(8px + env(safe-area-inset-bottom)); justify-content:space-around;
+    display:flex; position:fixed; z-index:20; background:var(--surface);
+    left:calc(8px + env(safe-area-inset-left)); right:calc(8px + env(safe-area-inset-right));
+    bottom:calc(8px + env(safe-area-inset-bottom));
+    border:1px solid var(--hair); border-radius:22px; box-shadow:0 6px 24px rgba(0,0,0,.22);
+    padding:4px 6px; justify-content:space-around;
   }
   .mobnav a{border:none; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:var(--t-xs); color:var(--muted); font-weight:600; min-height:var(--tap); padding:var(--sp-1) var(--sp-3); border-radius:var(--r-sm); text-decoration:none}
   .mobnav a svg{width:22px; height:22px}
@@ -555,7 +564,15 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .snapshot-bar b{font-variant-numeric:tabular-nums}
 
 /* ===== Fin de semana (hub) ===== */
-.wk-select{font-family:var(--font-ui); font-size:var(--t-base); font-weight:600; color:var(--ink); background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md); padding:10px 12px; cursor:pointer; max-width:240px}
+/* El selector de período se dibuja entero acá, flecha incluida: sin
+   `appearance:none`, Safari del iPhone le pone su propio dibujo y lo cortaba. */
+.wk-select{
+  font-family:var(--font-ui); font-size:var(--t-base); font-weight:600; color:var(--ink);
+  border:1px solid var(--hair); border-radius:var(--r-md); padding:10px 36px 10px 12px; cursor:pointer; max-width:240px;
+  -webkit-appearance:none; appearance:none; line-height:1.25;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center / 16px 16px;
+}
 .tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:var(--sp-4); margin-bottom:var(--sp-5)}
 .tile{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); padding:var(--sp-5); box-shadow:var(--shadow)}
 .tile .k{font-size:var(--t-sm); color:var(--muted); display:flex; align-items:center; gap:var(--sp-2)}
@@ -1103,7 +1120,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 @media(max-width:860px){
   /* Seis lugares en vez de cinco: se achica el respiro lateral para que las
      etiquetas sigan entrando enteras y nada quede fuera de la pantalla. */
-  .mobnav-6{justify-content:space-between; padding-left:2px; padding-right:2px}
+  .mobnav-6{justify-content:space-between; padding-left:4px; padding-right:4px}
   .mobnav-6 a, .mobnav-6 button{padding-left:var(--sp-1); padding-right:var(--sp-1); flex:1 1 0; min-width:0}
   .mobnav button{
     border:none; background:none; display:flex; flex-direction:column; align-items:center;
@@ -1469,10 +1486,12 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
    entradas de las que entran: hoy, únicamente ADMIN. */
 @media(max-width:860px){
   .mobmas-fondo{position:fixed; inset:0; z-index:19; background:rgba(0,0,0,.35)}
+  /* Flota justo encima de la barra de abajo, redondeada como ella. */
   .mobmas{
-    position:fixed; left:0; right:0; bottom:calc(64px + env(safe-area-inset-bottom));
-    background:var(--surface); border-top:1px solid var(--hair);
-    box-shadow:0 -12px 32px rgba(0,0,0,.18);
+    position:fixed; left:calc(8px + env(safe-area-inset-left)); right:calc(8px + env(safe-area-inset-right));
+    bottom:calc(75px + env(safe-area-inset-bottom));
+    background:var(--surface); border:1px solid var(--hair); border-radius:18px;
+    box-shadow:0 -8px 28px rgba(0,0,0,.2);
     display:flex; justify-content:space-around; padding:10px 6px;
   }
   .mobmas a, .mobmas button{
