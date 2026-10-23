@@ -2486,10 +2486,16 @@ tbody tr:hover{background:var(--surface-2)}
   .modal-sheet .sheet-foot{padding-bottom:calc(var(--sp-4) + env(safe-area-inset-bottom))}
   .modal::before{
     content:""; position:absolute; top:var(--sp-2); left:50%; transform:translateX(-50%);
-    width:40px; height:4px; border-radius:var(--r-pill); background:var(--hair);
+    width:40px; height:4px; border-radius:var(--r-pill);
+    /* --hair es un filete casi invisible sobre el fondo claro; la manija tiene que verse. */
+    background:color-mix(in srgb, var(--muted) 45%, transparent);
   }
-  /* Los botones del pie, a lo ancho y apilados de a dos: se tocan con el pulgar. */
-  .modal-actions{flex-wrap:wrap}
-  .modal-actions .btn{flex:1 1 40%}
+  /* Los botones del pie, a lo ancho y apilados de a dos: se tocan con el pulgar.
+     Solo los de las hojas: .modal-actions también está en tarjetas de páginas
+     (Cuenta, Perfil, Sugerencias), donde estiraba el botón de guardar. */
+  .modal .modal-actions{flex-wrap:wrap}
+  .modal .modal-actions .btn{flex:1 1 40%}
+  /* Escribiendo, la barra de abajo no hace falta y con el teclado abierto se
+     come media pantalla. */
+  body:has(:is(input, textarea, select):focus) .mobnav{display:none}
 }
-@media (prefers-reduced-motion:reduce){ .modal{animation:none} }

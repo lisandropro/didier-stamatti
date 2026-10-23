@@ -38,8 +38,18 @@ export function ComportamientoDeApp() {
     // ejemplo, mientras borra), tampoco se cierra deslizando: vuelve a su lugar.
     // Solo arranca si lo que está bajo el dedo no está scrolleado: si no, el
     // gesto es para subir el contenido, no para cerrar.
+    // El gesto es de UN dedo: se guarda el `identifier` del que lo empezó y
+    // todo lo demás (mover, soltar) busca a ese. Si no, un segundo dedo que se
+    // apoya o se levanta movería la hoja o la cerraría sin querer.
     const celular = window.matchMedia("(max-width:860px)");
-    let arrastre: { y: number; hoja: HTMLElement; fondo: HTMLElement } | null = null;
+    let arrastre: { id: number; x: number; y: number; moviendo: boolean; hoja: HTMLElement; fondo: HTMLElement } | null = null;
+    // Devuelve la hoja a su lugar y deja de seguir al dedo. No cierra nada.
+    const soltarGesto = () => {
+      if (!arrastre) return;
+      arrastre.hoja.style.transition = "";
+      arrastre.hoja.style.transform = "";
+      arrastre = null;
+    };
     const scrolleado = (desde: EventTarget | null, hoja: HTMLElement) => {
       for (let el = desde instanceof Element ? desde : null; el && el !== hoja.parentElement; el = el.parentElement) {
         if (el instanceof HTMLElement && el.scrollTop > 0) return true;
@@ -48,26 +58,43 @@ export function ComportamientoDeApp() {
     };
     const alTocar = (e: TouchEvent) => {
       if (!celular.matches || e.touches.length !== 1) return;
+      // Un toque nuevo y solo es un gesto nuevo: si quedó uno colgado (su nodo
+      // se desmontó y nunca llegó el "soltar"), no se arrastra la hoja de aquel.
+      soltarGesto();
       const hoja = e.target instanceof Element ? e.target.closest<HTMLElement>(".modal") : null;
       const fondo = hoja?.parentElement;
       if (!hoja || !fondo?.classList.contains("overlay") || scrolleado(e.target, hoja)) return;
       if (e.target instanceof Element && e.target.closest("input, textarea, select")) return;
-      arrastre = { y: e.touches[0].clientY, hoja, fondo };
+      const dedo = e.touches[0];
+      arrastre = { id: dedo.identifier, x: dedo.clientX, y: dedo.clientY, moviendo: false, hoja, fondo };
     };
     const alMover = (e: TouchEvent) => {
-      if (!arrastre) return;
-      const dy = e.touches[0].clientY - arrastre.y;
-      arrastre.hoja.style.transition = "none";
-      arrastre.hoja.style.transform = dy > 0 ? `translateY(${dy}px)` : "";
+      const a = arrastre;
+      if (!a) return;
+      const dedo = [...e.touches].find((t) => t.identifier === a.id);
+      if (!dedo) return;
+      const dy = dedo.clientY - a.y;
+      if (!a.moviendo) {
+        // La hoja no se mueve por un temblor del dedo: hasta que se corrió más
+        // de 8 px no se sabe qué quiere. Si fue hacia abajo y más en vertical que
+        // en horizontal, es para cerrar; si fue de costado o hacia arriba, el
+        // gesto es para scrollear y la hoja no se toca.
+        const dx = dedo.clientX - a.x;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) <= 8) return;
+        if (!(dy > 8 && dy > Math.abs(dx))) return soltarGesto();
+        a.moviendo = true;
+      }
+      a.hoja.style.transition = "none";
+      a.hoja.style.transform = dy > 0 ? `translateY(${dy}px)` : "";
     };
     const alSoltar = (e: TouchEvent) => {
-      if (!arrastre) return;
-      const { hoja, fondo, y } = arrastre;
-      arrastre = null;
-      const dy = e.changedTouches[0].clientY - y;
-      hoja.style.transition = "";
-      hoja.style.transform = "";
-      if (dy > 90) fondo.click();
+      const a = arrastre;
+      if (!a) return;
+      const dedo = [...e.changedTouches].find((t) => t.identifier === a.id);
+      if (!dedo) return;
+      const cerrar = a.moviendo && dedo.clientY - a.y > 90;
+      soltarGesto();
+      if (cerrar) a.fondo.click();
     };
 
     document.addEventListener("contextmenu", sinMenu);
@@ -75,7 +102,10 @@ export function ComportamientoDeApp() {
     document.addEventListener("touchstart", alTocar, { passive: true });
     document.addEventListener("touchmove", alMover, { passive: true });
     document.addEventListener("touchend", alSoltar);
-    document.addEventListener("touchcancel", alSoltar);
+    // Si el sistema cancela el toque (se tapó con una notificación, lo agarró
+    // el gesto de volver), eso no es un deslizamiento: la hoja vuelve a su
+    // lugar y NO se cierra, por más que el dedo haya bajado.
+    document.addEventListener("touchcancel", soltarGesto);
     pintarBarra();
     cambioDeTema.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     return () => {
@@ -84,7 +114,7 @@ export function ComportamientoDeApp() {
       document.removeEventListener("touchstart", alTocar);
       document.removeEventListener("touchmove", alMover);
       document.removeEventListener("touchend", alSoltar);
-      document.removeEventListener("touchcancel", alSoltar);
+      document.removeEventListener("touchcancel", soltarGesto);
       cambioDeTema.disconnect();
     };
   }, []);

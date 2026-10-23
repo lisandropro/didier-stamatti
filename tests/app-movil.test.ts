@@ -65,3 +65,19 @@ test("deslizar hacia abajo cierra la hoja usando el mismo cierre que tocar afuer
   assert.ok(s.includes(".click()"), "el gesto no usa el cierre de cada ventana");
   assert.ok(s.includes("scrollTop"), "deslizar cerraría la hoja en vez de scrollear su contenido");
 });
+
+test("el gesto sigue al dedo que lo empezó y un toque cancelado no cierra", () => {
+  const s = fuente("components/ComportamientoDeApp.tsx");
+  assert.ok(s.includes(".identifier"), "un segundo dedo puede cerrar la hoja");
+  const cancelar = s.slice(s.indexOf('"touchcancel"'), s.indexOf('"touchcancel"') + 80);
+  assert.ok(!cancelar.includes("alSoltar"), "un toque cancelado por el sistema cierra la hoja");
+});
+
+test("con el teclado abierto la pantalla se achica y la barra de abajo se esconde", () => {
+  assert.ok(fuente("app/layout.tsx").includes('interactiveWidget: "resizes-content"'), "el teclado tapa las hojas");
+  assert.ok(fuente("app/globals.css").includes("body:has(:is(input, textarea, select):focus) .mobnav{display:none}"), "la barra de abajo queda arriba del teclado");
+});
+
+test("los botones de las páginas no se estiran como los de las hojas", () => {
+  assert.ok(fuente("app/globals.css").includes(".modal .modal-actions .btn{flex:1 1 40%}"), "el estilo de las hojas alcanza a las tarjetas de las páginas");
+});

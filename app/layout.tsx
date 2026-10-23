@@ -15,11 +15,16 @@ export const metadata: Metadata = {
 // en el teléfono. Quien necesite letra más grande la elige en Cuenta, que
 // agranda todo sin romper el diseño. El color de la barra del sistema sale del
 // fondo de cada tema (y `ComportamientoDeApp` lo ajusta al tema elegido).
+// `interactiveWidget`: en Android el teclado, por defecto, se pone ENCIMA de lo
+// que está fijo abajo (las hojas), y un campo de la hoja podía quedar tapado.
+// Con "resizes-content" la pantalla se achica al abrirse el teclado y lo fijo
+// abajo queda arriba del teclado, como en una app.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#FBFAF8" },
     { media: "(prefers-color-scheme: dark)", color: "#0E0E0D" },
