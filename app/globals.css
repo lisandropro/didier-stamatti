@@ -2416,9 +2416,13 @@ tbody tr:hover{background:var(--surface-2)}
   .topbar-hub{position:static; gap:var(--sp-2)}
   .topbar-hub .spacer{display:none}
   /* El título y el menú en la primera línea; el período y "Nuevo evento", en la segunda. */
+  /* El calc de abajo depende del ancho del botón ⋯ (--tap) y del gap de la cabecera (--sp-2): si cambia cualquiera de los dos, el menú cae a la segunda línea. */
   .topbar-hub .topbar-titulo{flex:1 1 calc(100% - var(--tap) - var(--sp-2))}
   .topbar-hub h1{font-size:var(--t-xl)}
-  .topbar-hub .wk-select{flex:1 1 0; min-width:0}
+  /* El selector necesita un ancho propio para caer a la segunda línea cuando no
+     hay menú (los roles que no administran períodos): con base 0 entraba al lado
+     del título y quedaba de 26 px. Con el menú, entra junto a "Nuevo evento". */
+  .topbar-hub .wk-select{flex:1 1 9rem; min-width:0; min-height:var(--tap)}
   .hub-cuerpo{display:flex; flex-direction:column}
   .hub-eventos{order:1}
   .hub-banner{order:2; margin-top:var(--sp-5); margin-bottom:0}

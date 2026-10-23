@@ -131,3 +131,12 @@ test("las pestañas de Cambios tardíos van en una fila que se desliza", () => {
   const s = fuente("app/(app)/cambios-tardios/page.tsx");
   assert.ok(s.includes('className="filtros-scroll"'), "las pestañas de períodos se apilan en el celular");
 });
+
+test("en el celular el selector de período tiene ancho propio y alto de dedo", () => {
+  const css = fuente("app/globals.css");
+  const desde = css.indexOf(".topbar-hub .wk-select{");
+  assert.notEqual(desde, -1, "no está la regla del selector de período en el celular");
+  const regla = css.slice(desde, css.indexOf("}", desde));
+  assert.ok(!regla.includes("flex:1 1 0"), "con base 0 el selector se aplasta al lado del título");
+  assert.ok(regla.includes("min-height:var(--tap)"), "el selector mide menos que un dedo");
+});
