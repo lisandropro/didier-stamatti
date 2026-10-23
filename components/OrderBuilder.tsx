@@ -471,7 +471,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                       {p.deBaja && <span className="chip crit chip-baja">Dado de baja</span>}
                       {data.preparados[p.id] !== undefined && <span className="chip ok chip-prep">Preparado</span>}
                     </button>
-                    <div className="rubro">{rubro}</div>
+                    <div className="rubro solo-ancho">{rubro}</div>
                     {/* La segunda línea del celular: solo si hay algo que decir. */}
                     {avisos.length > 0 && (
                       <div className="orow-resumen solo-celular">

@@ -97,3 +97,15 @@ test("los ±10 del detalle pasan por la misma pregunta que el resto", () => {
   const bloque = s.slice(desde, s.indexOf("</div>", desde));
   assert.ok(bloque.includes("stepQty(p.id, -10)") && bloque.includes("stepQty(p.id, 10)"), "los ±10 no usan stepQty");
 });
+
+test("la nota del detalle mide 16 px, para que el teléfono no agrande la pantalla", () => {
+  const css = fuente("app/globals.css");
+  const regla = css.slice(css.indexOf(".detalle-nota{"), css.indexOf("}", css.indexOf(".detalle-nota{")));
+  assert.ok(regla.includes("font-size:16px"), "la nota del detalle mide menos de 16 px");
+});
+
+test("en el celular los extras conservan su unidad: solo se esconde el rubro del catálogo", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(!css.includes(".ocol-name .rubro{display:none}"), "se esconde también la unidad de los extras");
+  assert.ok(fuente("components/OrderBuilder.tsx").includes('<div className="rubro solo-ancho">{rubro}</div>'), "el rubro del catálogo no se esconde en el celular");
+});

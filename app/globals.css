@@ -788,12 +788,11 @@ tbody tr:hover{background:var(--surface-2)}
 .detalle-pasos{display:flex; gap:var(--sp-2)}
 .detalle-pasos .qbtn{flex:1}
 /* 16 px de letra: con menos, el teléfono agranda la pantalla al tocarla. */
-.detalle-nota{display:block; width:100%; min-height:var(--tap); font-size:var(--t-base); font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
+.detalle-nota{display:block; width:100%; min-height:var(--tap); font-size:16px; font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
 .detalle-nota:focus{outline:2px solid var(--gold); outline-offset:-1px}
 
 @media(max-width:860px){
   .orow{grid-template-columns:minmax(0,1fr) auto; gap:var(--sp-1) var(--sp-3); padding:var(--sp-2) var(--sp-3)}
-  .ocol-name .rubro{display:none}
   .pname-btn{min-height:var(--tap); display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-1) var(--sp-2)}
   .pname-btn .chip-prep, .pname-btn .chip-baja{margin-left:0}
   .ocol-qty{justify-content:flex-end}
