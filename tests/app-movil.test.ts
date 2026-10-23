@@ -104,3 +104,20 @@ test("el inventario en el celular no muestra encabezado de columnas", () => {
   const css = fuente("app/globals.css");
   assert.ok(/\.inventory-table thead\{display:none\}/.test(css), "el inventario sigue con PRODUCTO / STOCK arriba");
 });
+
+test("en Historial cada movimiento se titula por el producto, no por la fecha", () => {
+  const s = fuente("components/Historial.tsx");
+  assert.ok(s.includes("celda-titulo"), "la tarjeta de un movimiento se titula con la fecha");
+  assert.ok(s.includes('data-label="Fecha"'), "la fecha queda sin decir qué es");
+  assert.ok(fuente("app/globals.css").includes(".tabla-lista tbody td.celda-titulo{order:-1"), "la celda título no encabeza la tarjeta");
+});
+
+test("el inventario esconde su encabezado solo donde esconde sus columnas", () => {
+  // En Windows el CSS llega con CRLF: se pasa a LF para que los cortes por "}" caigan en el lugar.
+  const css = fuente("app/globals.css").replace(/\r\n/g, "\n");
+  const desde = css.indexOf("@media screen and (max-width:600px)");
+  const hasta = css.indexOf("\n}\n", desde);
+  assert.ok(desde !== -1 && hasta !== -1, "no se encuentra el bloque de 600 px del inventario");
+  const bloque600 = css.slice(desde, hasta);
+  assert.ok(bloque600.includes(".inventory-table thead{display:none}"), "entre 600 y 860 px el inventario muestra columnas sin nombre");
+});

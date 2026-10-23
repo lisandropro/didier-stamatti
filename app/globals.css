@@ -243,6 +243,8 @@ tbody tr:hover{background:var(--surface-2)}
 .stocknum{font-variant-numeric:tabular-nums; font-weight:700; font-size:var(--t-lg)}
 .inventory-mobile-meta{display:none}
 @media screen and (max-width:600px){
+  /* El encabezado se esconde solo donde se esconden las columnas que nombra: entre 600 y 860 px siguen todas y sin nombre no se entienden. */
+  .inventory-table thead{display:none}
   .inventory-table{min-width:0; table-layout:fixed}
   .inventory-table th,.inventory-table td{padding:12px 10px}
   .inventory-table th:nth-child(2),.inventory-table td:nth-child(2),
@@ -2513,6 +2515,10 @@ tbody tr:hover{background:var(--surface-2)}
   .tabla-lista tbody tr:last-child{border-bottom:none}
   .tabla-lista tbody td{padding:0; border:none; font-size:var(--t-sm); color:var(--muted)}
   .tabla-lista tbody td:first-child{font-size:var(--t-base); color:var(--ink); font-weight:600}
+  /* Si una celda está marcada como título, esa encabeza la tarjeta aunque no sea
+     la primera columna: en Historial lo que se busca es el producto, no la fecha. */
+  .tabla-lista tbody td.celda-titulo{order:-1; font-size:var(--t-base); color:var(--ink); font-weight:600}
+  .tabla-lista tbody tr:has(.celda-titulo) td:first-child{font-size:var(--t-sm); color:var(--muted); font-weight:500}
   .tabla-lista tbody td[data-label]::before{content:attr(data-label) ": "; color:var(--muted); font-weight:500}
   .tabla-lista tbody td:empty{display:none}
   /* Las filas de sección ("ENSERES") de las tablas agrupadas siguen siendo
@@ -2521,5 +2527,4 @@ tbody tr:hover{background:var(--surface-2)}
   /* La celda del rótulo ya trae su relleno y su letra chica (.summary-table
      .cat-row td): sin esto se sumaba al de la fila y quedaba sangrada. */
   .tabla-lista tbody tr.cat-row td{padding:0; font-size:var(--t-xs); color:var(--muted); font-weight:700}
-  .inventory-table thead{display:none}
 }

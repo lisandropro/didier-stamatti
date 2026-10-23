@@ -161,8 +161,8 @@ function Movements({ movements, total }: { movements: MovementRow[]; total: numb
             )}
             {filtered.map((m) => (
               <tr key={m.id}>
-                <td className="dim">{m.dateLabel}</td>
-                <td className="prod" data-label="Producto">{m.productName}</td>
+                <td className="dim" data-label="Fecha">{m.dateLabel}</td>
+                <td className="prod celda-titulo">{m.productName}</td>
                 <td data-label="Motivo"><span className={`chip ${REASON_CLASS[m.reason] ?? "neutral"}`}>{REASON_LABEL[m.reason] ?? m.reason}</span></td>
                 <td data-label="Cantidad">
                   <span className="stocknum" style={{ color: m.delta > 0 ? "var(--ok)" : m.delta < 0 ? "var(--crit)" : undefined }}>
