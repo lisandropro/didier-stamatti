@@ -10,6 +10,7 @@ import { validQuantity, MAX_QUANTITY } from "@/lib/quantity";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
 import { marcarGuardado, marcarPendiente } from "@/lib/trabajo-pendiente";
 import { computeShortage } from "@/lib/shortage-rule";
+import { estadoDeStock, type NivelDeStock } from "@/lib/fila-de-pedido";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditEventModal } from "@/components/EditEventModal";
 import { ResponsableEditor } from "@/components/ResponsableEditor";
@@ -74,6 +75,14 @@ const IconEdit = (
 const IconCopy = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg>
 );
+
+/** Color de la barra de stock según lo que dice la fila. */
+const RELLENO: Record<NivelDeStock, string> = {
+  neutral: "var(--muted)",
+  crit: "var(--crit)",
+  warn: "var(--warn)",
+  ok: "var(--ok)",
+};
 
 export function OrderBuilder({ data }: { data: Data }) {
   const router = useRouter();
@@ -380,23 +389,10 @@ export function OrderBuilder({ data }: { data: Data }) {
             {visible.map((p) => {
               const reutil = p.type === "REUTILIZABLE";
               const total = p.qty + p.reserved;
-              // Sin recuento no se puede decir si alcanza: no se sabe cuánto hay.
-              // Se avisa que falta contarlo, que es lo único cierto.
               const contado = reutil && p.stock !== null;
               const hay = p.stock ?? 0;
               const pct = contado && hay > 0 ? Math.min(100, Math.round((total / hay) * 100)) : total > 0 ? 100 : 0;
-              const st =
-                !reutil
-                  ? null
-                  : !contado
-                    ? { cls: "neutral", txt: "Sin contar", fill: "var(--muted)" }
-                  : total > hay
-                    ? { cls: "crit", txt: `Faltan ${total - hay}`, fill: "var(--crit)" }
-                    : total === hay && total > 0
-                      ? { cls: "warn", txt: "Al límite", fill: "var(--warn)" }
-                      : p.qty > 0
-                        ? { cls: "ok", txt: "Alcanza", fill: "var(--ok)" }
-                        : null;
+              const st = estadoDeStock(p);
               const trabada = bloqueada(p.id);
               return (
                 <div key={p.id} className={`orow${p.qty > 0 ? " has-qty" : ""}`}>
@@ -446,7 +442,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                   <div className="ocol-stock">
                     {reutil ? (
                       <>
-                        <div className="bar"><div className="fill" style={{ width: `${pct}%`, background: st?.fill ?? "var(--muted)" }} /></div>
+                        <div className="bar"><div className="fill" style={{ width: `${pct}%`, background: st ? RELLENO[st.cls] : "var(--muted)" }} /></div>
                         <div className="line">
                           Depósito: <b>{p.stock ?? "sin contar"}</b> · Otros eventos: <b>{p.reserved}</b>
                           {st && <span className={`chip ${st.cls}`}>{st.txt}</span>}
