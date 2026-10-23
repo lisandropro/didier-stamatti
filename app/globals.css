@@ -150,8 +150,8 @@ body{
   text-align:left; width:100%; text-decoration:none;
 }
 .nav svg{width:20px; height:20px; flex:0 0 auto; color:var(--muted); transition:color var(--dur) var(--ease)}
-.nav:hover{background:var(--surface-2)}
-.nav:hover svg{color:var(--ink)}
+@media (hover:hover){ .nav:hover{background:var(--surface-2)} }
+@media (hover:hover){ .nav:hover svg{color:var(--ink)} }
 .nav.active{background:var(--brand-soft); color:var(--ink); border-color:var(--hair); font-weight:600}
 .nav.active svg{color:var(--gold)}
 .side .foot{margin-top:auto; padding:var(--sp-2) var(--sp-1); border-top:1px solid var(--hair); display:flex; align-items:center; gap:var(--sp-2); color:var(--muted); font-size:var(--t-sm)}
@@ -176,19 +176,19 @@ body{
   border:1px solid var(--hair); background:var(--surface); color:var(--ink); cursor:pointer;
 }
 .btn svg{width:18px; height:18px; flex:0 0 auto}
-.btn:hover{background:var(--surface-2); border-color:color-mix(in srgb,var(--hair) 60%,var(--ink))}
+@media (hover:hover){ .btn:hover{background:var(--surface-2); border-color:color-mix(in srgb,var(--hair) 60%,var(--ink))} }
 .btn:active{transform:translateY(1px)}
 .btn.primary{background:var(--brand); border-color:var(--brand); color:var(--on-brand)}
-.btn.primary:hover{background:var(--brand-strong); border-color:var(--brand-strong)}
+@media (hover:hover){ .btn.primary:hover{background:var(--brand-strong); border-color:var(--brand-strong)} }
 .btn.ghost{background:transparent}
-.btn.ghost:hover{background:var(--surface-2)}
+@media (hover:hover){ .btn.ghost:hover{background:var(--surface-2)} }
 .btn.danger{background:var(--crit); border-color:var(--crit); color:#fff}
-.btn.danger:hover{background:color-mix(in srgb,var(--crit) 85%,#000); border-color:color-mix(in srgb,var(--crit) 85%,#000)}
+@media (hover:hover){ .btn.danger:hover{background:color-mix(in srgb,var(--crit) 85%,#000); border-color:color-mix(in srgb,var(--crit) 85%,#000)} }
 .btn.btn-del{color:var(--muted); border-color:var(--hair); background:transparent}
-.btn.btn-del:hover{color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
+@media (hover:hover){ .btn.btn-del:hover{color:var(--crit); border-color:var(--crit); background:var(--crit-soft)} }
 .btn:disabled{opacity:.5; cursor:not-allowed}
-.btn:disabled:hover{background:var(--surface); border-color:var(--hair); transform:none}
-.btn.primary:disabled:hover{background:var(--brand); border-color:var(--brand)}
+@media (hover:hover){ .btn:disabled:hover{background:var(--surface); border-color:var(--hair); transform:none} }
+@media (hover:hover){ .btn.primary:disabled:hover{background:var(--brand); border-color:var(--brand)} }
 
 /* ===== Chips / status ===== */
 .chip{font-size:var(--t-sm); font-weight:650; padding:5px 10px; border-radius:var(--r-pill); display:inline-flex; align-items:center; gap:6px; white-space:nowrap}
@@ -220,9 +220,9 @@ body{
 /* En Cambios tardíos las pestañas son `<Link>` (un `<a>`, que es inline): sin
    esto el texto quedaba arriba y no centrado en sus 44 px. */
 a.tab{display:inline-flex; align-items:center; text-decoration:none}
-.tab:hover{background:var(--surface-2); color:var(--ink)}
+@media (hover:hover){ .tab:hover{background:var(--surface-2); color:var(--ink)} }
 .tab.active{background:var(--ink); color:var(--ground); border-color:var(--ink)}
-.tab.active:hover{background:var(--brand-strong); color:var(--ground)}
+@media (hover:hover){ .tab.active:hover{background:var(--brand-strong); color:var(--ground)} }
 
 /* ===== Table ===== */
 .tablewrap{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto}
@@ -237,7 +237,7 @@ thead th{
 tbody td{padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--hair); vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
 tbody tr{transition:background-color var(--dur) var(--ease)}
-tbody tr:hover{background:var(--surface-2)}
+@media (hover:hover){ tbody tr:hover{background:var(--surface-2)} }
 .prod{font-weight:600}
 .rubro{color:var(--muted); font-size:var(--t-sm); margin-top:2px}
 .stocknum{font-variant-numeric:tabular-nums; font-weight:700; font-size:var(--t-lg)}
@@ -260,7 +260,7 @@ tbody tr:hover{background:var(--surface-2)}
   border:1px solid var(--hair); background:var(--surface);
   min-height:36px; padding:0 var(--sp-3); border-radius:var(--r-sm); white-space:nowrap;
 }
-.miniedit:hover{background:var(--brand-soft); border-color:var(--gold)}
+@media (hover:hover){ .miniedit:hover{background:var(--brand-soft); border-color:var(--gold)} }
 .dim{color:var(--muted); font-weight:500}
 
 .emptyrow{padding:var(--sp-8) var(--sp-4); text-align:center; color:var(--muted)}
@@ -320,7 +320,7 @@ tbody tr:hover{background:var(--surface-2)}
 /* stepper − [n] + del editor de stock */
 .stepper-row{display:flex; align-items:center; justify-content:center; gap:12px; margin:8px 0 4px}
 .step-btn{width:54px; height:54px; border-radius:var(--r-md); border:1px solid var(--hair); background:var(--surface-2); font-size:var(--t-3xl); font-weight:600; line-height:1; color:var(--ink); cursor:pointer; display:grid; place-items:center; user-select:none}
-.step-btn:hover{background:var(--brand-soft); border-color:var(--gold)}
+@media (hover:hover){ .step-btn:hover{background:var(--brand-soft); border-color:var(--gold)} }
 .step-btn:active{transform:scale(.95)}
 .step-input{width:118px; height:54px; text-align:center; font-size:var(--t-3xl); font-weight:700; border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface-2); color:var(--ink); font-variant-numeric:tabular-nums; -moz-appearance:textfield}
 .step-input::-webkit-outer-spin-button, .step-input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
@@ -401,7 +401,7 @@ tbody tr:hover{background:var(--surface-2)}
   /* Sin esto, en iOS un toque sostenido selecciona el icono en vez de activarlo. */
   -webkit-tap-highlight-color:transparent; touch-action:manipulation;
 }
-.pass-toggle:hover{color:var(--ink)}
+@media (hover:hover){ .pass-toggle:hover{color:var(--ink)} }
 .pass-toggle:focus-visible{outline:2px solid var(--gold); outline-offset:0}
 .pass-toggle svg{width:19px; height:19px}
 
@@ -412,7 +412,7 @@ tbody tr:hover{background:var(--surface-2)}
   background:var(--surface); font-family:var(--font-ui); font-weight:600; font-size:var(--t-sm);
   color:var(--muted); cursor:pointer;
 }
-.seg button:hover{background:var(--surface-2)}
+@media (hover:hover){ .seg button:hover{background:var(--surface-2)} }
 .seg button.active{background:var(--brand-soft); color:var(--ink); border-color:var(--gold)}
 
 /* ===== Mi cuenta / Ajustes ===== */
@@ -426,7 +426,7 @@ tbody tr:hover{background:var(--surface-2)}
 .settings-hint{margin:2px 0 0; color:var(--muted); font-size:var(--t-sm)}
 .settings-ok{background:var(--ok-soft); color:var(--ok); border:1px solid color-mix(in srgb,var(--ok) 30%,transparent); border-radius:var(--r-sm); padding:9px 12px; font-size:var(--t-sm); font-weight:600; margin-top:12px}
 .foot-user{display:flex; align-items:center; gap:var(--sp-2); flex:1; min-width:0; text-decoration:none; color:inherit; border-radius:var(--r-sm); padding:var(--sp-1); margin:calc(var(--sp-1) * -1)}
-.foot-user:hover{background:var(--surface-2)}
+@media (hover:hover){ .foot-user:hover{background:var(--surface-2)} }
 .foot-id{flex:1; min-width:0}
 .foot-name{color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .foot-role{font-size:var(--t-xs)}
@@ -449,7 +449,7 @@ tbody tr:hover{background:var(--surface-2)}
   font-family:var(--font-ui); transition:background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 .notif-item:disabled{cursor:default}
-.notif-item:not(:disabled):hover{background:var(--surface-2)}
+@media (hover:hover){ .notif-item:not(:disabled):hover{background:var(--surface-2)} }
 .notif-item.unread{background:var(--brand-soft); border-color:color-mix(in srgb,var(--gold) 40%,var(--hair))}
 .notif-icon{flex:0 0 auto; color:var(--muted)}
 .notif-icon svg{width:20px; height:20px; display:block}
@@ -526,7 +526,7 @@ tbody tr:hover{background:var(--surface-2)}
 /* ===== Repetir pedido (copiar de otro evento) ===== */
 .copy-list{display:flex; flex-direction:column; gap:var(--sp-2); max-height:46vh; overflow-y:auto; margin-bottom:var(--sp-3)}
 .copy-row{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-md); padding:var(--sp-3); cursor:pointer; font-family:var(--font-ui); color:var(--ink); transition:background-color var(--dur) var(--ease), border-color var(--dur) var(--ease)}
-.copy-row:hover{background:var(--brand-soft); border-color:var(--gold)}
+@media (hover:hover){ .copy-row:hover{background:var(--brand-soft); border-color:var(--gold)} }
 .copy-lugar{font-weight:650; font-size:var(--t-base)}
 .copy-meta{color:var(--muted); font-size:var(--t-sm); margin-top:2px}
 
@@ -583,7 +583,7 @@ tbody tr:hover{background:var(--surface-2)}
   background:var(--surface-2);
 }
 .pasados > summary::-webkit-details-marker{display:none}
-.pasados > summary:hover{color:var(--ink); border-color:var(--ink)}
+@media (hover:hover){ .pasados > summary:hover{color:var(--ink); border-color:var(--ink)} }
 .pasados > summary:focus-visible{outline:2px solid var(--ink); outline-offset:2px}
 .pasados > summary svg{width:18px; height:18px; flex:none}
 /* La flechita la ponemos nosotros: la nativa se esconde arriba para que el
@@ -593,7 +593,8 @@ tbody tr:hover{background:var(--surface-2)}
 .pasados[open] > summary{margin-bottom:var(--sp-4); border-style:solid}
 /* Ya se hicieron: se muestran apagadas hasta que alguien las mira de cerca. */
 .pasados .event{opacity:.72}
-.pasados .event:hover, .pasados .event:focus-within{opacity:1}
+.pasados .event:focus-within{opacity:1}
+@media (hover:hover){ .pasados .event:hover{opacity:1} }
 /* La tarjeta es un div, no un enlace: así puede tener botones adentro. El
    enlace del título se estira sobre toda la tarjeta con ::after, y los botones
    se apoyan por encima con z-index. */
@@ -603,7 +604,7 @@ tbody tr:hover{background:var(--surface-2)}
   padding:var(--sp-4) var(--sp-5); box-shadow:var(--shadow);
   display:flex; flex-direction:column; gap:var(--sp-3); color:var(--ink);
 }
-.event:hover{border-color:color-mix(in srgb,var(--gold) 55%,transparent); box-shadow:var(--shadow-lift); transform:translateY(-2px)}
+@media (hover:hover){ .event:hover{border-color:color-mix(in srgb,var(--gold) 55%,transparent); box-shadow:var(--shadow-lift); transform:translateY(-2px)} }
 .event:active{transform:translateY(0)}
 .event .row1{display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-2)}
 .event h3{margin:0; font-size:var(--t-lg); font-weight:650; letter-spacing:-.01em; text-wrap:balance}
@@ -619,7 +620,7 @@ tbody tr:hover{background:var(--surface-2)}
   font-size:var(--t-sm); color:var(--muted); border-top:1px solid var(--hair);
   padding-top:var(--sp-3); font-weight:600; margin-top:auto;
 }
-.event:hover .event-foot{color:var(--gold)}
+@media (hover:hover){ .event:hover .event-foot{color:var(--gold)} }
 
 /* El aviso de faltantes ES el botón que abre el panel: una sola cosa en vez de
    una franja y un botón diciendo lo mismo. Va por encima del enlace estirado. */
@@ -633,12 +634,12 @@ tbody tr:hover{background:var(--surface-2)}
 .event-falta svg{width:15px; height:15px; flex:0 0 auto}
 .event-falta > span:first-of-type{flex:1 1 auto}
 .event-falta-cta{flex:0 0 auto; font-weight:700; opacity:.85; white-space:nowrap}
-.event-falta:hover{background:var(--crit); color:#fff}
-.event-falta:hover .event-falta-cta{opacity:1}
+@media (hover:hover){ .event-falta:hover{background:var(--crit); color:#fff} }
+@media (hover:hover){ .event-falta:hover .event-falta-cta{opacity:1} }
 
 /* El mismo panel se abre desde la barra del pedido. */
 .btn.btn-falta-top{color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
-.btn.btn-falta-top:hover{background:var(--crit); color:#fff}
+@media (hover:hover){ .btn.btn-falta-top:hover{background:var(--crit); color:#fff} }
 .btn.btn-falta-top svg{width:15px; height:15px}
 .btn.btn-falta-top .count-pill{background:transparent; border-color:currentColor; color:inherit}
 
@@ -664,7 +665,7 @@ tbody tr:hover{background:var(--surface-2)}
   border:1px solid transparent; border-radius:var(--r-sm); background:transparent; color:var(--muted);
 }
 .rowmenu-btn svg{width:18px; height:18px}
-.rowmenu-btn:hover{background:var(--surface-2); color:var(--ink); border-color:var(--hair)}
+@media (hover:hover){ .rowmenu-btn:hover{background:var(--surface-2); color:var(--ink); border-color:var(--hair)} }
 .rowmenu-btn[aria-expanded="true"]{background:var(--surface-2); color:var(--ink); border-color:var(--hair)}
 .rowmenu-list{
   position:fixed; z-index:60; min-width:190px;
@@ -676,7 +677,7 @@ tbody tr:hover{background:var(--surface-2)}
   text-align:left; background:transparent; border:0; cursor:pointer; color:var(--ink);
   padding:var(--sp-2) var(--sp-3); border-radius:var(--r-sm); font-size:var(--t-sm); font-weight:600;
 }
-.rowmenu-list button:hover{background:var(--surface-2)}
+@media (hover:hover){ .rowmenu-list button:hover{background:var(--surface-2)} }
 /* Un producto dado de baja se sigue viendo, pero no compite visualmente con los activos. */
 .row-baja{opacity:.6}
 .row-baja .prod{text-decoration:line-through}
@@ -743,13 +744,13 @@ tbody tr:hover{background:var(--surface-2)}
   transition:background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .orow:last-child{border-bottom:none}
-.orow:hover{background:var(--surface-2)}
+@media (hover:hover){ .orow:hover{background:var(--surface-2)} }
 /* Una fila cargada se distingue por una marca dorada al borde, no por teñir todo */
 .orow.has-qty{
   background:color-mix(in srgb,var(--gold) 5%,var(--surface));
   box-shadow:inset 3px 0 0 var(--gold);
 }
-.orow.has-qty:hover{background:color-mix(in srgb,var(--gold) 9%,var(--surface))}
+@media (hover:hover){ .orow.has-qty:hover{background:color-mix(in srgb,var(--gold) 9%,var(--surface))} }
 
 .ocol-name{min-width:0}
 .ocol-name .pname{font-weight:600; font-size:var(--t-base); line-height:1.3}
@@ -761,8 +762,9 @@ tbody tr:hover{background:var(--surface-2)}
   font-size:var(--t-sm); color:var(--muted); font-weight:600; cursor:pointer; text-align:left;
   opacity:0; transition:opacity var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.note-toggle:hover{color:var(--gold)}
-.orow:hover .note-toggle, .orow:focus-within .note-toggle{opacity:1}
+@media (hover:hover){ .note-toggle:hover{color:var(--gold)} }
+.orow:focus-within .note-toggle{opacity:1}
+@media (hover:hover){ .orow:hover .note-toggle{opacity:1} }
 .note-toggle.has-note{opacity:1; color:var(--gold)}
 /* Sin hover (celular/tablet) o en layout angosto: la nota siempre visible */
 @media(max-width:860px), (hover:none){ .note-toggle{opacity:1} }
@@ -785,10 +787,10 @@ tbody tr:hover{background:var(--surface-2)}
   color:var(--ink); cursor:pointer; display:grid; place-items:center; user-select:none;
 }
 .qbtn.wide{font-size:var(--t-sm); font-weight:700}
-.qbtn:hover{background:var(--brand-soft); border-color:var(--gold); color:var(--ink)}
+@media (hover:hover){ .qbtn:hover{background:var(--brand-soft); border-color:var(--gold); color:var(--ink)} }
 .qbtn:active{transform:scale(.94)}
 .qbtn.danger{color:var(--crit)}
-.qbtn.danger:hover{border-color:var(--crit); background:var(--crit-soft)}
+@media (hover:hover){ .qbtn.danger:hover{border-color:var(--crit); background:var(--crit-soft)} }
 .qbtn svg{width:16px; height:16px}
 .qinput{
   width:66px; height:var(--tap); text-align:center; font-size:var(--t-lg); font-weight:700;
@@ -1003,7 +1005,7 @@ tbody tr:hover{background:var(--surface-2)}
 }
 .resp-chip svg{width:16px; height:16px; color:var(--muted); flex:0 0 auto}
 .resp-chip-btn{cursor:pointer}
-.resp-chip-btn:hover{border-color:var(--gold)}
+@media (hover:hover){ .resp-chip-btn:hover{border-color:var(--gold)} }
 .resp-cta{font-size:var(--t-sm); font-weight:700; color:var(--gold)}
 .resp-edit{display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap}
 .resp-edit input{
@@ -1020,11 +1022,11 @@ tbody tr:hover{background:var(--surface-2)}
   background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-sm);
   padding:var(--sp-2) var(--sp-3); cursor:pointer;
 }
-.user-role-select:hover{border-color:var(--gold)}
+@media (hover:hover){ .user-role-select:hover{border-color:var(--gold)} }
 
 /* ===== Logout button (sidebar) ===== */
 .logout-btn{background:transparent; border:1px solid var(--hair); border-radius:var(--r-sm); width:40px; height:40px; display:grid; place-items:center; color:var(--muted); cursor:pointer; flex:0 0 auto}
-.logout-btn:hover{background:var(--surface-2); color:var(--crit)}
+@media (hover:hover){ .logout-btn:hover{background:var(--surface-2); color:var(--crit)} }
 .logout-btn svg{width:17px; height:17px}
 
 /* ===== Sugerencias ===== */
@@ -1033,7 +1035,7 @@ tbody tr:hover{background:var(--surface-2)}
    en la misma pantalla. Se separa un poco del resto para que no se lea como
    una sección más del menú. */
 .nav-action{margin-top:var(--sp-2); color:var(--muted); font-weight:600}
-.nav-action:hover{color:var(--ink)}
+@media (hover:hover){ .nav-action:hover{color:var(--ink)} }
 
 .field .req{font-style:normal; text-transform:none; letter-spacing:0; font-weight:600; color:var(--crit); opacity:.85}
 
@@ -1064,7 +1066,7 @@ tbody tr:hover{background:var(--surface-2)}
   border:1px solid var(--hair); border-radius:var(--r-lg); background:var(--surface);
   text-decoration:none; color:var(--ink); transition:border-color var(--dur) var(--ease);
 }
-.sug-row:hover{border-color:var(--gold)}
+@media (hover:hover){ .sug-row:hover{border-color:var(--gold)} }
 .sug-row-top{display:flex; gap:var(--sp-2); flex-wrap:wrap; align-items:center}
 .sug-row-title{font-size:var(--t-md); font-weight:600; line-height:1.35}
 .sug-row-meta{font-size:var(--t-sm); color:var(--muted)}
@@ -1136,7 +1138,7 @@ tbody tr:hover{background:var(--surface-2)}
 /* Pantalla ancha: el aviso sigue siendo un párrafo con su enlace subrayado. */
 @media not all and (max-width:860px){
   .revision-item a{color:var(--ink); text-decoration:underline; text-underline-offset:2px}
-  .revision-item a:hover{color:var(--gold)}
+  @media (hover:hover){ .revision-item a:hover{color:var(--gold)} }
 }
 /* Celular: cada aviso con enlace es una fila que se toca entera, con una flecha:
    como la lista de una app. Antes era un párrafo con enlaces subrayados, y uno largo
@@ -1355,7 +1357,7 @@ tbody tr:hover{background:var(--surface-2)}
   font-size:var(--t-sm); font-weight:650; color:var(--muted); text-decoration:none;
   transition:background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.pg-ent:hover{color:var(--ink)}
+@media (hover:hover){ .pg-ent:hover{color:var(--ink)} }
 .pg-ent.elegida{background:var(--surface); border-color:var(--hair); color:var(--ink)}
 /* Lo que falta resolver. Se distingue porque no es una entidad más: es trabajo
    pendiente, y un contador es lo que hace que ese trabajo se termine. */
@@ -1426,8 +1428,8 @@ tbody tr:hover{background:var(--surface-2)}
    objetivo tiene que ser grande. El nombre es además un botón real, porque una
    fila no se puede enfocar con el teclado. */
 .pg-fila{cursor:pointer}
-.pg-fila:hover td{background:var(--surface-2)}
-.pg-elegida:hover td{background:var(--brand-soft)}
+@media (hover:hover){ .pg-fila:hover td{background:var(--surface-2)} }
+@media (hover:hover){ .pg-elegida:hover td{background:var(--brand-soft)} }
 .pg-nombre{
   background:none; border:none; padding:0; cursor:pointer; text-align:left;
   font:inherit; color:inherit;
@@ -1488,7 +1490,7 @@ tbody tr:hover{background:var(--surface-2)}
   border:none; background:none; color:inherit; font-size:20px; line-height:1;
   cursor:pointer; padding:0 4px; opacity:.7;
 }
-.pg-aviso button:hover{opacity:1}
+@media (hover:hover){ .pg-aviso button:hover{opacity:1} }
 .pg-aviso-bien{background:var(--ok-bg,#0f2a1a); border-color:var(--ok-line,#1f6b3f); color:var(--ok-ink,#7ee0a5)}
 .pg-aviso-ojo{background:var(--warn-bg,#2c2410); border-color:var(--warn-line,#7a6220); color:var(--warn-ink,#f0cf7a)}
 .pg-aviso-mal{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8)}
@@ -1547,7 +1549,7 @@ tbody tr:hover{background:var(--surface-2)}
   background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
   color:var(--ink);
 }
-.pg-faltantes a:hover{border-color:var(--gold)}
+@media (hover:hover){ .pg-faltantes a:hover{border-color:var(--gold)} }
 .pg-faltantes a:focus-visible{outline:2px solid var(--gold); outline-offset:1px}
 .pg-faltantes-quien{font-weight:650; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .pg-faltantes-que{font-size:var(--t-sm); color:var(--muted)}
@@ -1616,7 +1618,7 @@ tbody tr:hover{background:var(--surface-2)}
   width:34px; height:34px; border:none; background:none; cursor:pointer;
   color:var(--muted); border-radius:var(--r-sm); text-decoration:none;
 }
-.pg-accion:hover{color:var(--gold); background:var(--surface-2)}
+@media (hover:hover){ .pg-accion:hover{color:var(--gold); background:var(--surface-2)} }
 .pg-accion:focus-visible{outline:2px solid var(--gold); outline-offset:1px}
 .pg-accion svg{width:19px; height:19px}
 
@@ -1957,7 +1959,7 @@ tbody tr:hover{background:var(--surface-2)}
   border-bottom:1px dashed var(--hair);
   transition:color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.ent-cuit:hover{color:var(--ink); border-bottom-color:var(--muted)}
+@media (hover:hover){ .ent-cuit:hover{color:var(--ink); border-bottom-color:var(--muted)} }
 .ent-cuit:focus-visible{outline:2px solid var(--gold); outline-offset:3px; border-radius:2px}
 .ent-cuit-input{
   width:15ch; font-size:var(--t-sm); font-variant-numeric:tabular-nums;
@@ -2109,7 +2111,7 @@ tbody tr:hover{background:var(--surface-2)}
   background:none; border:none; padding:0; cursor:pointer;
   font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
 }
-.cond-cambiar:hover{color:var(--ink)}
+@media (hover:hover){ .cond-cambiar:hover{color:var(--ink)} }
 
 @media (max-width:560px){
   .cond-hecha{flex-direction:column; align-items:flex-start; gap:var(--sp-2)}
@@ -2139,7 +2141,7 @@ tbody tr:hover{background:var(--surface-2)}
   font-size:var(--t-sm); font-weight:500; cursor:pointer;
   transition:background .12s cubic-bezier(.22,1,.36,1), border-color .12s cubic-bezier(.22,1,.36,1);
 }
-.cond-op:hover:not(:disabled){background:var(--surface-2)}
+@media (hover:hover){ .cond-op:hover:not(:disabled){background:var(--surface-2)} }
 .cond-op:disabled{opacity:.5; cursor:not-allowed}
 .cond-op:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
 /* El elegido, marcado por relleno y peso además del color. */
@@ -2163,7 +2165,7 @@ tbody tr:hover{background:var(--surface-2)}
   background:none; border:none; padding:0; cursor:pointer;
   font-size:var(--t-xs); color:var(--muted); text-decoration:underline;
 }
-.cond-borrar:hover:not(:disabled){color:var(--ink)}
+@media (hover:hover){ .cond-borrar:hover:not(:disabled){color:var(--ink)} }
 .cond-borrar:disabled{opacity:.5; cursor:not-allowed}
 
 .cond-error{margin:0; font-size:var(--t-sm); color:var(--crit)}
@@ -2227,7 +2229,7 @@ tbody tr:hover{background:var(--surface-2)}
   background:none; border:none; padding:0; cursor:pointer;
   font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
 }
-.ing-editar:hover{color:var(--ink)}
+@media (hover:hover){ .ing-editar:hover{color:var(--ink)} }
 
 .ing-campos{display:flex; gap:var(--sp-4); flex-wrap:wrap}
 .ing-campos .field{flex:1; min-width:200px; margin-bottom:0}
@@ -2248,7 +2250,7 @@ tbody tr:hover{background:var(--surface-2)}
   background:var(--surface); color:var(--ink);
   font-size:var(--t-sm); font-weight:500; cursor:pointer;
 }
-.ing-op:hover{background:var(--surface-2)}
+@media (hover:hover){ .ing-op:hover{background:var(--surface-2)} }
 .ing-op:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
 .ing-op-on{background:var(--brand); border-color:var(--brand); color:var(--on-brand); font-weight:650}
 
@@ -2268,14 +2270,14 @@ tbody tr:hover{background:var(--surface-2)}
   background:none; border:none; padding:0 var(--sp-2); cursor:pointer;
   font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
 }
-.ing-quitar:hover{color:var(--crit)}
+@media (hover:hover){ .ing-quitar:hover{color:var(--crit)} }
 
 .ing-acciones{display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap}
 .ing-borrar{
   background:none; border:none; padding:0; cursor:pointer;
   font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
 }
-.ing-borrar:hover:not(:disabled){color:var(--crit)}
+@media (hover:hover){ .ing-borrar:hover:not(:disabled){color:var(--crit)} }
 .ing-firma{font-size:var(--t-xs); color:var(--muted)}
 .ing-error{margin:0; font-size:var(--t-sm); color:var(--crit)}
 
@@ -2427,10 +2429,11 @@ tbody tr:hover{background:var(--surface-2)}
 .rowmenu-btn.grande svg{width:20px; height:20px}
 /* El botón grande lleva fondo propio, así que el hover y "abierto" del botón
    chico no se verían: se repiten para que se note que el menú está abierto. */
-.rowmenu-btn.grande:hover, .rowmenu-btn.grande[aria-expanded="true"]{background:var(--surface-2)}
+.rowmenu-btn.grande[aria-expanded="true"]{background:var(--surface-2)}
+@media (hover:hover){ .rowmenu-btn.grande:hover{background:var(--surface-2)} }
 .rowmenu-list button.peligro{color:var(--crit)}
 .rowmenu-list button:disabled{opacity:.5; cursor:not-allowed}
-.rowmenu-list button:disabled:hover{background:transparent}
+@media (hover:hover){ .rowmenu-list button:disabled:hover{background:transparent} }
 
 @media (max-width:860px){
   /* La cabecera del pedido, en una línea: volver, lugar, faltantes y ⋯. */
@@ -2557,27 +2560,14 @@ tbody tr:hover{background:var(--surface-2)}
 }
 
 /* ===== Al tocar =============================================================
-   En una pantalla táctil, el :hover queda pegado después de tocar (la tarjeta
-   queda levantada, la fila resaltada) y tocar no tiene respuesta hasta que la
-   pantalla cambia. Acá: sin hover pegado, y todo lo que se toca se apaga un
-   instante mientras el dedo está apoyado, como en Android. */
+   En una pantalla táctil, tocar no tiene respuesta hasta que la pantalla
+   cambia. Acá: todo lo que se toca se apaga un instante mientras el dedo está
+   apoyado, como en Android.
+   El :hover no se neutraliza acá a mano: en el teléfono directamente no existe,
+   porque todas sus reglas viven dentro de @media (hover:hover) ("hay un
+   mouse"). Así no queda pegado después de tocar. Una regla nueva con :hover
+   tiene que ir envuelta igual; la prueba de tests/app-movil.test.ts lo exige. */
 @media (hover:none){
-  .event:hover{transform:none; box-shadow:var(--shadow); border-color:var(--hair)}
-  .event:hover .event-foot{color:var(--muted)}
-  .orow:hover{background:transparent}
-  .orow.has-qty:hover{background:color-mix(in srgb,var(--gold) 5%,var(--surface))}
-  tbody tr:hover{background:transparent}
-  .btn:hover{background:var(--surface); border-color:var(--hair)}
-  .btn.ghost:hover{background:transparent}
-  .btn.primary:hover{background:var(--brand); border-color:var(--brand)}
-  /* El reinicio de arriba pinta de blanco los botones de color (Borrar, Borrar
-     período, Faltan): cada uno vuelve a su aspecto de reposo, no al del botón común. */
-  .btn.danger:hover{background:var(--crit); border-color:var(--crit)}
-  .btn.btn-del:hover{background:transparent; border-color:var(--hair); color:var(--muted)}
-  .btn.btn-falta-top:hover{background:var(--crit-soft); border-color:var(--crit); color:var(--crit)}
-  .tab:hover{background:var(--surface); color:var(--muted)}
-  .tab.active:hover{background:var(--ink); color:var(--ground)}
-  .qbtn:hover{background:var(--surface-2); border-color:var(--hair)}
   :where(.btn, .tab, .qbtn, .event, .event-falta, .copy-row, .prep-fila, .mobnav a,
          .mobnav button, .rowmenu-list button, .revision-item > a, .resp-chip-btn,
          .pname-btn, .topbar-volver, .rowmenu-btn, .nav, .step-btn):active{

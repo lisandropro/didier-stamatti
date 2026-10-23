@@ -148,24 +148,34 @@ test("los avisos para revisar son filas tocables, no enlaces subrayados", () => 
   assert.ok(/@media not all and \(max-width:860px\)\{[^@]*\.revision-item a\{[^}]*text-decoration:underline/.test(css), "en la pantalla ancha el enlace del aviso dejó de estar subrayado");
 });
 
-test("en pantallas táctiles tocar se ve, y el hover no queda pegado", () => {
+test("ningún efecto de mouse vive fuera de @media (hover:hover): en el teléfono no queda pegado", async () => {
+  // En una pantalla táctil el :hover se queda después de tocar (el aviso rojo de
+  // faltantes sigue rojo, la fila sigue resaltada). Perseguirlos de a uno no
+  // escala: la regla es que todo :hover viva dentro de @media (hover:hover), que
+  // es "hay un mouse". postcss parsea el CSS de verdad, así que no se engaña con
+  // llaves anidadas ni con listas de selectores.
+  const { createRequire } = await import("node:module");
+  const require = createRequire(path.join(process.cwd(), "package.json"));
+  const postcss = require("postcss");
+  const raiz = postcss.parse(fuente("app/globals.css"));
+  const sueltas: string[] = [];
+  raiz.walkRules((r: { selector: string; parent: unknown }) => {
+    if (!r.selector.includes(":hover")) return;
+    let p = r.parent as { type: string; name?: string; params?: string; parent?: unknown } | undefined;
+    while (p && p.type !== "root") {
+      if (p.type === "atrule" && p.name === "media" && String(p.params).includes("hover:hover")) return;
+      p = p.parent as typeof p;
+    }
+    sueltas.push(r.selector);
+  });
+  assert.deepEqual(sueltas, [], "estos :hover quedan pegados después de tocar en el teléfono");
+});
+
+test("en pantallas táctiles, lo que se toca se ve apretado", () => {
   const css = fuente("app/globals.css");
   const desde = css.indexOf("/* ===== Al tocar");
   assert.notEqual(desde, -1, "no está la sección de la respuesta al tocar");
   const seccion = css.slice(desde);
   assert.ok(seccion.includes("@media (hover:none)"), "la respuesta al tocar no se limita a pantallas táctiles");
   assert.ok(seccion.includes(":active"), "tocar no tiene respuesta visible");
-  assert.ok(/\.event:hover\{[^}]*transform:none/.test(seccion), "la tarjeta del evento queda levantada después de tocarla");
-});
-
-test("el reinicio del hover no pinta de blanco los botones de color al tocarlos", () => {
-  const css = fuente("app/globals.css");
-  const desde = css.indexOf("/* ===== Al tocar");
-  assert.notEqual(desde, -1, "no está la sección de la respuesta al tocar");
-  const seccion = css.slice(desde);
-  // .btn:hover reinicia el fondo de todos los botones; el rojo de Borrar, el
-  // gris de "Borrar período" y el rojo de "Faltan" tienen que volver a su color.
-  assert.ok(/\.btn\.danger:hover\{[^}]*background:var\(--crit\)/.test(seccion), "Borrar queda con letra blanca sobre fondo blanco al tocarlo");
-  assert.ok(/\.btn\.btn-del:hover\{[^}]*background:transparent/.test(seccion), "el botón de borrar queda con el fondo del botón común al tocarlo");
-  assert.ok(/\.btn\.btn-falta-top:hover\{[^}]*background:var\(--crit-soft\)/.test(seccion), "el botón de faltantes queda con el fondo del botón común al tocarlo");
 });
