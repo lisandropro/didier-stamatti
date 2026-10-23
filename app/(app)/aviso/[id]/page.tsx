@@ -99,7 +99,7 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
               {cambios.length} {cambios.length === 1 ? "cambio" : "cambios"} · desde {fmtDateTime(aviso.sinceAt)}
             </div>
             <div className="tablewrap">
-              <table>
+              <table className="tabla-lista">
                 <thead>
                   <tr>
                     <th>Producto</th>
@@ -112,13 +112,13 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
                   {cambios.map((c) => (
                     <tr key={c.id}>
                       <td className="prod">{c.itemName}</td>
-                      <td>
+                      <td data-label="Qué pasó">
                         <span className={`chip ${KIND_CLASS[c.kind] ?? "neutral"}`}>
                           {KIND_LABEL[c.kind] ?? c.kind}
                         </span>
                       </td>
-                      <td className="dim">{c.before ?? "—"}</td>
-                      <td>
+                      <td className="dim" data-label="Antes">{c.before ?? "—"}</td>
+                      <td data-label="Ahora">
                         {c.after ? <span className="stocknum">{c.after}</span> : <span className="dim">—</span>}
                       </td>
                     </tr>

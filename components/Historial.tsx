@@ -142,7 +142,7 @@ function Movements({ movements, total }: { movements: MovementRow[]; total: numb
       </div>
 
       <div className="tablewrap">
-        <table>
+        <table className="tabla-lista">
           <thead>
             <tr>
               <th>Fecha</th>
@@ -162,15 +162,15 @@ function Movements({ movements, total }: { movements: MovementRow[]; total: numb
             {filtered.map((m) => (
               <tr key={m.id}>
                 <td className="dim">{m.dateLabel}</td>
-                <td className="prod">{m.productName}</td>
-                <td><span className={`chip ${REASON_CLASS[m.reason] ?? "neutral"}`}>{REASON_LABEL[m.reason] ?? m.reason}</span></td>
-                <td>
+                <td className="prod" data-label="Producto">{m.productName}</td>
+                <td data-label="Motivo"><span className={`chip ${REASON_CLASS[m.reason] ?? "neutral"}`}>{REASON_LABEL[m.reason] ?? m.reason}</span></td>
+                <td data-label="Cantidad">
                   <span className="stocknum" style={{ color: m.delta > 0 ? "var(--ok)" : m.delta < 0 ? "var(--crit)" : undefined }}>
                     {m.delta > 0 ? `+${m.delta}` : m.delta}
                   </span>
                 </td>
-                <td className="dim">{m.userName ?? "—"}</td>
-                <td className="dim">{m.note ?? ""}</td>
+                <td className="dim" data-label="Quién">{m.userName ?? "—"}</td>
+                <td className="dim" data-label="Nota">{m.note ?? ""}</td>
               </tr>
             ))}
           </tbody>

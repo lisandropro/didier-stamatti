@@ -132,7 +132,7 @@ export default async function ResumenPage({
           <div className="prod">{r.name}</div>
           <div className="rubro">{r.rubro}{r.unit !== "Unidad" ? ` · por ${r.unit.toLowerCase()}` : ""}</div>
         </td>
-        <td className="parts">
+        <td className="parts" data-label={multiEvent ? "Por evento" : "Evento"}>
           {r.parts.map((p, i) => (
             <span key={i} className="part">
               {p.lugar} <b>{p.qty}</b>
@@ -141,9 +141,9 @@ export default async function ResumenPage({
             </span>
           ))}
         </td>
-        <td><span className="stocknum">{r.total}</span></td>
-        <td className="dim">{!reutil ? "—" : (r.stock ?? "sin contar")}</td>
-        <td><span className={`chip ${st.cls}`}>{st.txt}</span></td>
+        <td data-label="Total"><span className="stocknum">{r.total}</span></td>
+        <td className="dim" data-label="Depósito">{!reutil ? "—" : (r.stock ?? "sin contar")}</td>
+        <td data-label="Estado"><span className={`chip ${st.cls}`}>{st.txt}</span></td>
       </tr>
     );
   }
@@ -182,7 +182,7 @@ export default async function ResumenPage({
 
             {rows.length > 0 && (
               <div className="tablewrap">
-                <table className="summary-table">
+                <table className="summary-table tabla-lista">
                   <thead>
                     <tr>
                       <th>Producto</th>
@@ -201,7 +201,7 @@ export default async function ResumenPage({
               <>
                 <div className="section-title">Extras (fuera de catálogo)</div>
                 <div className="tablewrap">
-                  <table className="summary-table">
+                  <table className="summary-table tabla-lista">
                     <thead>
                       <tr>
                         <th>Ítem</th>
@@ -216,8 +216,8 @@ export default async function ResumenPage({
                             <div className="prod">{x.name}</div>
                             {x.note && <div className="rubro">{x.note}</div>}
                           </td>
-                          <td className="dim">{x.lugar}</td>
-                          <td>
+                          <td className="dim" data-label="Evento">{x.lugar}</td>
+                          <td data-label="Cantidad">
                             <span className="stocknum">{x.qty}</span>
                             {x.unit ? <span className="dim"> {x.unit.toLowerCase()}</span> : null}
                           </td>

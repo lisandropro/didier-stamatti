@@ -2499,3 +2499,27 @@ tbody tr:hover{background:var(--surface-2)}
      come media pantalla. */
   body:has(:is(input, textarea, select):focus) .mobnav{display:none}
 }
+
+/* ===== Tablas que en el celular son listas ==================================
+   Una tabla con encabezado de columnas es de página web. En el teléfono cada
+   fila es una tarjeta: el título arriba y cada dato con su nombre al lado
+   ("Antes: 12"). El nombre sale de data-label, el mismo texto del encabezado.
+   Va con `screen`: al imprimir, una hoja A4 mide ~690 px de ancho y entraría
+   en este corte, y el resumen del depósito saldría sin columnas. */
+@media screen and (max-width:860px){
+  .tabla-lista{min-width:0}
+  .tabla-lista thead{display:none}
+  .tabla-lista tbody tr{display:flex; flex-direction:column; gap:2px; padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--hair)}
+  .tabla-lista tbody tr:last-child{border-bottom:none}
+  .tabla-lista tbody td{padding:0; border:none; font-size:var(--t-sm); color:var(--muted)}
+  .tabla-lista tbody td:first-child{font-size:var(--t-base); color:var(--ink); font-weight:600}
+  .tabla-lista tbody td[data-label]::before{content:attr(data-label) ": "; color:var(--muted); font-weight:500}
+  .tabla-lista tbody td:empty{display:none}
+  /* Las filas de sección ("ENSERES") de las tablas agrupadas siguen siendo
+     un rótulo, no una tarjeta. */
+  .tabla-lista tbody tr.cat-row{padding:var(--sp-2) var(--sp-4); background:var(--surface-2)}
+  /* La celda del rótulo ya trae su relleno y su letra chica (.summary-table
+     .cat-row td): sin esto se sumaba al de la fila y quedaba sangrada. */
+  .tabla-lista tbody tr.cat-row td{padding:0; font-size:var(--t-xs); color:var(--muted); font-weight:700}
+  .inventory-table thead{display:none}
+}

@@ -81,3 +81,26 @@ test("con el teclado abierto la pantalla se achica y la barra de abajo se escond
 test("los botones de las páginas no se estiran como los de las hojas", () => {
   assert.ok(fuente("app/globals.css").includes(".modal .modal-actions .btn{flex:1 1 40%}"), "el estilo de las hojas alcanza a las tarjetas de las páginas");
 });
+
+const TABLAS = [
+  "components/Historial.tsx",
+  "app/(app)/aviso/[id]/page.tsx",
+  "components/EditEventModal.tsx",
+  "app/(app)/periodo/[id]/page.tsx",
+];
+
+test("en el celular las tablas son listas: cada valor dice qué es", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(/\.tabla-lista thead\{display:none\}/.test(css), "las tablas siguen mostrando el encabezado de columnas");
+  assert.ok(css.includes("content:attr(data-label)"), "los valores quedan sin decir qué son");
+  for (const archivo of TABLAS) {
+    const s = fuente(archivo);
+    assert.ok(s.includes("tabla-lista"), `${archivo}: la tabla no se vuelve lista en el celular`);
+    assert.ok(s.includes("data-label="), `${archivo}: las celdas no dicen qué columna son`);
+  }
+});
+
+test("el inventario en el celular no muestra encabezado de columnas", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(/\.inventory-table thead\{display:none\}/.test(css), "el inventario sigue con PRODUCTO / STOCK arriba");
+});

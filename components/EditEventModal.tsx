@@ -133,7 +133,7 @@ export function EditEventModal({
           <h2>¿Guardamos estos cambios?</h2>
           <div className="msub">El pedido no se toca: las cantidades y las notas quedan como están.</div>
           <div className="tablewrap">
-            <table>
+            <table className="tabla-lista">
               <thead>
                 <tr>
                   <th>Qué</th>
@@ -145,8 +145,8 @@ export function EditEventModal({
                 {cambios.map((c) => (
                   <tr key={c.campo}>
                     <td className="prod">{c.campo}</td>
-                    <td className="dim">{c.antes}</td>
-                    <td>
+                    <td className="dim" data-label="Antes">{c.antes}</td>
+                    <td data-label="Ahora">
                       <span className="stocknum">{c.ahora}</span>
                     </td>
                   </tr>
