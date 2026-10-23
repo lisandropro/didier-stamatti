@@ -147,3 +147,25 @@ test("los avisos para revisar son filas tocables, no enlaces subrayados", () => 
   assert.ok(/@media \(max-width:860px\)\{[^@]*\.revision-item > a\{/.test(css), "las filas tocables no están limitadas al celular");
   assert.ok(/@media not all and \(max-width:860px\)\{[^@]*\.revision-item a\{[^}]*text-decoration:underline/.test(css), "en la pantalla ancha el enlace del aviso dejó de estar subrayado");
 });
+
+test("en pantallas táctiles tocar se ve, y el hover no queda pegado", () => {
+  const css = fuente("app/globals.css");
+  const desde = css.indexOf("/* ===== Al tocar");
+  assert.notEqual(desde, -1, "no está la sección de la respuesta al tocar");
+  const seccion = css.slice(desde);
+  assert.ok(seccion.includes("@media (hover:none)"), "la respuesta al tocar no se limita a pantallas táctiles");
+  assert.ok(seccion.includes(":active"), "tocar no tiene respuesta visible");
+  assert.ok(/\.event:hover\{[^}]*transform:none/.test(seccion), "la tarjeta del evento queda levantada después de tocarla");
+});
+
+test("el reinicio del hover no pinta de blanco los botones de color al tocarlos", () => {
+  const css = fuente("app/globals.css");
+  const desde = css.indexOf("/* ===== Al tocar");
+  assert.notEqual(desde, -1, "no está la sección de la respuesta al tocar");
+  const seccion = css.slice(desde);
+  // .btn:hover reinicia el fondo de todos los botones; el rojo de Borrar, el
+  // gris de "Borrar período" y el rojo de "Faltan" tienen que volver a su color.
+  assert.ok(/\.btn\.danger:hover\{[^}]*background:var\(--crit\)/.test(seccion), "Borrar queda con letra blanca sobre fondo blanco al tocarlo");
+  assert.ok(/\.btn\.btn-del:hover\{[^}]*background:transparent/.test(seccion), "el botón de borrar queda con el fondo del botón común al tocarlo");
+  assert.ok(/\.btn\.btn-falta-top:hover\{[^}]*background:var\(--crit-soft\)/.test(seccion), "el botón de faltantes queda con el fondo del botón común al tocarlo");
+});

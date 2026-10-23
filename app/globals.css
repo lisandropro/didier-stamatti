@@ -2555,3 +2555,32 @@ tbody tr:hover{background:var(--surface-2)}
      .cat-row td): sin esto se sumaba al de la fila y quedaba sangrada. */
   .tabla-lista tbody tr.cat-row td{padding:0; font-size:var(--t-xs); color:var(--muted); font-weight:700}
 }
+
+/* ===== Al tocar =============================================================
+   En una pantalla táctil, el :hover queda pegado después de tocar (la tarjeta
+   queda levantada, la fila resaltada) y tocar no tiene respuesta hasta que la
+   pantalla cambia. Acá: sin hover pegado, y todo lo que se toca se apaga un
+   instante mientras el dedo está apoyado, como en Android. */
+@media (hover:none){
+  .event:hover{transform:none; box-shadow:var(--shadow); border-color:var(--hair)}
+  .event:hover .event-foot{color:var(--muted)}
+  .orow:hover{background:transparent}
+  .orow.has-qty:hover{background:color-mix(in srgb,var(--gold) 5%,var(--surface))}
+  tbody tr:hover{background:transparent}
+  .btn:hover{background:var(--surface); border-color:var(--hair)}
+  .btn.ghost:hover{background:transparent}
+  .btn.primary:hover{background:var(--brand); border-color:var(--brand)}
+  /* El reinicio de arriba pinta de blanco los botones de color (Borrar, Borrar
+     período, Faltan): cada uno vuelve a su aspecto de reposo, no al del botón común. */
+  .btn.danger:hover{background:var(--crit); border-color:var(--crit)}
+  .btn.btn-del:hover{background:transparent; border-color:var(--hair); color:var(--muted)}
+  .btn.btn-falta-top:hover{background:var(--crit-soft); border-color:var(--crit); color:var(--crit)}
+  .tab:hover{background:var(--surface); color:var(--muted)}
+  .tab.active:hover{background:var(--ink); color:var(--ground)}
+  .qbtn:hover{background:var(--surface-2); border-color:var(--hair)}
+  :where(.btn, .tab, .qbtn, .event, .event-falta, .copy-row, .prep-fila, .mobnav a,
+         .mobnav button, .rowmenu-list button, .revision-item > a, .resp-chip-btn,
+         .pname-btn, .topbar-volver, .rowmenu-btn, .nav, .step-btn):active{
+    opacity:.6; transition:opacity 0s;
+  }
+}
