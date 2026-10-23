@@ -1,0 +1,50 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+/**
+ * La app instalada se tiene que comportar como una app, no como una página.
+ *
+ * El 23/10 el usuario la abrió en su teléfono y dijo: "se sigue pudiendo
+ * achicar la pantalla, los bordes se mueven". No era que algo se saliera de la
+ * pantalla —medido a 360 px, ninguna pantalla desborda— sino lo que el
+ * navegador hace por defecto: el pellizco agranda y achica, Android estira la
+ * página entera al pasarse del borde, el doble toque hace zoom y mantener
+ * apretado selecciona texto o abre el menú de los enlaces.
+ *
+ * Se exige sobre el texto de los archivos, como el resto de las guardas de la
+ * interfaz (`celular.test.ts`).
+ */
+
+function fuente(rel: string): string {
+  return fs.readFileSync(path.join(process.cwd(), rel), "utf8");
+}
+
+test("el pellizco no agranda ni achica la pantalla", () => {
+  const s = fuente("app/layout.tsx");
+  assert.ok(s.includes("export const viewport"), "el layout no declara el viewport");
+  assert.ok(s.includes("userScalable: false"), "el viewport deja hacer zoom");
+  assert.ok(s.includes("maximumScale: 1"), "el viewport deja agrandar");
+});
+
+test("los bordes no se estiran y el doble toque no hace zoom", () => {
+  const css = fuente("app/globals.css");
+  const html = css.slice(css.indexOf("\nhtml{"), css.indexOf("}", css.indexOf("\nhtml{")));
+  assert.ok(html.includes("overscroll-behavior:none"), "Android estira la página al pasarse del borde");
+  assert.ok(html.includes("touch-action:pan-x pan-y"), "el doble toque y el pellizco siguen haciendo zoom");
+});
+
+test("mantener apretado no selecciona la interfaz, pero los campos de texto sí", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(/body\{[^}]*user-select:none/.test(css), "mantener apretado selecciona los nombres y botones");
+  assert.ok(/:where\(input, textarea[^)]*\)\{[^}]*user-select:text/.test(css), "los campos de texto no dejan seleccionar para corregir");
+});
+
+test("el menú de mantener apretado un enlace no aparece en pantallas táctiles", () => {
+  const s = fuente("components/ComportamientoDeApp.tsx");
+  assert.ok(s.includes('"contextmenu"'), "no se frena el menú del navegador");
+  assert.ok(s.includes("(pointer: coarse)"), "también se frenaría el clic derecho con mouse");
+  assert.ok(s.includes('"gesturestart"'), "el iPhone sigue haciendo zoom con el pellizco");
+  assert.ok(fuente("app/layout.tsx").includes("<ComportamientoDeApp />"), "el layout no monta el comportamiento de app");
+});

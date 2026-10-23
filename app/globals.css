@@ -79,9 +79,31 @@
 
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
+/* Que se comporte como una app y no como una página web:
+   - overscroll-behavior: Android estira la página entera al pasarse del borde
+     (y la cabecera y la barra de abajo se estiran con ella). Es lo que el
+     usuario vio como "los bordes se mueven".
+   - touch-action: el doble toque y el pellizco no hacen zoom. El viewport ya
+     lo pide (layout.tsx), pero Safari del iPhone lo ignora y esto no.
+   - text-size-adjust: que el teléfono no agrande la letra por su cuenta al
+     girarlo. La letra grande se elige en Cuenta. */
+html{
+  overscroll-behavior:none;
+  touch-action:pan-x pan-y;
+  -webkit-text-size-adjust:100%; text-size-adjust:100%;
+}
 body{
   font-family:var(--font-ui); color:var(--ink); background:var(--ground);
   -webkit-font-smoothing:antialiased; line-height:1.45;
+  overscroll-behavior:none;
+  /* Tocar no deja un recuadro azul, y mantener apretado no selecciona
+     nombres ni botones. */
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}
+/* Los campos de texto sí: hay que poder seleccionar para corregir y pegar. */
+:where(input, textarea, select, [contenteditable="true"]){
+  -webkit-user-select:text; user-select:text; -webkit-touch-callout:default;
 }
 
 /* Foco visible al navegar con teclado (no aparece al hacer clic con el mouse).

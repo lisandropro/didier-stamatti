@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { ComportamientoDeApp } from "@/components/ComportamientoDeApp";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,6 +9,21 @@ export const metadata: Metadata = {
   applicationName: "Didier Stamatti",
   appleWebApp: { capable: true, title: "Didier Stamatti", statusBarStyle: "default" },
   icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
+};
+
+// Una app no se agranda con el pellizco: la pantalla se movía y "se achicaba"
+// en el teléfono. Quien necesite letra más grande la elige en Cuenta, que
+// agranda todo sin romper el diseño. El color de la barra del sistema sale del
+// fondo de cada tema (y `ComportamientoDeApp` lo ajusta al tema elegido).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FBFAF8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0E0E0D" },
+  ],
 };
 
 // Aplica el tema y el tamaño de texto guardados ANTES del primer dibujado,
@@ -27,7 +43,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: applyPrefs }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <ComportamientoDeApp />
+        {children}
+      </body>
     </html>
   );
 }
