@@ -1133,8 +1133,30 @@ tbody tr:hover{background:var(--surface-2)}
 .revision-item{font-size:var(--t-sm); line-height:1.45; padding-left:var(--sp-4); position:relative}
 .revision-item::before{content:"•"; position:absolute; left:0; color:var(--muted)}
 .revision-item.grav-alta::before{color:var(--crit)}
-.revision-item a{color:var(--ink); text-decoration:underline; text-underline-offset:2px}
-.revision-item a:hover{color:var(--gold)}
+/* Pantalla ancha: el aviso sigue siendo un párrafo con su enlace subrayado. */
+@media not all and (max-width:860px){
+  .revision-item a{color:var(--ink); text-decoration:underline; text-underline-offset:2px}
+  .revision-item a:hover{color:var(--gold)}
+}
+/* Celular: cada aviso con enlace es una fila que se toca entera, con una flecha:
+   como la lista de una app. Antes era un párrafo con enlaces subrayados, y uno largo
+   (la lista de 20 eventos de un faltante) ocupaba media pantalla. Se corta en
+   dos renglones; el detalle está al abrirlo. */
+@media (max-width:860px){
+  .revision-item:has(> a){padding-left:0}
+  .revision-item:has(> a)::before{content:none}
+  .revision-item > a{
+    display:flex; align-items:center; gap:var(--sp-2); min-height:var(--tap);
+    padding:var(--sp-2) var(--sp-3); border-radius:var(--r-md);
+    background:color-mix(in srgb, var(--surface) 70%, transparent);
+    color:var(--ink); text-decoration:none;
+  }
+  .revision-item.grav-alta > a{box-shadow:inset 3px 0 0 var(--crit)}
+  .revision-item > a > span, .revision-item > a{overflow-wrap:anywhere}
+  .revision-item > a::after{content:"›"; margin-left:auto; flex:none; font-size:var(--t-xl); color:var(--muted)}
+  .revision-texto{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; min-width:0}
+  @media (hover:hover){ .revision-item > a:hover{color:var(--gold)} }
+}
 .chip-baja{margin-left:var(--sp-2); font-size:var(--t-xs)}
 
 /* ===== Comprobantes ================================================== */

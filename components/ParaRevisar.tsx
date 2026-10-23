@@ -30,7 +30,13 @@ export function ParaRevisar({ hallazgos }: { hallazgos: Hallazgo[] }) {
       <ul className="revision-list">
         {hallazgos.map((h, i) => (
           <li key={h.code + i} className={`revision-item grav-${h.gravedad}`}>
-            {h.url ? <Link href={h.url}>{h.message}</Link> : <span>{h.message}</span>}
+            {h.url ? (
+              <Link href={h.url}>
+                <span className="revision-texto">{h.message}</span>
+              </Link>
+            ) : (
+              <span>{h.message}</span>
+            )}
           </li>
         ))}
       </ul>

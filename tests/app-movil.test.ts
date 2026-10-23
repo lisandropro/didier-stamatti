@@ -135,3 +135,15 @@ test("en Inventario los filtros van en una fila que se desliza", () => {
 test("en el celular los títulos de las pantallas son de app, no de página", () => {
   assert.ok(/\.topbar h1\{font-size:var\(--t-xl\)/.test(fuente("app/globals.css")), "los títulos siguen del tamaño de la computadora");
 });
+
+test("los avisos para revisar son filas tocables, no enlaces subrayados", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(/\.revision-item > a\{[^}]*display:flex/.test(css), "los avisos siguen siendo un párrafo con enlaces");
+  assert.ok(/\.revision-item > a\{[^}]*text-decoration:none/.test(css), "los avisos siguen subrayados");
+  assert.ok(css.includes("-webkit-line-clamp:2"), "un aviso largo ocupa media pantalla");
+  assert.ok(fuente("components/ParaRevisar.tsx").includes('<span className="revision-texto">{h.message}</span>'), "el texto del aviso no está en su propio span: el corte de dos renglones se come la flecha");
+  // Las filas son solo del celular: en la pantalla ancha el aviso sigue siendo
+  // el párrafo de siempre, con su enlace subrayado.
+  assert.ok(/@media \(max-width:860px\)\{[^@]*\.revision-item > a\{/.test(css), "las filas tocables no están limitadas al celular");
+  assert.ok(/@media not all and \(max-width:860px\)\{[^@]*\.revision-item a\{[^}]*text-decoration:underline/.test(css), "en la pantalla ancha el enlace del aviso dejó de estar subrayado");
+});
