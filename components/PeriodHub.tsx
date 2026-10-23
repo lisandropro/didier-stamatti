@@ -10,7 +10,6 @@ import {
   createPeriod,
   createEvent,
   deletePeriod,
-  deleteEvent,
   restorePeriod,
   restoreEvent,
 } from "@/app/actions/period";
@@ -118,7 +117,6 @@ export function PeriodHub({ data }: { data: HubData }) {
   const [showDiscard, setShowDiscard] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
-  const [eventToDelete, setEventToDelete] = useState<EventItem | null>(null);
   const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
   const { selected, periodos, alert, trash, canManage, canEdit } = data;
@@ -171,16 +169,6 @@ export function PeriodHub({ data }: { data: HubData }) {
           {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""} en el pedido` : "Pedido vacío"} ·{" "}
           {canEdit ? "Armar pedido" : "Ver pedido"} →
         </span>
-        {canManage && (
-          <button
-            className="event-del"
-            onClick={() => setEventToDelete(e)}
-            title={`Borrar el evento de ${e.lugar}`}
-            aria-label={`Borrar el evento de ${e.lugar}`}
-          >
-            {IconTrash}
-          </button>
-        )}
       </div>
     </div>
   );
@@ -421,16 +409,6 @@ export function PeriodHub({ data }: { data: HubData }) {
           }}
         />
       )}
-      {eventToDelete && (
-        <ConfirmDeleteEvent
-          event={eventToDelete}
-          onClose={() => setEventToDelete(null)}
-          onDeleted={() => {
-            setEventToDelete(null);
-            router.refresh();
-          }}
-        />
-      )}
       {faltantesDe && (
         <ShortagesModal
           eventId={faltantesDe.id}
@@ -450,49 +428,6 @@ export function PeriodHub({ data }: { data: HubData }) {
         />
       )}
     </>
-  );
-}
-
-function ConfirmDeleteEvent({
-  event,
-  onClose,
-  onDeleted,
-}: {
-  event: EventItem;
-  onClose: () => void;
-  onDeleted: () => void;
-}) {
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function confirm() {
-    setSaving(true);
-    setErr(null);
-    const res = await intentar(() => deleteEvent(event.id));
-    setSaving(false);
-    if (!res.ok) return setErr(res.error ?? "No se pudo borrar.");
-    onDeleted();
-  }
-
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(ev) => ev.stopPropagation()}>
-        <h2>¿Borrar el evento de {event.lugar}?</h2>
-        <p className="modal-sub">
-          {event.lineCount > 0
-            ? `Se va a la papelera junto con sus ${event.lineCount} producto${event.lineCount > 1 ? "s" : ""} del pedido.`
-            : "Todavía no tiene pedido cargado."}{" "}
-          El resto del período no se toca, y lo podés recuperar desde la papelera.
-        </p>
-        {err && <div className="form-error">{err}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn danger" onClick={confirm} disabled={saving}>
-            {saving ? "Borrando…" : "Borrar evento"}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 

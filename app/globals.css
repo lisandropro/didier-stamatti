@@ -612,20 +612,7 @@ tbody tr:hover{background:var(--surface-2)}
 .btn.btn-falta-top svg{width:15px; height:15px}
 .btn.btn-falta-top .count-pill{background:transparent; border-color:currentColor; color:inherit}
 
-.event-del{
-  position:relative; z-index:1; flex:0 0 auto; width:32px; height:32px;
-  display:grid; place-items:center; border-radius:var(--r-sm);
-  background:var(--surface); border:1px solid var(--hair); color:var(--muted);
-  cursor:pointer; opacity:.55; transition:opacity .15s, color .15s, border-color .15s;
-}
-.event-del svg{width:16px; height:16px}
-.event-del:hover{opacity:1; color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
-.event-del:focus-visible{opacity:1}
-/* Sin hover (teléfono) o en pantalla angosta, el botón se ve siempre: si no,
-   no hay forma de descubrirlo. */
-@media (hover:none){ .event-del{opacity:1} }
 @media (max-width:720px){
-  .event-del{opacity:1; width:38px; height:38px}
   /* Objetivo cómodo para el dedo. */
   .event-falta{min-height:44px; padding:var(--sp-2) var(--sp-4)}
 }
@@ -2313,3 +2300,55 @@ tbody tr:hover{background:var(--surface-2)}
    naranja, para que se note sin abrir el evento. */
 .prep-card-cambio{margin-top:var(--sp-1); font-size:var(--t-sm); color:var(--muted)}
 .prep-card-cambio.reciente{color:var(--warn); font-weight:600}
+
+/* ===== Celular (etapa 4) ==================================================
+   Medido el 19/10 a 375×812 con datos de producción: en el editor la cabecera
+   fija ocupaba el 40 % de la pantalla y entraban 2 productos. La meta es 6 o
+   más. El corte es 860 px, el mismo que esconde la barra lateral. */
+
+/* Lo que existe en un solo ancho. `!important` porque estas clases conviven
+   con las de cada elemento (`.btn`, `.topbar-acciones`), que fijan su propio
+   `display`. */
+@media (min-width:861px){ .solo-celular{display:none !important} }
+@media (max-width:860px){ .solo-ancho{display:none !important} }
+
+/* Filtros que en el celular van en una sola fila que se desliza de costado, en
+   vez de apilarse y empujar la lista hacia abajo. En la pantalla ancha el
+   contenedor no existe para el layout. */
+.filtros-scroll{display:contents}
+
+.topbar-titulo{min-width:0}
+.topbar-acciones{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap}
+.sub-datos + .save-ind::before{content:" · "}
+.topbar-volver{
+  width:var(--tap); height:var(--tap); flex:none; display:grid; place-items:center;
+  color:var(--ink); border-radius:var(--r-md); margin-left:calc(-1 * var(--sp-2));
+}
+.topbar-volver svg{width:22px; height:22px}
+.sub-listo{color:var(--ok); font-weight:700}
+
+.rowmenu-btn.grande{width:var(--tap); height:var(--tap); flex:none; border-color:var(--hair); background:var(--surface); color:var(--ink)}
+.rowmenu-btn.grande svg{width:20px; height:20px}
+.rowmenu-list button.peligro{color:var(--crit)}
+.rowmenu-list button:disabled{opacity:.5; cursor:not-allowed}
+.rowmenu-list button:disabled:hover{background:transparent}
+
+@media (max-width:860px){
+  /* La cabecera del pedido, en una línea: volver, lugar, faltantes y ⋯. */
+  .topbar-pedido{flex-wrap:nowrap; gap:var(--sp-2); padding:var(--sp-2) var(--sp-3)}
+  .topbar-pedido .topbar-titulo{flex:1 1 auto}
+  .topbar-pedido .spacer{display:none}
+  .topbar-pedido h1{font-size:var(--t-lg); line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .topbar-pedido .sub{display:flex; gap:var(--sp-2); white-space:nowrap; font-size:var(--t-xs); margin-top:0}
+  .topbar-pedido .sub-datos{min-width:0; overflow:hidden; text-overflow:ellipsis}
+  /* Lo que no se puede cortar va primero: si está listo y si se guardó. */
+  .topbar-pedido .sub-listo, .topbar-pedido .save-ind{order:-1; flex:none}
+  .topbar-pedido .save-ind::before{content:none}
+  .topbar-pedido .btn-falta-top{flex:none; padding:0 var(--sp-3)}
+  .rowmenu-list button{min-height:var(--tap)}
+
+  .searchbar .search{flex-basis:100%}
+  .filtros-scroll{display:flex; gap:var(--sp-2); width:100%; overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; overscroll-behavior-x:contain}
+  .filtros-scroll::-webkit-scrollbar{display:none}
+  .filtros-scroll > *{flex:none}
+}

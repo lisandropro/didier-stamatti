@@ -10,16 +10,20 @@ const IconDots = (
   </svg>
 );
 
-export type RowMenuItem = { label: string; onSelect: () => void };
+export type RowMenuItem = { label: string; onSelect: () => void; disabled?: boolean; peligro?: boolean };
 
-const ALTO_ITEM = 38;
+// Alto de un ítem para decidir si el menú entra hacia abajo. En el celular cada
+// ítem mide lo que un dedo (44 px); en la pantalla ancha mide menos, y
+// sobreestimar solo hace que a veces se abra hacia arriba.
+const ALTO_ITEM = 44;
 
 /** Menú de tres puntitos para las acciones de una fila.
  *
  *  Se posiciona con coordenadas fijas y no con `absolute`: la tabla vive dentro
  *  de un contenedor con `overflow-x:auto`, que recortaría el desplegable. Por lo
- *  mismo se cierra al hacer scroll, para que no quede flotando lejos del botón. */
-export function RowMenu({ items, label }: { items: RowMenuItem[]; label: string }) {
+ *  mismo se cierra al hacer scroll, para que no quede flotando lejos del botón.
+ *  `grande`: el botón mide lo que un dedo, para la cabecera del celular. */
+export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]; label: string; grande?: boolean }) {
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const lista = useRef<HTMLDivElement>(null);
@@ -61,7 +65,7 @@ export function RowMenu({ items, label }: { items: RowMenuItem[]; label: string 
     <>
       <button
         ref={btn}
-        className="rowmenu-btn"
+        className={`rowmenu-btn${grande ? " grande" : ""}`}
         onClick={abrir}
         aria-haspopup="menu"
         aria-expanded={pos !== null}
@@ -76,6 +80,8 @@ export function RowMenu({ items, label }: { items: RowMenuItem[]; label: string 
             <button
               key={it.label}
               role="menuitem"
+              disabled={it.disabled}
+              className={it.peligro ? "peligro" : undefined}
               onClick={() => {
                 setPos(null);
                 it.onSelect();

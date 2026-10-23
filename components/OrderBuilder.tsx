@@ -14,6 +14,8 @@ import { estadoDeStock, type NivelDeStock } from "@/lib/fila-de-pedido";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditEventModal } from "@/components/EditEventModal";
 import { ResponsableEditor } from "@/components/ResponsableEditor";
+import { RowMenu, type RowMenuItem } from "@/components/RowMenu";
+import { ConfirmDeleteEvent } from "@/components/ConfirmDeleteEvent";
 import { setEventStatus } from "@/app/actions/period";
 import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
 
@@ -38,8 +40,11 @@ type CustomLine = { id: string; name: string; unit: string | null; qty: number; 
 type SourceEvent = { id: string; lugar: string; dateLabel: string; periodLabel: string; lineCount: number };
 type Data = {
   userId: string;
+  /** Puede mandar el evento a la papelera (administra períodos). */
+  canBorrar: boolean;
   event: {
     id: string;
+    periodId: string;
     lugar: string;
     subLabel: string;
     status: string;
@@ -74,6 +79,9 @@ const IconEdit = (
 );
 const IconCopy = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg>
+);
+const IconBack = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
 );
 
 /** Color de la barra de stock según lo que dice la fila. */
@@ -116,6 +124,8 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [showCopy, setShowCopy] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showShortages, setShowShortages] = useState(false);
+  const [showResp, setShowResp] = useState(false);
+  const [showBorrar, setShowBorrar] = useState(false);
   useEffect(() => {
     let alive = true;
     queueMicrotask(() => {
@@ -295,37 +305,76 @@ export function OrderBuilder({ data }: { data: Data }) {
     finally { setStatusSaving(false); }
   }
 
+  // Como los enlaces: primero se guarda lo pendiente, después se sale.
+  async function irAlPdf() {
+    if (await queue.flush()) router.push(`/evento/${data.event.id}/pdf`);
+  }
+
+  // En el celular la cabecera es una línea: volver, lugar, faltantes y este
+  // menú. Medido el 19/10: con los botones a la vista ocupaba el 40 % de la
+  // pantalla y entraban 2 productos.
+  const menu: RowMenuItem[] = [
+    { label: "Editar evento", onSelect: () => setShowEdit(true) },
+    { label: "Repetir pedido", onSelect: () => setShowCopy(true), disabled: pending > 0 },
+    { label: "PDF del pedido", onSelect: () => void irAlPdf() },
+    {
+      label: status === "LISTO" ? "Volver a borrador" : "Marcar como listo",
+      onSelect: () => void toggleStatus(),
+      disabled: pending > 0 || statusSaving,
+    },
+    { label: "Responsable de la fiesta", onSelect: () => setShowResp(true) },
+    ...(data.canBorrar ? [{ label: "Borrar evento", onSelect: () => setShowBorrar(true), disabled: pending > 0, peligro: true }] : []),
+  ];
+
   return (
     <>
-      <div className="topbar">
-        <div>
+      <div className="topbar topbar-pedido">
+        <Link className="topbar-volver solo-celular" href="/" aria-label="Volver">{IconBack}</Link>
+        <div className="topbar-titulo">
           <h1>{data.event.lugar}</h1>
           <div className="sub">
-            {data.event.subLabel} · {inOrderCount} producto{inOrderCount === 1 ? "" : "s"} en el pedido
+            {status === "LISTO" && <span className="sub-listo solo-celular">Listo</span>}
+            <span className="sub-datos">
+              {data.event.subLabel} · {inOrderCount} producto{inOrderCount === 1 ? "" : "s"} en el pedido
+            </span>
             <span className="save-ind">
-              {saveStatus.error ? " · Sin guardar" : pending > 0 ? " · Guardando…" : savedOnce ? " · Guardado ✓" : " · Se guarda solo mientras cargás"}
+              {saveStatus.error ? "Sin guardar" : pending > 0 ? "Guardando…" : savedOnce ? "Guardado ✓" : "Se guarda solo mientras cargás"}
             </span>
           </div>
         </div>
         <div className="spacer" />
-        <Link className="btn ghost" href="/">Volver</Link>
+        <Link className="btn ghost solo-ancho" href="/">Volver</Link>
         {/* Único lugar donde se informan los faltantes: no hay banner aparte. */}
         {over.length > 0 && (
-          <button className="btn btn-falta btn-falta-top" onClick={() => setShowShortages(true)}>
-            {IconWarn} Ver faltantes <span className="count-pill">{over.length}</span>
+          <button
+            className="btn btn-falta btn-falta-top"
+            onClick={() => setShowShortages(true)}
+            aria-label={`Ver faltantes (${over.length})`}
+          >
+            {IconWarn} <span className="solo-ancho">Ver faltantes</span> <span className="count-pill">{over.length}</span>
           </button>
         )}
-        <button className="btn ghost" onClick={() => setShowEdit(true)}>{IconEdit} Editar evento</button>
-        <button className="btn ghost" disabled={pending > 0} onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
-        <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
-          </svg>
-          PDF del pedido
-        </Link>
-        <button className={`btn${status === "LISTO" ? "" : " primary"}`} disabled={pending > 0 || statusSaving} onClick={toggleStatus}>
-          {status === "LISTO" ? "✓ Listo — volver a borrador" : "Marcar como listo"}
-        </button>
+        <div className="topbar-acciones solo-ancho">
+          <button className="btn ghost" onClick={() => setShowEdit(true)}>{IconEdit} Editar evento</button>
+          <button className="btn ghost" disabled={pending > 0} onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
+          <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
+            </svg>
+            PDF del pedido
+          </Link>
+          <button className={`btn${status === "LISTO" ? "" : " primary"}`} disabled={pending > 0 || statusSaving} onClick={toggleStatus}>
+            {status === "LISTO" ? "✓ Listo — volver a borrador" : "Marcar como listo"}
+          </button>
+          {data.canBorrar && (
+            <button className="btn btn-del" disabled={pending > 0} onClick={() => setShowBorrar(true)} title="Mandar el evento a la papelera">
+              {IconTrash} Borrar
+            </button>
+          )}
+        </div>
+        <div className="solo-celular">
+          <RowMenu items={menu} label="Más acciones del pedido" grande />
+        </div>
       </div>
 
       <div className="content">
@@ -335,7 +384,7 @@ export function OrderBuilder({ data }: { data: Data }) {
           </div></div>
         )}
 
-        <div className="ro-resp">
+        <div className="ro-resp solo-ancho">
           <span className="ro-resp-label">Responsable de la fiesta</span>
           <ResponsableEditor eventId={data.event.id} responsable={data.event.responsable} canEdit />
         </div>
@@ -350,16 +399,17 @@ export function OrderBuilder({ data }: { data: Data }) {
               onChange={(e) => escribirBusqueda(e.target.value)}
             />
           </label>
-          {!searching &&
-            CATS.map((c) => (
-              <button key={c.v} className={`tab${tab === c.v ? " active" : ""}`} onClick={() => elegirPestania(c.v)}>
-                {c.l}
-              </button>
-            ))}
           {!searching && (
-            <button className={`tab${tab === "EXTRAS" ? " active" : ""}`} onClick={() => elegirPestania("EXTRAS")}>
-              Extras{customs.length > 0 ? ` (${customs.length})` : ""}
-            </button>
+            <div className="filtros-scroll">
+              {CATS.map((c) => (
+                <button key={c.v} className={`tab${tab === c.v ? " active" : ""}`} onClick={() => elegirPestania(c.v)}>
+                  {c.l}
+                </button>
+              ))}
+              <button className={`tab${tab === "EXTRAS" ? " active" : ""}`} onClick={() => elegirPestania("EXTRAS")}>
+                Extras{customs.length > 0 ? ` (${customs.length})` : ""}
+              </button>
+            </div>
           )}
         </div>
 
@@ -527,6 +577,24 @@ export function OrderBuilder({ data }: { data: Data }) {
           }}
           onClose={() => setShowEdit(false)}
           onSaved={() => setShowEdit(false)}
+        />
+      )}
+      {showResp && (
+        <div className="overlay" onClick={() => setShowResp(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Responsable de la fiesta</h2>
+            <ResponsableEditor eventId={data.event.id} responsable={data.event.responsable} canEdit />
+            <div className="modal-actions">
+              <button className="btn ghost" onClick={() => setShowResp(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showBorrar && (
+        <ConfirmDeleteEvent
+          evento={{ id: data.event.id, lugar: data.event.lugar, lineCount: inOrderCount }}
+          onClose={() => setShowBorrar(false)}
+          onDeleted={() => router.push(`/?w=${data.event.periodId}`)}
         />
       )}
     </>

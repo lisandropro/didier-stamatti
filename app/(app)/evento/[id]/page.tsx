@@ -5,7 +5,7 @@ import { nombreDe } from "@/lib/period-fit";
 import { OrderBuilder } from "@/components/OrderBuilder";
 import { OrderReadOnly } from "@/components/OrderReadOnly";
 import { getSessionUser } from "@/lib/auth";
-import { canEditOrders, canSetResponsable, canVerStock } from "@/lib/permissions";
+import { canEditOrders, canManagePeriods, canSetResponsable, canVerStock } from "@/lib/permissions";
 import { ordenDeCategoria } from "@/lib/categories";
 import { redirect } from "next/navigation";
 
@@ -78,8 +78,11 @@ export default async function EventoPage({
 
   const data = {
     userId: session.id,
+    // Borrar el evento vive en el editor y no en la tarjeta de la portada.
+    canBorrar: canManagePeriods(session.role),
     event: {
       id: ev.id,
+      periodId: ev.periodId,
       lugar: ev.lugar,
       subLabel: `${fmtEvento(ev.date)} · ${ev.guests} invitados${ev.responsable ? ` · ${ev.responsable}` : ""}`,
       status: ev.status,

@@ -1,0 +1,57 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+/**
+ * Las pantallas del celular, sobre el texto de los componentes.
+ *
+ * Los componentes de cliente no corren en `node --test`, así que —como
+ * `order-actions.test.ts`— se exige sobre el archivo lo que no se puede
+ * romper al reacomodar la pantalla: que salir del editor siga esperando el
+ * guardado, que lo ya preparado siga trabado y que cada acción que se esconde
+ * en el celular siga existiendo en un menú.
+ */
+
+function fuente(rel: string): string {
+  let dir = process.cwd();
+  for (let i = 0; i < 5; i++) {
+    const candidato = path.join(dir, rel);
+    if (fs.existsSync(candidato)) return fs.readFileSync(candidato, "utf8");
+    dir = path.dirname(dir);
+  }
+  throw new Error(`no se encontró ${rel} desde ${process.cwd()}`);
+}
+
+test("el PDF desde el menú del celular sale recién después de guardar lo pendiente", () => {
+  const s = fuente("components/OrderBuilder.tsx");
+  const desde = s.indexOf("async function irAlPdf");
+  assert.notEqual(desde, -1, "no está irAlPdf");
+  const cuerpo = s.slice(desde, desde + 300);
+  const guardar = cuerpo.indexOf("queue.flush()");
+  const salir = cuerpo.indexOf("router.push(");
+  assert.ok(guardar !== -1 && salir !== -1 && guardar < salir, "irAlPdf navega sin esperar el guardado");
+});
+
+test("el menú del editor tiene todo lo que en el celular sale de la cabecera", () => {
+  const s = fuente("components/OrderBuilder.tsx");
+  for (const label of ["Editar evento", "Repetir pedido", "PDF del pedido", "Marcar como listo", "Responsable de la fiesta", "Borrar evento"]) {
+    assert.ok(s.includes(`label: "${label}"`) || s.includes(`"${label}"`), `falta "${label}" en el menú`);
+  }
+});
+
+test("borrar el evento se ofrece solo a quien puede administrar períodos", () => {
+  const pagina = fuente("app/(app)/evento/[id]/page.tsx");
+  assert.ok(pagina.includes("canBorrar: canManagePeriods(session.role)"), "la página no calcula canBorrar");
+  const s = fuente("components/OrderBuilder.tsx");
+  const aperturas = s.split("setShowBorrar(true)").length - 1;
+  assert.equal(aperturas, 2, "se esperaban dos entradas: el botón ancho y el menú");
+  assert.ok(s.includes("{data.canBorrar && ("), "el botón ancho no depende de canBorrar");
+  assert.ok(s.includes("...(data.canBorrar ?"), "el ítem del menú no depende de canBorrar");
+});
+
+test("la tarjeta de la portada ya no tiene el borrar pegado a Armar pedido", () => {
+  const s = fuente("components/PeriodHub.tsx");
+  assert.ok(!s.includes("event-del"), "la tarjeta sigue teniendo el botón de borrar");
+  assert.ok(!s.includes("deleteEvent"), "la portada sigue borrando eventos");
+});
