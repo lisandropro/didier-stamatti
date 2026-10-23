@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Sin conexión · Didier Stamatti</title>
+<style>
+  :root{color-scheme:light dark; --fondo:#FBFAF8; --tinta:#1A1917; --suave:#6B6862; --boton:#1A1917; --sobre-boton:#FBFAF8}
+  @media (prefers-color-scheme:dark){:root{--fondo:#0E0E0D; --tinta:#F2F0EC; --suave:#A29E97; --boton:#F2F0EC; --sobre-boton:#0E0E0D}}
+  html,body{margin:0; height:100%; background:var(--fondo); color:var(--tinta); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  main{min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px; box-sizing:border-box; text-align:center}
+  h1{margin:0; font-size:22px}
+  p{margin:0; max-width:32ch; color:var(--suave); line-height:1.45}
+  button{margin-top:12px; min-height:48px; padding:0 28px; border:0; border-radius:12px; background:var(--boton); color:var(--sobre-boton); font-size:16px; font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <h1>Sin conexión</h1>
+  <p>El teléfono no tiene señal ni wifi. Cuando vuelva, tocá Reintentar.</p>
+  <button type="button" onclick="location.reload()">Reintentar</button>
+</main>
+</body>
+</html>

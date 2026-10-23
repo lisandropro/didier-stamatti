@@ -276,3 +276,24 @@ test("el selector de período se dibuja igual en iPhone que en Android", () => {
   const regla = css.slice(css.indexOf(".wk-select{"), css.indexOf("}", css.indexOf(".wk-select{")));
   assert.ok(regla.includes("appearance:none"), "Safari le pone su propio dibujo al selector y lo corta");
 });
+
+/**
+ * Depósito, señal que va y viene (23/10). Abrir la app sin red mostraba el
+ * dinosaurio del navegador, y perder la señal a mitad de uso solo daba un error
+ * genérico. El service worker sigue sin guardar pantallas ni datos: solo guarda
+ * esta página estática.
+ */
+test("sin red, la app abre una página propia y no el dinosaurio del navegador", () => {
+  const sw = fuente("public/sw.js");
+  assert.ok(sw.includes('"/sin-conexion.html"'), "el service worker no conoce la página sin conexión");
+  assert.ok(sw.includes('req.mode === "navigate"'), "abrir una pantalla sin red no tiene respuesta propia");
+  const html = fuente("public/sin-conexion.html");
+  assert.ok(html.includes("Sin conexión") && html.includes("Reintentar"), "la página sin conexión no explica ni deja reintentar");
+});
+
+test("si se corta la señal, la app lo dice arriba y se pone al día cuando vuelve", () => {
+  const s = fuente("components/SinConexion.tsx");
+  assert.ok(s.includes('"offline"') && s.includes('"online"'), "nadie escucha si se corta o vuelve la señal");
+  assert.ok(s.includes("router.refresh()"), "al volver la señal la pantalla queda vieja");
+  assert.ok(fuente("app/(app)/layout.tsx").includes("<SinConexion />"), "el layout no monta el aviso de sin conexión");
+});

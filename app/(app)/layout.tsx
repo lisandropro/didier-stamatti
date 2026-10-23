@@ -5,6 +5,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { PushSubscriptionSync } from "@/components/PushSubscriptionSync";
 import { SuggestionBox } from "@/components/SuggestionBox";
 import { Actualizador } from "@/components/Actualizador";
+import { SinConexion } from "@/components/SinConexion";
 import { appVersion } from "@/lib/app-version";
 
 export default async function AppLayout({
@@ -19,6 +20,9 @@ export default async function AppLayout({
 
   return (
     <div className="app">
+      {/* Avisa arriba si el teléfono se queda sin señal (en el depósito va y
+          viene) y, al volver, vuelve a pedir la pantalla. */}
+      <SinConexion />
       {/* Se pasa la versión con la que se dibujó esta pantalla: si el servidor
           pasa a otra, la app se actualiza sola en cuanto nadie esté a mitad de
           algo. Sin esto, una pestaña vieja falla al guardar y no avisa. */}

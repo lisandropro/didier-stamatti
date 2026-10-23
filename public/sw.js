@@ -1,9 +1,21 @@
 /* Service worker de Didier Stamatti — recibe las notificaciones push y las
-   muestra en el celular aunque la app esté cerrada. */
+   muestra en el celular aunque la app esté cerrada. También guarda UNA página
+   estática, /sin-conexion.html, para abrir la app sin señal en vez del
+   dinosaurio del navegador. */
 
-const CACHE = "didier-static-v1";
+// v2: trae la página sin conexión; al activarse borra el caché v1.
+const CACHE = "didier-static-v2";
 
-self.addEventListener("install", () => self.skipWaiting());
+// Se guarda al instalar: si no estuviera ya en el teléfono, justo cuando hace
+// falta (sin red) no habría de dónde sacarla.
+self.addEventListener("install", (event) =>
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.add("/sin-conexion.html"))
+      .then(() => self.skipWaiting())
+  )
+);
 
 self.addEventListener("activate", (event) =>
   event.waitUntil(
@@ -28,6 +40,16 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // Abrir una pantalla sin red: en vez del dinosaurio del navegador, la página
+  // propia de "sin conexión". La pantalla en sí NUNCA se guarda: con red se pide
+  // siempre al servidor, así el stock y los pedidos no se ven viejos.
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req).catch(async () => (await caches.match("/sin-conexion.html")) ?? Response.error()),
+    );
+    return;
+  }
 
   const immutable = isImmutableAsset(url);
   if (!immutable && !isIcon(url)) return;
