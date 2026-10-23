@@ -5,9 +5,9 @@
 // lee como "hay cero" y grita por algo que nadie inventarió. Sin pruebas de que
 // alguien lo contó, el producto queda SIN CONTAR (null).
 //
-// Las pruebas son las mismas que usó la migración del 19/08: un movimiento de
-// stock, o haber sido reutilizable antes (el alta con cero explícito no deja
-// movimiento, pero ese cero sí es un dato).
+// El movimiento de stock es la prueba que usó la migración del 19/08. Acá se
+// suma "haber sido reutilizable antes": el alta con cero explícito no deja
+// movimiento, pero ese cero sí es un dato.
 
 export function stockAlPasarAReutilizable(p: {
   stock: number | null;

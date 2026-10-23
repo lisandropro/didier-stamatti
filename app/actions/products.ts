@@ -200,8 +200,11 @@ export async function updateProduct(input: {
   // La excepción es el 0 de un consumible que nunca se contó: no es un dato, y
   // como reutilizable inventaría un faltante. Ese pasa a SIN CONTAR. Solo se
   // escribe el stock cuando cambia: escribirlo siempre pisaría un recuento
-  // guardado entre la lectura y esta escritura. Mientras es consumible no hay
-  // recuento posible (`saveStock` exige reutilizable), así que acá no hay carrera.
+  // guardado entre la lectura y esta escritura. No hay carrera con `saveStock`
+  // mientras el producto es consumible, porque ahí no hay recuento posible
+  // (`saveStock` exige reutilizable). Lo que sí podría pasar es que dos
+  // ediciones simultáneas del mismo producto, con un recuento en el medio, lo
+  // pisen; con un solo administrador no pasa.
   const sinContar: { stock?: null } = {};
   if (p.type === "CONSUMIBLE" && nuevos.type === "REUTILIZABLE") {
     const [movimientos, fueReutilizable] = await Promise.all([

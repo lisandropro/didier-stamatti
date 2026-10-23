@@ -83,7 +83,9 @@ export function OrderReadOnly({
             <span className="sub-datos">
               {data.event.subLabel} · {total} producto{total === 1 ? "" : "s"} en el pedido
             </span>
-            <span className="chip neutral sub-chip">Solo lectura</span>
+            {/* En el celular la falta de controles ya dice que es de solo lectura,
+                y el chip dejaba la fecha cortada en "Sáb 17/10 · …". */}
+            <span className="chip neutral sub-chip solo-ancho">Solo lectura</span>
           </div>
         </div>
         <div className="spacer" />

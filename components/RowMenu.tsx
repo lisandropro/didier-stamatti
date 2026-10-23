@@ -34,7 +34,7 @@ const ALTO_ITEM = 44;
  *  abajo (`.mobnav`).
  *  `grande`: el botón mide lo que un dedo, para la cabecera del celular. */
 export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]; label: string; grande?: boolean }) {
-  const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const lista = useRef<HTMLDivElement>(null);
 
@@ -48,11 +48,14 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
     // Hacia arriba solo si abajo no entra y arriba hay más lugar.
     const haciaArriba = alto > abajo && arriba > abajo;
     const lugar = haciaArriba ? arriba : abajo;
-    setPos({
-      top: haciaArriba ? r.top - Math.min(alto, lugar) - 4 : r.bottom + 4,
-      right: Math.max(8, window.innerWidth - r.right),
-      maxHeight: lugar,
-    });
+    // Hacia arriba la lista se ancla por abajo y no con un `top` calculado: el
+    // alto estimado (`ALTO_ITEM`) sobreestima en la pantalla ancha y la lista
+    // quedaba flotando unos píxeles arriba del botón.
+    setPos(
+      haciaArriba
+        ? { bottom: window.innerHeight - r.top + 4, right: Math.max(8, window.innerWidth - r.right), maxHeight: lugar }
+        : { top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right), maxHeight: lugar },
+    );
   }
 
   useEffect(() => {
@@ -93,7 +96,7 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
       </button>
       {pos &&
         createPortal(
-          <div className="rowmenu-list" role="menu" ref={lista} style={{ top: pos.top, right: pos.right, maxHeight: pos.maxHeight }}>
+          <div className="rowmenu-list" role="menu" ref={lista} style={{ top: pos.top, bottom: pos.bottom, right: pos.right, maxHeight: pos.maxHeight }}>
             {items.map((it) => (
               <button
                 key={it.label}

@@ -33,7 +33,8 @@ export function ConfirmDeleteEvent({
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    // Tocar afuera mientras dice "Borrando…" cerraba el modal con el borrado en curso.
+    <div className="overlay" onClick={saving ? undefined : onClose}>
       <div className="modal" onClick={(ev) => ev.stopPropagation()}>
         <h2>¿Borrar el evento de {evento.lugar}?</h2>
         <p className="modal-sub">

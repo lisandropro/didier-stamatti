@@ -140,3 +140,18 @@ test("en el celular el selector de período tiene ancho propio y alto de dedo", 
   assert.ok(!regla.includes("flex:1 1 0"), "con base 0 el selector se aplasta al lado del título");
   assert.ok(regla.includes("min-height:var(--tap)"), "el selector mide menos que un dedo");
 });
+
+test("el modal de borrar no se cierra mientras está borrando", () => {
+  const s = fuente("components/ConfirmDeleteEvent.tsx");
+  assert.ok(s.includes("onClick={saving ? undefined : onClose}"), "tocar afuera cierra el modal a mitad del borrado");
+});
+
+test("en el celular los campos de texto miden 16 px", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(css.includes(".search input, .resp-edit input, .wk-select{font-size:16px}"), "el iPhone agranda la página al tocar la búsqueda");
+});
+
+test("no queda ningún ancho sin reglas entre el celular y la pantalla ancha", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(!css.includes("min-width:861px"), "entre 860 y 861 px no aplica ninguna de las dos variantes");
+});

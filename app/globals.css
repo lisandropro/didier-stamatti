@@ -195,6 +195,9 @@ body{
   font-family:var(--font-ui); font-size:var(--t-sm); font-weight:600;
   color:var(--muted); cursor:pointer;
 }
+/* En Cambios tardíos las pestañas son `<Link>` (un `<a>`, que es inline): sin
+   esto el texto quedaba arriba y no centrado en sus 44 px. */
+a.tab{display:inline-flex; align-items:center; text-decoration:none}
 .tab:hover{background:var(--surface-2); color:var(--ink)}
 .tab.active{background:var(--ink); color:var(--ground); border-color:var(--ink)}
 .tab.active:hover{background:var(--brand-strong); color:var(--ground)}
@@ -775,7 +778,10 @@ tbody tr:hover{background:var(--surface-2)}
    pantalla ancha se ve y se comporta como texto. */
 .pname-btn{display:block; width:100%; appearance:none; background:none; border:0; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer}
 .pname-btn:focus-visible{outline:2px solid var(--gold); outline-offset:2px; border-radius:var(--r-sm)}
-@media (min-width:861px){ .pname-btn{cursor:default} }
+/* "No es celular" y no "desde 861 px": con escalado de pantalla (125 %, 150 %)
+   el ancho puede ser fraccionario, por ejemplo 860,5 px, y ahí no aplicaba ni
+   una variante ni la otra. */
+@media not all and (max-width:860px){ .pname-btn{cursor:default} }
 
 /* En el celular la fila es una línea: el nombre y − cantidad +. Una segunda
    línea chica aparece solo si hay algo que decir, y el resto (±10, el stock y
@@ -2341,7 +2347,11 @@ tbody tr:hover{background:var(--surface-2)}
 /* Lo que existe en un solo ancho. `!important` porque estas clases conviven
    con las de cada elemento (`.btn`, `.topbar-acciones`), que fijan su propio
    `display`. */
-@media (min-width:861px){ .solo-celular{display:none !important} }
+/* La pantalla ancha es "todo lo que no es celular" (`not all and (max-width:860px)`)
+   y no "desde 861 px": con un ancho fraccionario como 860,5 px (escalado de
+   pantalla del 125 % o 150 %) ninguna de las dos reglas aplicaba y se veían las
+   dos cabeceras. */
+@media not all and (max-width:860px){ .solo-celular{display:none !important} }
 @media (max-width:860px){ .solo-ancho{display:none !important} }
 
 /* Filtros que en el celular van en una sola fila que se desliza de costado, en
@@ -2350,7 +2360,10 @@ tbody tr:hover{background:var(--surface-2)}
 .filtros-scroll{display:contents}
 
 .topbar-titulo{min-width:0}
-.topbar-acciones{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap}
+/* En la pantalla ancha el contenedor no existe para el layout: los botones se
+   acomodan en la cabecera como antes de la etapa 4. Agrupados, bajaban todos
+   juntos a una segunda línea. En el celular sigue escondido por `solo-ancho`. */
+.topbar-acciones{display:contents}
 .sub-datos + .save-ind::before{content:" · "}
 .topbar-volver{
   width:var(--tap); height:var(--tap); flex:none; display:grid; place-items:center;
@@ -2389,6 +2402,10 @@ tbody tr:hover{background:var(--surface-2)}
   .filtros-scroll{display:flex; gap:var(--sp-2); width:100%; overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; overscroll-behavior-x:contain}
   .filtros-scroll::-webkit-scrollbar{display:none}
   .filtros-scroll > *{flex:none}
+
+  /* Con menos de 16 px, el iPhone agranda la página al tocar el campo y se
+     pierde la vista de 6 productos por pantalla. */
+  .search input, .resp-edit input, .wk-select{font-size:16px}
 }
 
 .sub-chip{margin-left:var(--sp-2)}
@@ -2397,7 +2414,6 @@ tbody tr:hover{background:var(--surface-2)}
 /* El pedido en solo lectura: en el celular es una lista, con la nota debajo del
    nombre. La tabla tiene 680 px de mínimo y dejaba la nota fuera del teléfono. */
 @media (max-width:860px){
-  .topbar-pedido .sub-chip{flex:none; margin-left:0; padding:0 var(--sp-2)}
   .ro-tabla{min-width:0}
   .ro-tabla thead{display:none}
   .ro-tabla tbody tr{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px var(--sp-3); padding:var(--sp-2) var(--sp-3); border-bottom:1px solid var(--hair)}
