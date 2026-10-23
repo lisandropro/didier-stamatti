@@ -73,15 +73,19 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        {CATS.map((c) => (
-          <button
-            key={c.v}
-            className={`tab${cat === c.v ? " active" : ""}`}
-            onClick={() => setCat(c.v)}
-          >
-            {c.l}
-          </button>
-        ))}
+        {/* En el celular las pestañas van en una sola fila que se desliza: apiladas
+            en dos líneas empujaban la lista hacia abajo. */}
+        <div className="filtros-scroll">
+          {CATS.map((c) => (
+            <button
+              key={c.v}
+              className={`tab${cat === c.v ? " active" : ""}`}
+              onClick={() => setCat(c.v)}
+            >
+              {c.l}
+            </button>
+          ))}
+        </div>
         {canEdit && (
           <button className="btn primary newprod-btn" onClick={() => setCreating(true)}>
             {IconPlus} Nuevo producto

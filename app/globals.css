@@ -362,6 +362,9 @@ tbody tr:hover{background:var(--surface-2)}
   .side{display:none}
   .content{padding:18px 16px 92px}
   .topbar{padding:14px 16px}
+  /* Títulos de app: del tamaño de la computadora ocupaban dos renglones. */
+  .topbar h1{font-size:var(--t-xl)}
+  .topbar .sub{font-size:var(--t-xs)}
   .mobnav{
     display:flex; position:fixed; bottom:0; left:0; right:0; z-index:20; background:var(--surface);
     border-top:1px solid var(--hair); padding:8px 6px calc(8px + env(safe-area-inset-bottom)); justify-content:space-around;
@@ -2306,10 +2309,12 @@ tbody tr:hover{background:var(--surface-2)}
 /* El error va en la cabecera fija, debajo de la fila: se ve donde sea que esté el scroll. */
 .prep-error{margin:0 var(--sp-4) var(--sp-2)}
 .prep-volver{font-size:var(--t-xl); text-decoration:none; color:var(--ink); min-width:var(--tap); min-height:var(--tap); display:flex; align-items:center; justify-content:center}
-/* Si el lugar es largo, se corta el lugar; HOY y la fecha quedan siempre. */
-.prep-titulo{flex:1; min-width:0; display:flex; align-items:baseline; gap:var(--sp-1); white-space:nowrap; color:var(--muted); font-size:var(--t-sm)}
+/* Dos líneas: el lugar arriba y cuándo abajo. En una sola, un teléfono angosto
+   cortaba el lugar ("MUS…") porque HOY y la fecha le ganaban el ancho. */
+.prep-titulo{flex:1; min-width:0; display:flex; flex-direction:column; gap:0; color:var(--muted); font-size:var(--t-sm); line-height:1.25}
 .prep-cuando{flex:0 0 auto}
-.prep-titulo b{min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--ink); font-size:var(--t-md)}
+/* El lugar ocupa todo el ancho de su renglón: si no entra, se corta con "…" y no se parte. */
+.prep-titulo b{min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--ink); font-size:var(--t-md)}
 .prep-hoy{color:var(--crit); font-weight:800}
 .prep-faltan{display:flex; align-items:center; min-height:var(--tap); padding:0 var(--sp-2); color:var(--crit); font-weight:700; text-decoration:none; white-space:nowrap}
 .prep-contenido{display:flex; flex-direction:column; gap:var(--sp-5)}

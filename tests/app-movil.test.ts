@@ -121,3 +121,17 @@ test("el inventario esconde su encabezado solo donde esconde sus columnas", () =
   const bloque600 = css.slice(desde, hasta);
   assert.ok(bloque600.includes(".inventory-table thead{display:none}"), "entre 600 y 860 px el inventario muestra columnas sin nombre");
 });
+
+test("Preparar muestra el lugar entero: el lugar arriba y cuándo abajo", () => {
+  const s = fuente("components/Preparar.tsx");
+  assert.ok(!s.includes("· {data.evento.esHoy"), "la cabecera sigue en una línea y el lugar se corta");
+  assert.ok(/\.prep-titulo\{[^}]*flex-direction:column/.test(fuente("app/globals.css")), "el lugar y la fecha siguen compitiendo por la misma línea");
+});
+
+test("en Inventario los filtros van en una fila que se desliza", () => {
+  assert.ok(fuente("components/InventoryTable.tsx").includes('className="filtros-scroll"'), "los filtros de Inventario se apilan en dos líneas");
+});
+
+test("en el celular los títulos de las pantallas son de app, no de página", () => {
+  assert.ok(/\.topbar h1\{font-size:var\(--t-xl\)/.test(fuente("app/globals.css")), "los títulos siguen del tamaño de la computadora");
+});

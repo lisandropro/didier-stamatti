@@ -172,12 +172,12 @@ export function Preparar({ data }: { data: Data }) {
       <div className="prep-cabecera">
         <div className="prep-cabecera-fila">
           <Link href="/preparar" className="prep-volver" aria-label="Volver a Preparar">←</Link>
-          {/* Una sola línea: en el teléfono la cabecera fija no puede comerse la
-              pantalla. Si el lugar es largo, lo que se corta es el lugar. */}
+          {/* Dos líneas: el lugar arriba, entero si entra, y cuándo abajo. En una sola,
+              en un teléfono de 360 px el lugar quedaba en "MUS…". */}
           <div className="prep-titulo">
             <b>{data.evento.lugar}</b>
             <span className="prep-cuando">
-              · {data.evento.esHoy ? <span className="prep-hoy">HOY</span> : null} {data.evento.cuando}
+              {data.evento.esHoy ? <span className="prep-hoy">HOY</span> : null} {data.evento.cuando}
             </span>
           </div>
           {data.faltantes.length > 0 && (
