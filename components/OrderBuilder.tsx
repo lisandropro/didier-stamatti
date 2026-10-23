@@ -10,7 +10,7 @@ import { validQuantity, MAX_QUANTITY } from "@/lib/quantity";
 import { setLine, addCustomLine, setCustomQty, deleteLine, copyOrderFromEvent } from "@/app/actions/order";
 import { marcarGuardado, marcarPendiente } from "@/lib/trabajo-pendiente";
 import { computeShortage } from "@/lib/shortage-rule";
-import { estadoDeStock, type NivelDeStock } from "@/lib/fila-de-pedido";
+import { avisosDeFila, estadoDeStock, type NivelDeStock } from "@/lib/fila-de-pedido";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditEventModal } from "@/components/EditEventModal";
 import { ResponsableEditor } from "@/components/ResponsableEditor";
@@ -121,6 +121,8 @@ export function OrderBuilder({ data }: { data: Data }) {
   const currentItems = useRef(items);
   const [error, setError] = useState<string | null>(null);
   const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});
+  // Filas abiertas en el celular: tocar el nombre muestra ±10, el stock y la nota.
+  const [detalle, setDetalle] = useState<Record<string, boolean>>({});
   const [showCopy, setShowCopy] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showShortages, setShowShortages] = useState(false);
@@ -443,23 +445,43 @@ export function OrderBuilder({ data }: { data: Data }) {
               const hay = p.stock ?? 0;
               const pct = contado && hay > 0 ? Math.min(100, Math.round((total / hay) * 100)) : total > 0 ? 100 : 0;
               const st = estadoDeStock(p);
+              const avisos = avisosDeFila(p);
+              const abierta = detalle[p.id] === true;
+              const rubro = (
+                <>
+                  {searching ? `${CATS.find((c) => c.v === p.category)?.l ?? p.category} · ` : ""}
+                  {p.rubro}
+                  {p.unit !== "Unidad" ? ` · por ${p.unit.toLowerCase()}` : ""}
+                  {p.deBaja ? " · ya no está en el catálogo, poné 0 para sacarlo" : ""}
+                </>
+              );
               const trabada = bloqueada(p.id);
               return (
-                <div key={p.id} className={`orow${p.qty > 0 ? " has-qty" : ""}`}>
+                <div key={p.id} className={`orow${p.qty > 0 ? " has-qty" : ""}${abierta ? " abierta" : ""}`}>
                   <div className="ocol-name">
-                    <div className="pname">
+                    {/* En el celular, tocar el nombre abre el detalle: ±10, el stock y
+                        la nota. En la pantalla ancha todo eso ya está a la vista. */}
+                    <button
+                      type="button"
+                      className="pname pname-btn"
+                      aria-expanded={abierta}
+                      onClick={() => setDetalle((s) => ({ ...s, [p.id]: !s[p.id] }))}
+                    >
                       {p.name}
                       {p.deBaja && <span className="chip crit chip-baja">Dado de baja</span>}
                       {data.preparados[p.id] !== undefined && <span className="chip ok chip-prep">Preparado</span>}
-                    </div>
-                    <div className="rubro">
-                      {searching ? `${CATS.find((c) => c.v === p.category)?.l ?? p.category} · ` : ""}
-                      {p.rubro}
-                      {p.unit !== "Unidad" ? ` · por ${p.unit.toLowerCase()}` : ""}
-                      {p.deBaja ? " · ya no está en el catálogo, poné 0 para sacarlo" : ""}
-                    </div>
+                    </button>
+                    <div className="rubro">{rubro}</div>
+                    {/* La segunda línea del celular: solo si hay algo que decir. */}
+                    {avisos.length > 0 && (
+                      <div className="orow-resumen solo-celular">
+                        {avisos.map((a) => (
+                          <span key={a.cls + a.txt} className={`resumen-${a.cls}`}>{a.txt}</span>
+                        ))}
+                      </div>
+                    )}
                     <button
-                      className={`note-toggle${p.note ? " has-note" : ""}`}
+                      className={`note-toggle solo-ancho${p.note ? " has-note" : ""}`}
                       onClick={() => {
                         // Trabada, la nota tampoco se abre: se pregunta primero.
                         if (trabada) setPorConfirmar(p.id);
@@ -470,7 +492,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                     </button>
                     {noteOpen[p.id] && (
                       <input
-                        className="note-input"
+                        className="note-input solo-ancho"
                         type="text"
                         placeholder="Aclaración… (ej: doradas, para postre)"
                         value={p.note}
@@ -489,7 +511,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                     )}
                   </div>
 
-                  <div className="ocol-stock">
+                  <div className="ocol-stock solo-ancho">
                     {reutil ? (
                       <>
                         <div className="bar"><div className="fill" style={{ width: `${pct}%`, background: st ? RELLENO[st.cls] : "var(--muted)" }} /></div>
@@ -504,7 +526,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                   </div>
 
                   <div className="ocol-qty">
-                    <button className="qbtn wide" onClick={() => stepQty(p.id, -10)} aria-label="Restar diez">−10</button>
+                    <button className="qbtn wide solo-ancho" onClick={() => stepQty(p.id, -10)} aria-label="Restar diez">−10</button>
                     <button className="qbtn" onClick={() => stepQty(p.id, -1)} aria-label="Restar uno">−</button>
                     <input
                       className="qinput"
@@ -527,8 +549,37 @@ export function OrderBuilder({ data }: { data: Data }) {
                       aria-label={`Cantidad de ${p.name}`}
                     />
                     <button className="qbtn" onClick={() => stepQty(p.id, 1)} aria-label="Sumar uno">+</button>
-                    <button className="qbtn wide" onClick={() => stepQty(p.id, 10)} aria-label="Sumar diez">+10</button>
+                    <button className="qbtn wide solo-ancho" onClick={() => stepQty(p.id, 10)} aria-label="Sumar diez">+10</button>
                   </div>
+
+                  {abierta && (
+                    <div className="orow-detalle solo-celular">
+                      <div className="rubro">{rubro}</div>
+                      <div>
+                        {reutil ? (
+                          <>Depósito: <b>{p.stock ?? "sin contar"}</b> · Otros eventos: <b>{p.reserved}</b></>
+                        ) : (
+                          "Se compra por evento"
+                        )}
+                      </div>
+                      <div className="detalle-pasos">
+                        <button className="qbtn wide" onClick={() => stepQty(p.id, -10)} aria-label="Restar diez">−10</button>
+                        <button className="qbtn wide" onClick={() => stepQty(p.id, 10)} aria-label="Sumar diez">+10</button>
+                      </div>
+                      <input
+                        className="detalle-nota"
+                        type="text"
+                        placeholder="Nota… (ej: doradas, para postre)"
+                        value={p.note}
+                        // La misma traba que la cantidad: preparado, se pregunta antes.
+                        readOnly={trabada}
+                        onFocus={trabada ? () => setPorConfirmar(p.id) : undefined}
+                        onPointerDown={trabada ? () => setPorConfirmar(p.id) : undefined}
+                        onChange={(e) => updateItem(p.id, { note: e.target.value })}
+                        aria-label={`Nota de ${p.name}`}
+                      />
+                    </div>
+                  )}
                   {porConfirmar === p.id && (
                     <div className="prep-aviso-fila" role="alert">
                       <span>
@@ -850,7 +901,7 @@ function ExtrasPanel({
                   {c.unit ? ` · por ${c.unit.toLowerCase()}` : ""}
                 </div>
               </div>
-              <div className="ocol-stock">
+              <div className="ocol-stock solo-ancho">
                 <span className="chip neutral">Sin control de stock</span>
               </div>
               <div className="ocol-qty">

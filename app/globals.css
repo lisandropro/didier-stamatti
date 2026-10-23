@@ -767,9 +767,37 @@ tbody tr:hover{background:var(--surface-2)}
 .orow.has-qty .qinput{border-color:color-mix(in srgb,var(--gold) 45%,var(--hair)); background:var(--surface)}
 
 .extras-form{display:flex; gap:var(--sp-3); align-items:flex-end; flex-wrap:wrap; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-4) var(--sp-5)}
+/* El nombre es un botón: en el celular abre el detalle de la fila. En la
+   pantalla ancha se ve y se comporta como texto. */
+.pname-btn{display:block; width:100%; appearance:none; background:none; border:0; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer}
+.pname-btn:focus-visible{outline:2px solid var(--gold); outline-offset:2px; border-radius:var(--r-sm)}
+@media (min-width:861px){ .pname-btn{cursor:default} }
+
+/* En el celular la fila es una línea: el nombre y − cantidad +. Una segunda
+   línea chica aparece solo si hay algo que decir, y el resto (±10, el stock y
+   la nota) se abre tocando el nombre. Medido el 19/10: con la fila apilada en
+   tres pisos entraban 2 productos por pantalla. */
+.orow-resumen{display:flex; flex-wrap:wrap; gap:0 var(--sp-2); font-size:var(--t-xs); line-height:1.4; color:var(--muted)}
+.orow-resumen > span{min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.resumen-crit{color:var(--crit); font-weight:650}
+.resumen-warn{color:var(--warn); font-weight:650}
+.resumen-nota{color:var(--gold)}
+.orow-detalle{grid-column:1/-1; display:flex; flex-direction:column; gap:var(--sp-2); padding-top:var(--sp-2); border-top:1px dashed var(--hair); font-size:var(--t-sm); color:var(--muted)}
+.orow-detalle b{color:var(--ink)}
+.orow-detalle .rubro{margin-top:0}
+.detalle-pasos{display:flex; gap:var(--sp-2)}
+.detalle-pasos .qbtn{flex:1}
+/* 16 px de letra: con menos, el teléfono agranda la pantalla al tocarla. */
+.detalle-nota{display:block; width:100%; min-height:var(--tap); font-size:var(--t-base); font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
+.detalle-nota:focus{outline:2px solid var(--gold); outline-offset:-1px}
+
 @media(max-width:860px){
-  .orow{grid-template-columns:1fr; gap:10px}
-  .ocol-qty{justify-content:flex-start}
+  .orow{grid-template-columns:minmax(0,1fr) auto; gap:var(--sp-1) var(--sp-3); padding:var(--sp-2) var(--sp-3)}
+  .ocol-name .rubro{display:none}
+  .pname-btn{min-height:var(--tap); display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-1) var(--sp-2)}
+  .pname-btn .chip-prep, .pname-btn .chip-baja{margin-left:0}
+  .ocol-qty{justify-content:flex-end}
+  .ocol-qty .qinput{width:52px}
   .extras-form{flex-direction:column; align-items:stretch}
   .extras-form .field{width:100%!important}
 }

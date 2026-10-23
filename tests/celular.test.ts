@@ -78,3 +78,22 @@ test("borrar el evento no reactiva el modal cuando salió bien", () => {
     "setSaving(false) corre también cuando salió bien",
   );
 });
+
+test("la nota del detalle del celular respeta la traba de lo ya preparado", () => {
+  const s = fuente("components/OrderBuilder.tsx");
+  const desde = s.indexOf('className="detalle-nota"');
+  assert.notEqual(desde, -1, "no está la nota del detalle");
+  const input = s.slice(s.lastIndexOf("<input", desde), s.indexOf("/>", desde));
+  assert.ok(input.includes("readOnly={trabada}"), "la nota del detalle se puede tipear estando trabada");
+  assert.ok(input.includes("onFocus={trabada ? () => setPorConfirmar(p.id)"), "enfocarla trabada no pregunta");
+  assert.ok(input.includes("onPointerDown={trabada ? () => setPorConfirmar(p.id)"), "tocarla trabada no pregunta");
+  assert.ok(input.includes("updateItem(p.id, { note:"), "la nota del detalle no pasa por updateItem");
+});
+
+test("los ±10 del detalle pasan por la misma pregunta que el resto", () => {
+  const s = fuente("components/OrderBuilder.tsx");
+  const desde = s.indexOf('className="detalle-pasos"');
+  assert.notEqual(desde, -1, "no están los ±10 del detalle");
+  const bloque = s.slice(desde, s.indexOf("</div>", desde));
+  assert.ok(bloque.includes("stepQty(p.id, -10)") && bloque.includes("stepQty(p.id, 10)"), "los ±10 no usan stepQty");
+});
