@@ -55,3 +55,26 @@ test("la tarjeta de la portada ya no tiene el borrar pegado a Armar pedido", () 
   assert.ok(!s.includes("event-del"), "la tarjeta sigue teniendo el botón de borrar");
   assert.ok(!s.includes("deleteEvent"), "la portada sigue borrando eventos");
 });
+
+test("el menú de tres puntitos se dibuja en el body, no adentro de la cabecera", () => {
+  const s = fuente("components/RowMenu.tsx");
+  assert.ok(s.includes("createPortal("), "el menú se dibuja adentro de quien lo abre");
+  assert.ok(s.includes("document.body"), "el menú no va al body");
+});
+
+test("borrar el evento no reactiva el modal cuando salió bien", () => {
+  const s = fuente("components/ConfirmDeleteEvent.tsx");
+  const cuerpo = s.slice(s.indexOf("async function confirm"), s.indexOf("return (", s.indexOf("async function confirm")));
+  const exito = cuerpo.lastIndexOf("onDeleted()");
+  const fallo = cuerpo.indexOf("if (!res.ok)");
+  const reactivar = cuerpo.lastIndexOf("setSaving(false)");
+  assert.ok(exito !== -1, "no llama a onDeleted");
+  assert.ok(fallo !== -1, "no distingue el fallo del borrado");
+  // El `return` que separa a `setSaving(false)` de `onDeleted()` tiene que ser el
+  // del camino de error; si `setSaving(false)` queda antes del `if (!res.ok)`,
+  // corre también cuando salió bien y reactiva los botones sobre un evento borrado.
+  assert.ok(
+    reactivar > fallo && reactivar < exito && cuerpo.slice(reactivar, exito).includes("return"),
+    "setSaving(false) corre también cuando salió bien",
+  );
+});

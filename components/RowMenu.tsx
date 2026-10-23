@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const IconDots = (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -22,9 +23,18 @@ const ALTO_ITEM = 44;
  *  Se posiciona con coordenadas fijas y no con `absolute`: la tabla vive dentro
  *  de un contenedor con `overflow-x:auto`, que recortaría el desplegable. Por lo
  *  mismo se cierra al hacer scroll, para que no quede flotando lejos del botón.
+ *  Salvo el scroll de la propia lista: si no entra en la pantalla, se desplaza
+ *  adentro y no se cierra.
+ *
+ *  La lista se dibuja en el `body` (`createPortal`) y no al lado del botón: la
+ *  cabecera del editor tiene `backdrop-filter`, que la vuelve la caja de
+ *  referencia de todo `position:fixed` que tenga adentro. Si la cabecera no
+ *  está pegada arriba de todo (en la portada del celular deja de ser fija), el
+ *  menú se abría corrido. En el body, además, queda por encima de la barra de
+ *  abajo (`.mobnav`).
  *  `grande`: el botón mide lo que un dedo, para la cabecera del celular. */
 export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]; label: string; grande?: boolean }) {
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const lista = useRef<HTMLDivElement>(null);
 
@@ -33,11 +43,15 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
     const r = btn.current?.getBoundingClientRect();
     if (!r) return;
     const alto = items.length * ALTO_ITEM + 8;
-    // Si no entra abajo, se despliega hacia arriba.
-    const haciaArriba = r.bottom + alto > window.innerHeight - 8;
+    const abajo = window.innerHeight - r.bottom - 12;
+    const arriba = r.top - 12;
+    // Hacia arriba solo si abajo no entra y arriba hay más lugar.
+    const haciaArriba = alto > abajo && arriba > abajo;
+    const lugar = haciaArriba ? arriba : abajo;
     setPos({
-      top: haciaArriba ? r.top - alto - 4 : r.bottom + 4,
+      top: haciaArriba ? r.top - Math.min(alto, lugar) - 4 : r.bottom + 4,
       right: Math.max(8, window.innerWidth - r.right),
+      maxHeight: lugar,
     });
   }
 
@@ -47,7 +61,10 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
       const t = e.target as Node;
       if (!btn.current?.contains(t) && !lista.current?.contains(t)) setPos(null);
     };
-    const cerrar = () => setPos(null);
+    const cerrar = (e: Event) => {
+      if (e.target instanceof Node && lista.current?.contains(e.target)) return;
+      setPos(null);
+    };
     const escape = (e: KeyboardEvent) => e.key === "Escape" && setPos(null);
     document.addEventListener("mousedown", afuera);
     document.addEventListener("keydown", escape);
@@ -74,24 +91,26 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
       >
         {IconDots}
       </button>
-      {pos && (
-        <div className="rowmenu-list" role="menu" ref={lista} style={{ top: pos.top, right: pos.right }}>
-          {items.map((it) => (
-            <button
-              key={it.label}
-              role="menuitem"
-              disabled={it.disabled}
-              className={it.peligro ? "peligro" : undefined}
-              onClick={() => {
-                setPos(null);
-                it.onSelect();
-              }}
-            >
-              {it.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {pos &&
+        createPortal(
+          <div className="rowmenu-list" role="menu" ref={lista} style={{ top: pos.top, right: pos.right, maxHeight: pos.maxHeight }}>
+            {items.map((it) => (
+              <button
+                key={it.label}
+                role="menuitem"
+                disabled={it.disabled}
+                className={it.peligro ? "peligro" : undefined}
+                onClick={() => {
+                  setPos(null);
+                  it.onSelect();
+                }}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

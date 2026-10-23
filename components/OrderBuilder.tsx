@@ -337,7 +337,7 @@ export function OrderBuilder({ data }: { data: Data }) {
             <span className="sub-datos">
               {data.event.subLabel} · {inOrderCount} producto{inOrderCount === 1 ? "" : "s"} en el pedido
             </span>
-            <span className="save-ind">
+            <span className={`save-ind${!saveStatus.error && pending === 0 && !savedOnce ? " inicial" : ""}`}>
               {saveStatus.error ? "Sin guardar" : pending > 0 ? "Guardando…" : savedOnce ? "Guardado ✓" : "Se guarda solo mientras cargás"}
             </span>
           </div>

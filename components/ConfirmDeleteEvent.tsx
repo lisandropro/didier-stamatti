@@ -23,8 +23,12 @@ export function ConfirmDeleteEvent({
     setSaving(true);
     setErr(null);
     const res = await intentar(() => deleteEvent(evento.id));
-    setSaving(false);
-    if (!res.ok) return setErr(res.error ?? "No se pudo borrar.");
+    if (!res.ok) {
+      setSaving(false);
+      return setErr(res.error ?? "No se pudo borrar.");
+    }
+    // Queda en "Borrando…" hasta que la navegación termine: con un teléfono
+    // lento, el modal seguía con los botones activos sobre un evento ya borrado.
     onDeleted();
   }
 

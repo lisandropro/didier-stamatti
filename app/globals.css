@@ -640,6 +640,7 @@ tbody tr:hover{background:var(--surface-2)}
   position:fixed; z-index:60; min-width:190px;
   background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-sm);
   box-shadow:var(--shadow-lift); padding:var(--sp-1); display:flex; flex-direction:column;
+  overflow-y:auto;
 }
 .rowmenu-list button{
   text-align:left; background:transparent; border:0; cursor:pointer; color:var(--ink);
@@ -2329,6 +2330,9 @@ tbody tr:hover{background:var(--surface-2)}
 
 .rowmenu-btn.grande{width:var(--tap); height:var(--tap); flex:none; border-color:var(--hair); background:var(--surface); color:var(--ink)}
 .rowmenu-btn.grande svg{width:20px; height:20px}
+/* El botón grande lleva fondo propio, así que el hover y "abierto" del botón
+   chico no se verían: se repiten para que se note que el menú está abierto. */
+.rowmenu-btn.grande:hover, .rowmenu-btn.grande[aria-expanded="true"]{background:var(--surface-2)}
 .rowmenu-list button.peligro{color:var(--crit)}
 .rowmenu-list button:disabled{opacity:.5; cursor:not-allowed}
 .rowmenu-list button:disabled:hover{background:transparent}
@@ -2344,6 +2348,9 @@ tbody tr:hover{background:var(--surface-2)}
   /* Lo que no se puede cortar va primero: si está listo y si se guardó. */
   .topbar-pedido .sub-listo, .topbar-pedido .save-ind{order:-1; flex:none}
   .topbar-pedido .save-ind::before{content:none}
+  /* "Se guarda solo mientras cargás" no entra en la línea del celular y se
+     comía la fecha y los invitados. Apenas se carga algo aparece "Guardando…". */
+  .topbar-pedido .save-ind.inicial{display:none}
   .topbar-pedido .btn-falta-top{flex:none; padding:0 var(--sp-3)}
   .rowmenu-list button{min-height:var(--tap)}
 
