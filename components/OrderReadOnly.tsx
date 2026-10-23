@@ -14,6 +14,14 @@ const IconWarn = (
     <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
   </svg>
 );
+const IconBack = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+);
+const IconPrint = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
+  </svg>
+);
 
 type Row = {
   id: string;
@@ -67,26 +75,35 @@ export function OrderReadOnly({
 
   return (
     <>
-      <div className="topbar">
-        <div>
+      <div className="topbar topbar-pedido">
+        <Link className="topbar-volver solo-celular" href="/" aria-label="Volver">{IconBack}</Link>
+        <div className="topbar-titulo">
           <h1>{data.event.lugar}</h1>
           <div className="sub">
-            {data.event.subLabel} · {total} producto{total === 1 ? "" : "s"} en el pedido
-            <span className="chip neutral" style={{ marginLeft: 8 }}>Solo lectura</span>
+            <span className="sub-datos">
+              {data.event.subLabel} · {total} producto{total === 1 ? "" : "s"} en el pedido
+            </span>
+            <span className="chip neutral sub-chip">Solo lectura</span>
           </div>
         </div>
         <div className="spacer" />
-        <Link className="btn ghost" href="/">Volver</Link>
+        <Link className="btn ghost solo-ancho" href="/">Volver</Link>
         {faltantes.length > 0 && (
-          <button className="btn btn-falta btn-falta-top" onClick={() => setVerFaltantes(true)}>
-            {IconWarn} Ver faltantes <span className="count-pill">{faltantes.length}</span>
+          <button
+            className="btn btn-falta btn-falta-top"
+            onClick={() => setVerFaltantes(true)}
+            aria-label={`Ver faltantes (${faltantes.length})`}
+          >
+            {IconWarn} <span className="solo-ancho">Ver faltantes</span> <span className="count-pill">{faltantes.length}</span>
           </button>
         )}
-        <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
-          </svg>
+        <Link className="btn ghost solo-ancho" href={`/evento/${data.event.id}/pdf`}>
+          {IconPrint}
           PDF del pedido
+        </Link>
+        {/* En el celular el PDF es un ícono: es la única acción, no hace falta menú. */}
+        <Link className="btn ghost topbar-icono solo-celular" href={`/evento/${data.event.id}/pdf`} aria-label="PDF del pedido">
+          {IconPrint}
         </Link>
       </div>
 
@@ -117,7 +134,7 @@ export function OrderReadOnly({
                   <span className="count-pill">{delSector.length + extras.length}</span>
                 </div>
                 <div className="tablewrap">
-                  <table>
+                  <table className="ro-tabla">
                     <thead>
                       <tr>
                         <th>Producto</th>

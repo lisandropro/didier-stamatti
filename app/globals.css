@@ -2386,3 +2386,21 @@ tbody tr:hover{background:var(--surface-2)}
   .filtros-scroll::-webkit-scrollbar{display:none}
   .filtros-scroll > *{flex:none}
 }
+
+.sub-chip{margin-left:var(--sp-2)}
+.topbar-icono{width:var(--tap); padding:0; flex:none}
+
+/* El pedido en solo lectura: en el celular es una lista, con la nota debajo del
+   nombre. La tabla tiene 680 px de mínimo y dejaba la nota fuera del teléfono. */
+@media (max-width:860px){
+  .topbar-pedido .sub-chip{flex:none; margin-left:0; padding:0 var(--sp-2)}
+  .ro-tabla{min-width:0}
+  .ro-tabla thead{display:none}
+  .ro-tabla tbody tr{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px var(--sp-3); padding:var(--sp-2) var(--sp-3); border-bottom:1px solid var(--hair)}
+  .ro-tabla tbody tr:last-child{border-bottom:none}
+  .ro-tabla tbody td{padding:0; border:none}
+  .ro-tabla tbody td:nth-child(2){text-align:right; white-space:nowrap}
+  .ro-tabla tbody td:nth-child(3){grid-column:1/-1; font-size:var(--t-sm)}
+  /* Sin nota no queda un renglón vacío. */
+  .ro-tabla tbody td:empty{display:none}
+}

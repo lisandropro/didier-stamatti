@@ -109,3 +109,9 @@ test("en el celular los extras conservan su unidad: solo se esconde el rubro del
   assert.ok(!css.includes(".ocol-name .rubro{display:none}"), "se esconde también la unidad de los extras");
   assert.ok(fuente("components/OrderBuilder.tsx").includes('<div className="rubro solo-ancho">{rubro}</div>'), "el rubro del catálogo no se esconde en el celular");
 });
+
+test("la vista de solo lectura sigue sin ningún control que escriba en el pedido", () => {
+  const s = fuente("components/OrderReadOnly.tsx");
+  assert.ok(!s.includes("@/app/actions/order"), "la vista de solo lectura importa acciones del pedido");
+  assert.ok(s.includes('className="ro-tabla"'), "la tabla no tiene la clase que la vuelve lista en el celular");
+});
