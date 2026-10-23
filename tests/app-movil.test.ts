@@ -48,3 +48,20 @@ test("el menú de mantener apretado un enlace no aparece en pantallas táctiles"
   assert.ok(s.includes('"gesturestart"'), "el iPhone sigue haciendo zoom con el pellizco");
   assert.ok(fuente("app/layout.tsx").includes("<ComportamientoDeApp />"), "el layout no monta el comportamiento de app");
 });
+
+test("en el celular las ventanas suben desde abajo, a lo ancho", () => {
+  const css = fuente("app/globals.css");
+  const desde = css.indexOf("/* ===== Hojas del celular");
+  assert.notEqual(desde, -1, "no está la sección de las hojas del celular");
+  const seccion = css.slice(desde);
+  assert.ok(/\.overlay\{[^}]*align-items:flex-end/.test(seccion), "las ventanas siguen flotando en el medio");
+  assert.ok(/\.modal-xwide\{[^}]*border-radius:var\(--r-xl\) var\(--r-xl\) 0 0/.test(seccion), "la hoja no tiene la forma de las de una app");
+  assert.ok(seccion.includes("env(safe-area-inset-bottom)"), "la hoja queda debajo de la barra de gestos");
+});
+
+test("deslizar hacia abajo cierra la hoja usando el mismo cierre que tocar afuera", () => {
+  const s = fuente("components/ComportamientoDeApp.tsx");
+  assert.ok(s.includes('"touchstart"') && s.includes('"touchend"'), "no hay gesto de deslizar");
+  assert.ok(s.includes(".click()"), "el gesto no usa el cierre de cada ventana");
+  assert.ok(s.includes("scrollTop"), "deslizar cerraría la hoja en vez de scrollear su contenido");
+});

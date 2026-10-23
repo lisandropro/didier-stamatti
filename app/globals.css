@@ -2466,3 +2466,30 @@ tbody tr:hover{background:var(--surface-2)}
   .hub-banner{order:2; margin-top:var(--sp-5); margin-bottom:0}
   .hub-cuerpo > .pasados{order:3}
 }
+
+/* ===== Hojas del celular ===================================================
+   En el teléfono, las ventanas suben desde abajo y ocupan el ancho, como en
+   cualquier app: en el medio de la pantalla, con márgenes, parecían un aviso
+   de una página web. La manija de arriba dice que se puede deslizar para
+   cerrarla (el gesto vive en ComportamientoDeApp). */
+@keyframes hoja-sube{from{transform:translateY(24px)}to{transform:none}}
+@media (max-width:860px){
+  .overlay{align-items:flex-end; padding:0; padding-top:var(--sp-8)}
+  .modal, .modal.modal-wide, .modal.modal-xwide{
+    max-width:none; border-radius:var(--r-xl) var(--r-xl) 0 0; border-bottom:none;
+    max-height:calc(100dvh - var(--sp-8));
+    padding-bottom:calc(var(--sp-5) + env(safe-area-inset-bottom));
+    animation:hoja-sube var(--dur) var(--ease);
+    position:relative; padding-top:calc(var(--sp-5) + var(--sp-2));
+  }
+  .modal.modal-sheet{padding-top:var(--sp-3); padding-bottom:0}
+  .modal-sheet .sheet-foot{padding-bottom:calc(var(--sp-4) + env(safe-area-inset-bottom))}
+  .modal::before{
+    content:""; position:absolute; top:var(--sp-2); left:50%; transform:translateX(-50%);
+    width:40px; height:4px; border-radius:var(--r-pill); background:var(--hair);
+  }
+  /* Los botones del pie, a lo ancho y apilados de a dos: se tocan con el pulgar. */
+  .modal-actions{flex-wrap:wrap}
+  .modal-actions .btn{flex:1 1 40%}
+}
+@media (prefers-reduced-motion:reduce){ .modal{animation:none} }
