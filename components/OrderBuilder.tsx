@@ -632,7 +632,7 @@ export function OrderBuilder({ data }: { data: Data }) {
       )}
       {showResp && (
         <div className="overlay" onClick={() => setShowResp(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
             <h2>Responsable de la fiesta</h2>
             <ResponsableEditor eventId={data.event.id} responsable={data.event.responsable} canEdit />
             <div className="modal-actions">

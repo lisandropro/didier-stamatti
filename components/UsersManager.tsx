@@ -144,7 +144,7 @@ function NewUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <h2>Nuevo usuario</h2>
         <div className="msub">Creá el acceso y pasale la contraseña temporal a la persona. Después ella la cambia desde “Mi cuenta”.</div>
         <div className="field">
@@ -196,7 +196,7 @@ function ResetPasswordModal({ user, onClose, onDone }: { user: User; onClose: ()
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <h2>Restablecer contraseña</h2>
         <div className="msub">Nueva contraseña temporal para <b>{user.name}</b>. Pasásela y que la cambie desde “Mi cuenta”.</div>
         {done ? (

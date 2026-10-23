@@ -73,9 +73,8 @@ test("el gesto sigue al dedo que lo empezó y un toque cancelado no cierra", () 
   assert.ok(!cancelar.includes("alSoltar"), "un toque cancelado por el sistema cierra la hoja");
 });
 
-test("con el teclado abierto la pantalla se achica y la barra de abajo se esconde", () => {
+test("con el teclado abierto la pantalla se achica", () => {
   assert.ok(fuente("app/layout.tsx").includes('interactiveWidget: "resizes-content"'), "el teclado tapa las hojas");
-  assert.ok(fuente("app/globals.css").includes("body:has(:is(input, textarea, select):focus) .mobnav{display:none}"), "la barra de abajo queda arriba del teclado");
 });
 
 test("los botones de las páginas no se estiran como los de las hojas", () => {
@@ -178,4 +177,73 @@ test("en pantallas táctiles, lo que se toca se ve apretado", () => {
   const seccion = css.slice(desde);
   assert.ok(seccion.includes("@media (hover:none)"), "la respuesta al tocar no se limita a pantallas táctiles");
   assert.ok(seccion.includes(":active"), "tocar no tiene respuesta visible");
+});
+
+test("la barra de abajo se esconde con el teclado abierto, no por tocar un selector", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(!css.includes("body:has(:is(input, textarea, select):focus) .mobnav"), "un selector sin teclado esconde la barra de abajo");
+  assert.ok(css.includes(".teclado-abierto .mobnav{display:none}"), "con el teclado abierto la barra de abajo queda arriba del teclado");
+  assert.ok(fuente("components/ComportamientoDeApp.tsx").includes('"teclado-abierto"'), "nadie detecta el teclado");
+});
+
+test("el menú ⋯ no se cierra porque se cerró el teclado", () => {
+  const s = fuente("components/RowMenu.tsx");
+  assert.ok(s.includes("innerWidth"), "el menú se cierra con cualquier cambio de alto, como el del teclado");
+  // `innerWidth` ya aparece al posicionar la lista: lo que importa es que el
+  // `resize` no apunte al cierre incondicional.
+  assert.ok(!s.includes('addEventListener("resize", cerrar)'), "cualquier resize cierra el menú, también el que causa el teclado");
+  assert.ok(s.includes("anchoAlAbrir"), "el menú no recuerda el ancho con que se abrió");
+});
+
+test("las ventanas de formulario no se cierran deslizando", () => {
+  assert.ok(fuente("components/ComportamientoDeApp.tsx").includes("data-sin-deslizar"), "deslizar tira lo tipeado en un formulario");
+  assert.ok(fuente("app/globals.css").includes(".modal[data-sin-deslizar]::before{content:none}"), "las hojas que no se deslizan muestran la manija");
+  for (const archivo of [
+    "components/EditEventModal.tsx",
+    "components/NewProductModal.tsx",
+    "components/SuggestionBox.tsx",
+    "components/ProductAdminModal.tsx",
+    "components/UsersManager.tsx",
+    "components/EditPeriodModal.tsx",
+    "components/PeriodHub.tsx",
+    "components/InventoryTable.tsx",
+    "components/OrderBuilder.tsx",
+  ]) {
+    assert.ok(fuente(archivo).includes("data-sin-deslizar"), `${archivo}: el formulario se cierra deslizando`);
+  }
+});
+
+test("un golpe rápido también cierra la hoja y, si no cierra, vuelve con animación", () => {
+  const s = fuente("components/ComportamientoDeApp.tsx");
+  assert.ok(s.includes("performance.now()"), "el gesto no mide cuánto duró");
+  assert.ok(s.includes('"transform 180ms ease"'), "la hoja salta de golpe a su lugar en vez de volver");
+});
+
+test("imprimir no toma los títulos del celular", () => {
+  const css = fuente("app/globals.css").replace(/\r\n/g, "\n");
+  const i = css.indexOf(".topbar h1{font-size:var(--t-xl)}");
+  assert.notEqual(i, -1, "no está la regla del título del celular");
+  const abre = css.lastIndexOf("@media screen and (max-width:860px)", i);
+  assert.ok(abre !== -1 && !css.slice(abre, i).includes("\n}"), "los títulos del celular también achican lo impreso");
+});
+
+test("en Historial los filtros de motivo van en una fila", () => {
+  assert.ok(fuente("components/Historial.tsx").includes('className="filtros-scroll"'), "los motivos se apilan en dos líneas");
+});
+
+test("los detalles de las listas del celular", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(css.includes(".tabla-lista tbody td.emptyrow{"), "el aviso de 'sin movimientos' toma el estilo de una tarjeta");
+  assert.ok(/\.prep-cuando\{white-space:nowrap; overflow:hidden; text-overflow:ellipsis\}/.test(css), "la fecha de Preparar baja a un tercer renglón");
+  assert.ok(css.includes('content:"›" / ""'), "el lector de pantalla lee la flecha de los avisos");
+});
+
+test("tocar responde también en avisos, sugerencias, segmentos y el resto de lo que se toca", () => {
+  const css = fuente("app/globals.css");
+  const seccion = css.slice(css.indexOf("/* ===== Al tocar"));
+  for (const sel of [".notif-item:not(:disabled)", "button.sug-row", "a.sug-row", ".seg button", ".miniedit", ".prep-faltan", ".prep-volver", ".pasados > summary"]) {
+    assert.ok(seccion.includes(sel), `${sel} no responde al tocar`);
+  }
+  assert.ok(!/\.event, \.event-falta,/.test(seccion), ".event-falta está adentro de .event: se apagaban los dos a la vez");
+  assert.ok(seccion.includes(".pasados .event:active{opacity:.45}"), "las tarjetas pasadas (.72) le ganan al estado apretado");
 });

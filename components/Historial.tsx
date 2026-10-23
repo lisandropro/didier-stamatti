@@ -129,11 +129,15 @@ function Movements({ movements, total }: { movements: MovementRow[]; total: numb
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
           <input placeholder="Buscar producto…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
-        {REASONS.map((r) => (
-          <button key={r.v} className={`tab${reason === r.v ? " active" : ""}`} onClick={() => setReason(r.v)}>
-            {r.l}
-          </button>
-        ))}
+        {/* Como en Inventario: en el celular los motivos van en una sola fila que
+            se desliza, no apilados en dos líneas. */}
+        <div className="filtros-scroll">
+          {REASONS.map((r) => (
+            <button key={r.v} className={`tab${reason === r.v ? " active" : ""}`} onClick={() => setReason(r.v)}>
+              {r.l}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="countnote">

@@ -110,7 +110,7 @@ function Formulario({ pathname, onClose }: { pathname: string; onClose: () => vo
 
   return (
     <div className="overlay" onClick={cerrar}>
-      <div className="modal modal-sheet sug-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-sheet sug-modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <h2>Enviar sugerencia</h2>
           <div className="modal-sub">

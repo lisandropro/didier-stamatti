@@ -294,7 +294,7 @@ function EditStockModal({
 
   return (
     <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="stock-title" onKeyDown={(e) => { if (e.key === "Escape" && !saving) onClose(); }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal" data-sin-deslizar role="dialog" aria-modal="true" aria-labelledby="stock-title" onKeyDown={(e) => { if (e.key === "Escape" && !saving) onClose(); }} onClick={(e) => e.stopPropagation()}>
         <h2 id="stock-title">Editar stock</h2>
         <div className="msub">
           {product.name} · stock actual: <span className="stockbig">{product.stock ?? "Sin contar"}</span> {unit}

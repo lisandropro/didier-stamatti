@@ -15,7 +15,10 @@ import { useEffect } from "react";
  *    claro, la barra quedaba blanca sobre una app negra.
  *  - Deslizar una hoja hacia abajo la cierra, como en cualquier app de Android.
  *    No conoce a ninguna ventana: usa el mismo cierre que ya tiene cada una al
- *    tocar afuera. */
+ *    tocar afuera. Las hojas de formulario se marcan con `data-sin-deslizar`:
+ *    cerrarlas deslizando tiraría lo tipeado.
+ *  - Detecta el teclado abierto y lo avisa con la clase `teclado-abierto` en
+ *    <html>, para que el CSS esconda la barra de abajo. */
 export function ComportamientoDeApp() {
   useEffect(() => {
     const tactil = window.matchMedia("(pointer: coarse)");
@@ -42,12 +45,19 @@ export function ComportamientoDeApp() {
     // todo lo demás (mover, soltar) busca a ese. Si no, un segundo dedo que se
     // apoya o se levanta movería la hoja o la cerraría sin querer.
     const celular = window.matchMedia("(max-width:860px)");
-    let arrastre: { id: number; x: number; y: number; moviendo: boolean; hoja: HTMLElement; fondo: HTMLElement } | null = null;
+    let arrastre: { id: number; x: number; y: number; t: number; moviendo: boolean; hoja: HTMLElement; fondo: HTMLElement } | null = null;
     // Devuelve la hoja a su lugar y deja de seguir al dedo. No cierra nada.
+    // Si la hoja se había movido, vuelve con una animación corta: soltar a la
+    // mitad y que salte de golpe se siente roto. Nunca se deja
+    // `transition:none` puesto (es el que usa el arrastre para seguir al dedo
+    // sin retraso): un cambio de transform posterior no animaría. Con
+    // `prefers-reduced-motion` el `!important` global la deja en un instante.
     const soltarGesto = () => {
       if (!arrastre) return;
-      arrastre.hoja.style.transition = "";
-      arrastre.hoja.style.transform = "";
+      if (arrastre.moviendo) {
+        arrastre.hoja.style.transition = "transform 180ms ease";
+        arrastre.hoja.style.transform = "";
+      }
       arrastre = null;
     };
     const scrolleado = (desde: EventTarget | null, hoja: HTMLElement) => {
@@ -64,9 +74,12 @@ export function ComportamientoDeApp() {
       const hoja = e.target instanceof Element ? e.target.closest<HTMLElement>(".modal") : null;
       const fondo = hoja?.parentElement;
       if (!hoja || !fondo?.classList.contains("overlay") || scrolleado(e.target, hoja)) return;
+      // Las hojas de formulario no se cierran deslizando: cerrarlas es igual
+      // que tocar afuera, y ahí se pierde lo que se tipeó.
+      if (hoja.hasAttribute("data-sin-deslizar")) return;
       if (e.target instanceof Element && e.target.closest("input, textarea, select")) return;
       const dedo = e.touches[0];
-      arrastre = { id: dedo.identifier, x: dedo.clientX, y: dedo.clientY, moviendo: false, hoja, fondo };
+      arrastre = { id: dedo.identifier, x: dedo.clientX, y: dedo.clientY, t: performance.now(), moviendo: false, hoja, fondo };
     };
     const alMover = (e: TouchEvent) => {
       const a = arrastre;
@@ -92,9 +105,29 @@ export function ComportamientoDeApp() {
       if (!a) return;
       const dedo = [...e.changedTouches].find((t) => t.identifier === a.id);
       if (!dedo) return;
-      const cerrar = a.moviendo && dedo.clientY - a.y > 90;
+      // Cierra si bajó bien (más de 90 px) o si fue un golpe rápido: un
+      // "flick" corto (más de 40 px en menos de 250 ms) también es querer
+      // cerrar, como en Android. Si no, la hoja vuelve a su lugar.
+      const dy = dedo.clientY - a.y;
+      const golpe = dy > 40 && performance.now() - a.t < 250;
+      const cerrar = a.moviendo && (dy > 90 || golpe);
       soltarGesto();
       if (cerrar) a.fondo.click();
+    };
+
+    // El teclado abierto. Con `interactiveWidget: "resizes-content"` (layout)
+    // el teclado le quita alto a la ventana, así que se detecta por eso y no
+    // por quién tiene el foco: un `select` enfocado no abre teclado, y el gesto
+    // "atrás" de Android lo cierra sin sacar el foco. Se compara contra el
+    // mayor alto visto con el mismo ancho: al girar el teléfono cambia el
+    // ancho y es otra medida. La barra de direcciones que se esconde cambia
+    // el alto un 5-8 %, lejos del 25 % que le saca un teclado.
+    const altoMaximo = new Map<number, number>();
+    const vigilarTeclado = () => {
+      const maximo = Math.max(altoMaximo.get(window.innerWidth) ?? 0, window.innerHeight);
+      altoMaximo.set(window.innerWidth, maximo);
+      const abierto = celular.matches && window.innerHeight < maximo * 0.75;
+      document.documentElement.classList.toggle("teclado-abierto", abierto);
     };
 
     document.addEventListener("contextmenu", sinMenu);
@@ -106,6 +139,8 @@ export function ComportamientoDeApp() {
     // el gesto de volver), eso no es un deslizamiento: la hoja vuelve a su
     // lugar y NO se cierra, por más que el dedo haya bajado.
     document.addEventListener("touchcancel", soltarGesto);
+    window.addEventListener("resize", vigilarTeclado);
+    vigilarTeclado();
     pintarBarra();
     cambioDeTema.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     return () => {
@@ -115,6 +150,8 @@ export function ComportamientoDeApp() {
       document.removeEventListener("touchmove", alMover);
       document.removeEventListener("touchend", alSoltar);
       document.removeEventListener("touchcancel", soltarGesto);
+      window.removeEventListener("resize", vigilarTeclado);
+      document.documentElement.classList.remove("teclado-abierto");
       cambioDeTema.disconnect();
     };
   }, []);

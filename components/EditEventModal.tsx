@@ -71,7 +71,7 @@ export function EditEventModal({
   if (faltaPeriodo) {
     return (
       <div className="overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>Falta el período de esa fecha</h2>
           <div className="msub">
             Ningún período incluye la fecha nueva. Se puede crear <b>{faltaPeriodo.label}</b> y mover el evento
@@ -95,7 +95,7 @@ export function EditEventModal({
   if (elegir) {
     return (
       <div className="overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>¿A qué período va?</h2>
           <div className="msub">
             Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
@@ -129,7 +129,7 @@ export function EditEventModal({
   if (confirmando) {
     return (
       <div className="overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>¿Guardamos estos cambios?</h2>
           <div className="msub">El pedido no se toca: las cantidades y las notas quedan como están.</div>
           <div className="tablewrap">
@@ -171,7 +171,7 @@ export function EditEventModal({
   // --- Paso 1: editar ---------------------------------------------------------
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <h2>Editar evento</h2>
         <div className="msub">
           Corregí los datos del evento. Está en <b>{evento.periodoLabel}</b>; si la fecha nueva cae en otro

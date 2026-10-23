@@ -69,15 +69,24 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
       setPos(null);
     };
     const escape = (e: KeyboardEvent) => e.key === "Escape" && setPos(null);
+    // Cambiar el tamaño de la ventana (o girar el teléfono) deja el menú mal
+    // parado y lo cierra. Pero en el celular el teclado también dispara
+    // `resize` —la pantalla se achica de alto, `resizes-content`—: tocar el ⋯
+    // con el teclado abierto lo cierra, y el menú se abría y se cerraba solo.
+    // El teclado no cambia el ancho; girar o redimensionar la ventana, sí.
+    const anchoAlAbrir = window.innerWidth;
+    const alCambiarTamano = () => {
+      if (window.innerWidth !== anchoAlAbrir) setPos(null);
+    };
     document.addEventListener("mousedown", afuera);
     document.addEventListener("keydown", escape);
     window.addEventListener("scroll", cerrar, true);
-    window.addEventListener("resize", cerrar);
+    window.addEventListener("resize", alCambiarTamano);
     return () => {
       document.removeEventListener("mousedown", afuera);
       document.removeEventListener("keydown", escape);
       window.removeEventListener("scroll", cerrar, true);
-      window.removeEventListener("resize", cerrar);
+      window.removeEventListener("resize", alCambiarTamano);
     };
   }, [pos]);
 

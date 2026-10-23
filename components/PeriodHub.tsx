@@ -701,7 +701,7 @@ function NewPeriodModal({ draftKey, onClose, onCreated }: { draftKey: string; on
   if (duplicado) {
     return (
       <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>Ya existe uno igual</h2>
           {error && <div role="alert" className="login-error">{error}</div>}
           <div className="msub">
@@ -721,7 +721,7 @@ function NewPeriodModal({ draftKey, onClose, onCreated }: { draftKey: string; on
 
   return (
     <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <h2>Nuevo período operativo</h2>
         <div className="msub">
           Los eventos de un período comparten la misma vajilla. Puede ser una sola jornada o los días que hagan
@@ -800,7 +800,7 @@ function NewEventModal({ draftKey, onClose, onCreated }: { draftKey: string; onC
   if (elegir) {
     return (
       <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>¿A qué período va?</h2>
           {error && <div role="alert" className="login-error">{error}</div>}
           <div className="msub">
@@ -826,7 +826,7 @@ function NewEventModal({ draftKey, onClose, onCreated }: { draftKey: string; onC
   if (falta) {
     return (
       <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>Falta el período de esa fecha</h2>
           {error && <div role="alert" className="login-error">{error}</div>}
           <div className="msub">
@@ -846,7 +846,7 @@ function NewEventModal({ draftKey, onClose, onCreated }: { draftKey: string; onC
 
   return (
     <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <h2>Nuevo evento</h2>
         <div className="msub">Cargá los datos del evento. El período sale de la fecha.</div>
         <div className="field">

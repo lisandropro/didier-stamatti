@@ -53,7 +53,7 @@ export function EditPeriodModal({
   if (fuera) {
     return (
       <div className="overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>Así quedan eventos afuera</h2>
           <div className="msub">
             Con esas fechas, {fuera.eventos.length === 1 ? "este evento queda" : "estos eventos quedan"} fuera del
@@ -93,7 +93,7 @@ export function EditPeriodModal({
   if (duplicado) {
     return (
       <div className="overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
           <h2>Ya existe uno igual</h2>
           <div className="msub">
             <b>{duplicado.nombre}</b> ya cubre exactamente esas fechas. Podés dejarlo así si de verdad son dos
@@ -114,7 +114,7 @@ export function EditPeriodModal({
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <h2>Editar período</h2>
         <div className="msub">
           Ahora va del <b>{periodo.rangeLabel}</b>. Si lo achicás, te aviso antes de guardar qué eventos

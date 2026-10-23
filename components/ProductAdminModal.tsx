@@ -127,7 +127,7 @@ export function ProductAdminModal({
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-wide" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
         <h2>Administrar producto</h2>
         <p className="modal-sub">
           {product.name}
