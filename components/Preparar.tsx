@@ -7,6 +7,7 @@ import { destildarItem, tildarItem, tildarSectorEntero } from "@/app/actions/pre
 import { intentar } from "@/lib/actualizacion";
 import { pideConfirmacion, seccionesDePantalla, type EstadoItem, type Visto, type VistoDeSector } from "@/lib/preparacion";
 import { esCategoria } from "@/lib/categories";
+import { vibrar, PATRON } from "@/lib/vibrar";
 import { RefrescoPeriodico } from "@/components/RefrescoPeriodico";
 
 type Item = {
@@ -109,6 +110,7 @@ export function Preparar({ data }: { data: Data }) {
     // pendiente, que cambió o hay que sacar, lo da por hecho. Los dos llevan lo
     // que se ve en la fila: se guarda eso, y no se destilda si debajo hay algo nuevo.
     const visto = vistoDe(i);
+    vibrar(i.estado === "PREPARADO" ? PATRON.destildar : PATRON.tildar);
     void correr(i.clave, () =>
       i.estado === "PREPARADO"
         ? destildarItem(data.evento.id, i.clave, visto)
@@ -136,6 +138,7 @@ export function Preparar({ data }: { data: Data }) {
 
   function tildarSector(a: { category: string; vistos: VistoDeSector[] }) {
     setSectorAConfirmar(null);
+    vibrar(PATRON.tildarSector);
     void correr(`sector:${a.category}`, () => tildarSectorEntero(data.evento.id, a.category, a.vistos));
   }
 

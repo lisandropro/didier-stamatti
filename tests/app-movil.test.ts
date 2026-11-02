@@ -310,3 +310,10 @@ test("en Preparar se salta a cada sector desde una fila fija, con su avance", ()
   assert.ok(s.includes("id={`sector-${s.category}`}"), "los sectores no tienen a dónde saltar");
   assert.ok(/\.prep-seccion\{[^}]*scroll-margin-top/.test(fuente("app/globals.css")), "el salto deja el título del sector debajo de la cabecera fija");
 });
+
+test("en Preparar el teléfono vibra al tildar y al destildar", () => {
+  const s = fuente("components/Preparar.tsx");
+  const desde = s.indexOf("function alternar");
+  const cuerpo = s.slice(desde, s.indexOf("\n  }", desde));
+  assert.ok(cuerpo.includes("vibrar("), "tildar no da ninguna señal física");
+});
