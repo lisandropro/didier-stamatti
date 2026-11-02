@@ -19,7 +19,9 @@ test("marcarlo listo se lee así", () => {
 });
 
 test("mandarlo a la papelera y recuperarlo se leen así", () => {
-  assert.equal(describirCambio(c("PAPELERA", "Evento", "VIVO", "BORRADO")), "Se borró el evento (se puede recuperar desde la papelera)");
+  // No dice "se puede recuperar" a secas: la papelera se vacía sola el lunes
+  // (lib/trash.ts), y lo tirado antes del lunes más reciente ya no vuelve.
+  assert.equal(describirCambio(c("PAPELERA", "Evento", "VIVO", "BORRADO")), "Se borró el evento (queda en la papelera hasta el lunes)");
   assert.equal(describirCambio(c("PAPELERA", "Evento", "BORRADO", "VIVO")), "Se recuperó el evento");
 });
 
@@ -117,6 +119,20 @@ test("el detalle del aviso traduce el estado y la papelera a palabras, sin tocar
   // Se traduce al mostrar: las dos columnas pasan por la función.
   assert.match(s, /valorLegible\(c\.kind, c\.before\)/, "la columna Antes muestra el código");
   assert.match(s, /valorLegible\(c\.kind, c\.after\)/, "la columna Ahora muestra el código");
+});
+
+test("el chip del estado no sale verde cuando el evento vuelve a borrador", () => {
+  const s = paginaDelAviso();
+  // Verde para todo el tipo ESTADO hacía que "Volvió a borrador" (el evento deja
+  // de estar listo) se viera como una buena noticia. El color sale del valor.
+  assert.doesNotMatch(s, /ESTADO:\s*"ok"/, "el tipo ESTADO es verde sin mirar el valor");
+  assert.match(s, /kind === "ESTADO"\) return after === "LISTO" \? "ok" : "warn"/, "el color del estado no sale del valor");
+  assert.match(s, /claseDelCambio\(c\.kind, c\.after\)/, "el chip no usa el color por valor");
+});
+
+test("el chip de la papelera no sale rojo cuando el evento se recupera", () => {
+  const s = paginaDelAviso();
+  assert.match(s, /kind === "PAPELERA"\) return after === "VIVO" \? "ok" : "crit"/, "recuperar un evento se pinta de alarma");
 });
 
 test("el aviso que avisa el borrado no dice que se borró después de sus cambios", () => {

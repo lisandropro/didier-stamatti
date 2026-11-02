@@ -293,3 +293,48 @@ test("si a una persona le falla el aviso, las que siguen igual lo reciben y la c
   assert.equal((await avisosDe(ids.dante, dia)).length, 1);
   assert.equal(await total(dia), 4);
 });
+
+test("cuando ya les llegó a todos, las corridas siguientes no rehacen las cuentas de los faltantes", async () => {
+  // De 7 a 11 corre cada 10 minutos. Si ya salió para todos, recalcular los
+  // faltantes de cada período (una consulta pesada por período) era trabajo tirado.
+  //
+  // Se cuentan las lecturas de `orderLine`: en esta función la única que las
+  // hace es `periodShortages` (una por período), así que no hace falta tocar el
+  // código para espiarla.
+  enviados.length = 0;
+  const dia = sumarDias(D1, 100);
+  const p = await prisma.operationalPeriod.create({ data: { label: "Ya les llegó", startDay: dia, endDay: dia } });
+  const ev = await prisma.event.create({ data: { periodId: p.id, lugar: "Ya les llegó", date: a(dia, "12:00") } });
+  await conFaltante(ev.id, "Copa de ya les llegó");
+
+  const original = prisma.orderLine.findMany;
+  let lecturas = 0;
+  (prisma.orderLine as { findMany: unknown }).findMany = (...args: unknown[]) => {
+    lecturas++;
+    return (original as (...a: unknown[]) => unknown).apply(prisma.orderLine, args);
+  };
+  try {
+    assert.equal((await enviarResumen(a(dia, "07:05"))).enviados, 4);
+    assert.equal(lecturas, 1, "la primera corrida calcula los faltantes del único período (si no, el espía no ve nada)");
+
+    assert.deepEqual(await enviarResumen(a(dia, "07:15")), { enviados: 0 });
+    assert.deepEqual(await enviarResumen(a(dia, "10:55")), { enviados: 0 });
+    assert.equal(lecturas, 1, "rehízo las cuentas de faltantes aunque ya les había llegado a todos");
+  } finally {
+    (prisma.orderLine as { findMany: unknown }).findMany = original;
+  }
+  assert.equal(await total(dia), 4);
+  assert.equal(enviados.length, 3, "y no mandó nada de nuevo");
+});
+
+test("si a una sola persona todavía no le llegó, la corrida sí sigue y le manda a ella", async () => {
+  // El atajo es solo para cuando están todas: con una que falta tiene que seguir.
+  const dia = sumarDias(D1, 105);
+  const p = await prisma.operationalPeriod.create({ data: { label: "Falta una", startDay: dia, endDay: dia } });
+  await prisma.event.create({ data: { periodId: p.id, lugar: "Falta una", date: a(dia, "12:00") } });
+  assert.equal((await enviarResumen(a(dia, "07:05"))).enviados, 4);
+  const aviso = (await avisosDe(ids.enrique, dia))[0];
+  await prisma.notification.delete({ where: { id: aviso.id } });
+  assert.deepEqual(await enviarResumen(a(dia, "07:15")), { enviados: 1 });
+  assert.equal((await avisosDe(ids.enrique, dia)).length, 1);
+});
