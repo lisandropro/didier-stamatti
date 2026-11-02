@@ -2666,3 +2666,20 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   box-shadow:0 6px 20px rgba(0,0,0,.25); pointer-events:none;
 }
 .sin-conexion.volvio{background:var(--ok)}
+
+/* ===== Tirar para actualizar ===============================================
+   El indicador baja con el dedo; la flecha gira hasta "listo" y, al soltar,
+   gira sola mientras se actualiza. */
+@keyframes tiron-gira{to{transform:rotate(360deg)}}
+.tiron{
+  position:fixed; z-index:35; left:50%; top:calc(-40px + env(safe-area-inset-top));
+  width:40px; height:40px; border-radius:50%; display:grid; place-items:center;
+  background:var(--surface); border:1px solid var(--hair); color:var(--muted);
+  box-shadow:0 6px 18px rgba(0,0,0,.2); pointer-events:none;
+}
+.tiron svg{width:20px; height:20px; transition:transform var(--dur) var(--ease)}
+.tiron.listo{color:var(--gold)}
+.tiron.listo svg{transform:rotate(180deg)}
+.tiron.actualizando{color:var(--gold)}
+.tiron.actualizando svg{animation:tiron-gira .8s linear infinite}
+@media (prefers-reduced-motion:reduce){ .tiron.actualizando svg{animation:none} }

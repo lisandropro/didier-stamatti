@@ -317,3 +317,17 @@ test("en Preparar el teléfono vibra al tildar y al destildar", () => {
   const cuerpo = s.slice(desde, s.indexOf("\n  }", desde));
   assert.ok(cuerpo.includes("vibrar("), "tildar no da ninguna señal física");
 });
+
+/**
+ * Tirar hacia abajo para actualizar (23/10). La app instalada apaga el estirón
+ * del navegador (`overscroll-behavior:none`), y con él el "tirar para
+ * actualizar" que todo el mundo espera en una lista. Se hace a mano, solo donde
+ * se mira una lista para ver si llegó algo; nunca en el editor del pedido.
+ */
+test("el tirón para actualizar está montado y no pelea con las hojas", () => {
+  assert.ok(fuente("app/(app)/layout.tsx").includes("<TirarParaActualizar />"), "no hay tirar para actualizar");
+  const s = fuente("components/TirarParaActualizar.tsx");
+  assert.ok(s.includes(".overlay"), "tirar dentro de una hoja actualizaría la pantalla de atrás");
+  assert.ok(s.includes("router.refresh()"), "soltar no actualiza");
+  assert.ok(s.includes("scrollY"), "tirar en el medio de la lista actualizaría en vez de scrollear");
+});
