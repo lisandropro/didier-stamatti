@@ -241,7 +241,7 @@ test("los detalles de las listas del celular", () => {
 test("tocar responde también en avisos, sugerencias, segmentos y el resto de lo que se toca", () => {
   const css = fuente("app/globals.css");
   const seccion = css.slice(css.indexOf("/* ===== Al tocar"));
-  for (const sel of [".notif-item:not(:disabled)", "button.sug-row", "a.sug-row", ".seg button", ".miniedit", ".prep-faltan", ".prep-volver", ".pasados > summary"]) {
+  for (const sel of [".notif-item:not(:disabled)", "button.sug-row", "a.sug-row", ".seg button", ".miniedit", ".prep-faltan", ".prep-salto", ".prep-volver", ".pasados > summary"]) {
     assert.ok(seccion.includes(sel), `${sel} no responde al tocar`);
   }
   assert.ok(!/\.event, \.event-falta,/.test(seccion), ".event-falta está adentro de .event: se apagaban los dos a la vez");
@@ -316,6 +316,15 @@ test("en Preparar el teléfono vibra al tildar y al destildar", () => {
   const desde = s.indexOf("function alternar");
   const cuerpo = s.slice(desde, s.indexOf("\n  }", desde));
   assert.ok(cuerpo.includes("vibrar("), "tildar no da ninguna señal física");
+  // Vibra recién cuando el toque va a hacer algo: si la guarda de arriba lo corta
+  // (solo lectura, fila ocupándose), un teléfono que vibra sin hacer nada miente.
+  assert.ok(cuerpo.includes("return;"), "alternar ya no tiene guarda de salida");
+  assert.ok(cuerpo.indexOf("vibrar(") > cuerpo.indexOf("return;"), "vibra aunque el toque no haga nada");
+  // Tildar un sector entero es otro toque, con su propia señal.
+  const desdeSector = s.indexOf("function tildarSector");
+  assert.notEqual(desdeSector, -1, "no está tildarSector");
+  const cuerpoSector = s.slice(desdeSector, s.indexOf("\n  }", desdeSector));
+  assert.ok(cuerpoSector.includes("vibrar("), "tildar un sector entero no da ninguna señal física");
 });
 
 /**
@@ -330,6 +339,14 @@ test("el tirón para actualizar está montado y no pelea con las hojas", () => {
   assert.ok(s.includes(".overlay"), "tirar dentro de una hoja actualizaría la pantalla de atrás");
   assert.ok(s.includes("router.refresh()"), "soltar no actualiza");
   assert.ok(s.includes("scrollY"), "tirar en el medio de la lista actualizaría en vez de scrollear");
+  // El menú "Más" también es una ventana: el dedo que tira ahí no es de la pantalla de atrás.
+  assert.ok(s.includes(".mobmas-fondo"), "tirar dentro del menú Más actualizaría la pantalla de atrás");
+  assert.ok(s.includes("pantallaConTiron("), "el tirón no distingue en qué pantallas existe");
+  // Sin señal, `router.refresh()` hace una navegación completa y el service worker
+  // contesta con la página de "sin conexión": reemplazaría la lista que se está
+  // leyendo. Ni el tirón ni el refresco periódico pueden pedirla sin red.
+  assert.ok(s.includes("navigator.onLine"), "tirar sin señal reemplaza la lista por la página de sin conexión");
+  assert.ok(fuente("components/RefrescoPeriodico.tsx").includes("navigator.onLine"), "el refresco periódico, sin señal, reemplaza la lista por la página de sin conexión");
 });
 
 /**

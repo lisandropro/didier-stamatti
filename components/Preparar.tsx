@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { destildarItem, tildarItem, tildarSectorEntero } from "@/app/actions/preparacion";
 import { intentar } from "@/lib/actualizacion";
@@ -136,6 +136,20 @@ export function Preparar({ data }: { data: Data }) {
     alternar(i);
   }
 
+  /** Salta a una sección sin tocar el historial. Un `<a href="#…">` suma una
+   *  entrada por cada toque, y el "atrás" de Android recorre todos los saltos
+   *  antes de salir del evento. El `href` queda (sirve sin JavaScript y para
+   *  leer a dónde lleva); acá solo se cancela la navegación y se scrollea.
+   *  `scrollIntoView` respeta el `scroll-margin-top` de `.prep-seccion`, así el
+   *  título no queda tapado por la cabecera fija. */
+  function saltarA(id: string) {
+    return (e: MouseEvent<HTMLAnchorElement>) => {
+      e.preventDefault();
+      const reducido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document.getElementById(id)?.scrollIntoView({ behavior: reducido ? "auto" : "smooth", block: "start" });
+    };
+  }
+
   function tildarSector(a: { category: string; vistos: VistoDeSector[] }) {
     setSectorAConfirmar(null);
     vibrar(PATRON.tildarSector);
@@ -184,7 +198,7 @@ export function Preparar({ data }: { data: Data }) {
             </span>
           </div>
           {data.faltantes.length > 0 && (
-            <a href="#faltantes" className="prep-faltan">Faltan {data.faltantes.length}</a>
+            <a href="#faltantes" className="prep-faltan" onClick={saltarA("faltantes")}>Faltan {data.faltantes.length}</a>
           )}
         </div>
         {/* Saltos a cada sector, con su avance: para ir de Enseres a Bebida no
@@ -193,10 +207,10 @@ export function Preparar({ data }: { data: Data }) {
         {(paraAplicar.length > 0 ? 1 : 0) + sectores.length > 1 && (
           <nav className="prep-saltos" aria-label="Ir a un sector">
             {paraAplicar.length > 0 && (
-              <a href="#aplicar" className="prep-salto aplicar">Cambios {paraAplicar.length}</a>
+              <a href="#aplicar" className="prep-salto aplicar" onClick={saltarA("aplicar")}>Cambios {paraAplicar.length}</a>
             )}
             {sectores.map((s) => (
-              <a key={s.category} href={`#sector-${s.category}`} className={`prep-salto${s.listos === s.total ? " ok" : ""}`}>
+              <a key={s.category} href={`#sector-${s.category}`} className={`prep-salto${s.listos === s.total ? " ok" : ""}`} onClick={saltarA(`sector-${s.category}`)}>
                 {s.label} {s.listos}/{s.total}
               </a>
             ))}

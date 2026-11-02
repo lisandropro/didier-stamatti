@@ -4,6 +4,11 @@ import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { estadoDelTiron, pantallaConTiron, UMBRAL } from "@/lib/tirar";
 
+/** Cuánto gira el indicador de "actualizando" antes de esconderse. Con una
+ *  conexión que no contesta, girar sin fin parece que la app se colgó; el
+ *  refresco sigue por detrás y la pantalla se pone al día cuando llegue. */
+const GIRO_MAXIMO_MS = 12_000;
+
 /** Tirar hacia abajo para actualizar, a mano. La app instalada apaga el estirón
  *  del navegador (`overscroll-behavior:none`, para que no se mueva todo el
  *  borde), y con él el "tirar para actualizar" que se espera en una lista.
@@ -25,6 +30,19 @@ export function TirarParaActualizar() {
   const [actualizando, empezar] = useTransition();
   // null mientras no hay un dedo tirando.
   const [tiron, setTiron] = useState<{ y: number; listo: boolean } | null>(null);
+  // Se prende a los 12 s de estar actualizando: el indicador deja de girar. Se
+  // prende en el callback del reloj y se apaga en la limpieza del efecto, nunca
+  // en su cuerpo (el lint no deja un setState sincrónico ahí).
+  const [harto, setHarto] = useState(false);
+
+  useEffect(() => {
+    if (!actualizando) return;
+    const reloj = setTimeout(() => setHarto(true), GIRO_MAXIMO_MS);
+    return () => {
+      clearTimeout(reloj);
+      setHarto(false);
+    };
+  }, [actualizando]);
 
   useEffect(() => {
     if (!activo) return;
@@ -69,9 +87,11 @@ export function TirarParaActualizar() {
       const dx = t.clientX - d.x;
       const estado = estadoDelTiron(dy, dx);
       if (!estado.visible) {
-        // Un temblor todavía no dice qué se quiere: se espera. Si fue de costado
-        // o hacia arriba, el gesto es para scrollear y se deja en paz.
-        if (dy < 0 || Math.abs(dx) > 10) return soltarGesto();
+        // Un temblor todavía no dice qué se quiere: se espera. Al apoyar el dedo
+        // el punto se corre 1-3 px hacia arriba, y eso no puede cortar el tirón:
+        // solo se suelta con más de 10 px hacia arriba (la misma zona muerta que
+        // el gesto de las hojas) o de costado, que es scrollear.
+        if (dy < -10 || Math.abs(dx) > 10) return soltarGesto();
         pasoElUmbral = false;
         setTiron(null);
         return;
@@ -84,7 +104,11 @@ export function TirarParaActualizar() {
       if (!d || ![...e.changedTouches].some((x) => x.identifier === d.id)) return;
       const actualizar = pasoElUmbral;
       soltarGesto();
-      if (actualizar) empezar(() => router.refresh());
+      // Sin señal no se actualiza: `router.refresh()` falla y Next 16 hace una
+      // navegación completa, que el service worker contesta con la página de "sin
+      // conexión", y esa reemplazaría la lista que se estaba leyendo. La franja de
+      // arriba ya avisa que no hay red; el indicador simplemente se va.
+      if (actualizar && navigator.onLine) empezar(() => router.refresh());
     };
 
     document.addEventListener("touchstart", alTocar, { passive: true });
@@ -102,14 +126,16 @@ export function TirarParaActualizar() {
     };
   }, [activo, router]);
 
-  if (!activo || (!tiron && !actualizando)) return null;
+  // Girando: se está actualizando y todavía no se cansó de esperar (`harto`).
+  const girando = actualizando && !harto;
+  if (!activo || (!tiron && !girando)) return null;
   const listo = tiron?.listo ?? false;
   return (
     <div
-      className={`tiron${listo ? " listo" : ""}${actualizando ? " actualizando" : ""}`}
-      style={{ transform: `translate(-50%, ${actualizando ? UMBRAL : (tiron?.y ?? 0)}px)` }}
+      className={`tiron${listo ? " listo" : ""}${girando ? " actualizando" : ""}`}
+      style={{ transform: `translate(-50%, ${girando ? UMBRAL : (tiron?.y ?? 0)}px)` }}
       role="status"
-      aria-label={actualizando ? "Actualizando" : listo ? "Soltá para actualizar" : "Tirá para actualizar"}
+      aria-label={girando ? "Actualizando" : listo ? "Soltá para actualizar" : "Tirá para actualizar"}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M21 12a9 9 0 1 1-2.6-6.4" />

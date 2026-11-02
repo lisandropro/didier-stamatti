@@ -14,7 +14,11 @@ export function RefrescoPeriodico({ cadaMs = 45_000 }: { cadaMs?: number }) {
   const router = useRouter();
   useEffect(() => {
     const refrescar = () => {
-      if (document.visibilityState === "visible") router.refresh();
+      // Sin señal no se pide nada: `router.refresh()` falla y Next 16 hace una
+      // navegación completa, que el service worker contesta con la página de
+      // "sin conexión", y esa reemplazaría la lista que se está leyendo. La
+      // franja de arriba ya avisa; al volver la señal, `SinConexion` refresca.
+      if (document.visibilityState === "visible" && navigator.onLine) router.refresh();
     };
     const id = setInterval(refrescar, cadaMs);
     document.addEventListener("visibilitychange", refrescar);

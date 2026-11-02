@@ -40,7 +40,9 @@
   /* Altura mínima cómoda para el dedo */
   --tap:44px;
 
-  /* Escala tipográfica — 8 pasos deliberados (antes: 18 tamaños con casi-duplicados).
+  /* Escala tipográfica — 9 pasos deliberados (antes: 18 tamaños con casi-duplicados).
+     El noveno, --t-chico (12 px), existe solo para los textos de contenido chicos
+     del celular; el resto de la escala sigue siendo la de siempre.
      Cada paso ya incluye el multiplicador de accesibilidad --fs. */
   --t-xs:calc(11px * var(--fs));    /* etiquetas en mayúscula, micro-texto */
   --t-chico:calc(12px * var(--fs));    /* textos de contenido chicos en el celular */
@@ -2634,7 +2636,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
          .mobnav button, .rowmenu-list button, .revision-item > a, .resp-chip-btn,
          .pname-btn, .topbar-volver, .rowmenu-btn, .nav, .step-btn,
          .notif-item:not(:disabled), button.sug-row, a.sug-row, .seg button,
-         .miniedit, .prep-faltan, .prep-volver, .pasados > summary):active{
+         .miniedit, .prep-faltan, .prep-salto, .prep-volver, .pasados > summary):active{
     opacity:.6; transition:opacity 0s;
   }
   /* Las tarjetas de eventos pasados ya están a .72 (`.pasados .event`), y esa
