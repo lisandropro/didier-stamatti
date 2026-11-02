@@ -8,7 +8,7 @@ export type Cambio = { itemName: string; kind: string; before: string | null; af
 
 const DE_CANTIDAD = new Set(["AGREGADO", "QUITADO", "CANTIDAD"]);
 const MAX_EN_EL_PUSH = 3;
-const MAX_CUERPO = 500;
+export const MAX_CUERPO = 500;
 // El nombre de quién lo hizo lo escribe una persona y no tiene tope: si no se
 // acota, un nombre larguísimo se come el presupuesto del cuerpo entero.
 const MAX_QUIEN = 60;
