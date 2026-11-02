@@ -860,6 +860,111 @@ test("un evento de hoy todavía recibe el aviso tardío, aunque ya haya empezado
   }
 });
 
+// --- Cambios de estado del evento (listo, borrador, papelera) --------------
+//
+// Quien no tiene los avisos en el teléfono solo lee la línea de la bandeja:
+// tiene que decir QUÉ pasó, no que "hizo un cambio" (que también podría ser
+// que borró el evento).
+
+type CambioDeEstado = import("../lib/notify").OrderChangeInput;
+const LISTO: CambioDeEstado = { itemName: "Estado", kind: "ESTADO", before: "NO_LISTO", after: "LISTO" };
+const BORRADOR: CambioDeEstado = { itemName: "Estado", kind: "ESTADO", before: "LISTO", after: "NO_LISTO" };
+const BORRADO: CambioDeEstado = { itemName: "Evento", kind: "PAPELERA", before: "VIVO", after: "BORRADO" };
+const RECUPERADO: CambioDeEstado = { itemName: "Evento", kind: "PAPELERA", before: "BORRADO", after: "VIVO" };
+const COPAS: CambioDeEstado = { itemName: "Copa de agua", kind: "CANTIDAD", before: "10", after: "24" };
+
+test("una tanda de un solo cambio de estado dice qué pasó", async () => {
+  const casos: [CambioDeEstado, string][] = [
+    [LISTO, "Ana marcó listo El Carmen Center"],
+    [BORRADOR, "Ana volvió a borrador El Carmen Center"],
+    [BORRADO, "Ana borró el evento El Carmen Center"],
+    [RECUPERADO, "Ana recuperó el evento El Carmen Center"],
+  ];
+  for (const [cambio, esperado] of casos) {
+    await limpiar();
+    await notify.notifyOrderChange(ACTOR(), ids.futuro, cambio);
+    for (const quien of [ids.logistica, ids.armador]) {
+      const [a] = await avisos(quien);
+      assert.equal(a.message, esperado);
+      assert.equal(a.changeCount, 1);
+    }
+  }
+  await limpiar();
+});
+
+test("un solo cambio que no es de estado sigue diciendo 'hizo un cambio'", async () => {
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, COPAS);
+  assert.equal((await avisos(ids.logistica))[0].message, "Ana hizo un cambio en el pedido de El Carmen Center");
+  await limpiar();
+});
+
+test("con más de un cambio en la tanda la línea vuelve a contar cambios, venga el estado primero o después", async () => {
+  // El texto específico es de la tanda de UN cambio: apenas se suma otro, el
+  // aviso que decía "marcó listo" tiene que dejar de decirlo, porque ya no es
+  // todo lo que pasó.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, LISTO);
+  assert.equal((await avisos(ids.logistica))[0].message, "Ana marcó listo El Carmen Center");
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, COPAS);
+  assert.equal((await avisos(ids.logistica))[0].message, "Ana hizo 2 cambios en el pedido de El Carmen Center", "el estado abrió la tanda");
+
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, COPAS);
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, BORRADO);
+  assert.equal((await avisos(ids.logistica))[0].message, "Ana hizo 2 cambios en el pedido de El Carmen Center", "el estado se sumó a una tanda abierta");
+
+  // Dos cambios de estado seguidos (listo y a borrador): tampoco es un solo cambio.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, LISTO);
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, BORRADOR);
+  assert.equal((await avisos(ids.logistica))[0].message, "Ana hizo 2 cambios en el pedido de El Carmen Center");
+
+  // Y en un mismo guardado.
+  await limpiar();
+  await notify.notifyOrderChange(ACTOR(), ids.futuro, [LISTO, COPAS]);
+  assert.equal((await avisos(ids.logistica))[0].message, "Ana hizo 2 cambios en el pedido de El Carmen Center");
+  await limpiar();
+});
+
+test("un evento que ya pasó no avisa su estado ni su borrado, pero el registro de cambios queda", async () => {
+  // Borrar cuatro eventos del fin de semana pasado para ordenar mandaba cuatro
+  // avisos a todos, al depósito con prioridad alta. El evento de estas pruebas
+  // es del 15/08: ya pasó.
+  await limpiar();
+  for (const cambio of [LISTO, BORRADOR, BORRADO, RECUPERADO]) await notify.notifyOrderChange(ACTOR(), ids.evento, cambio);
+  assert.equal(await prisma.notification.count(), 0, "avisó un cambio de estado de un evento que ya pasó");
+  assert.equal(await prisma.orderChange.count({ where: { eventId: ids.evento } }), 4, "el historial se guarda igual");
+
+  // Lo común del mismo guardado sí avisa, y la línea cuenta solo eso.
+  await notify.notifyOrderChange(ACTOR(), ids.evento, [LISTO, COPAS]);
+  const [a] = await avisos(ids.logistica);
+  assert.equal(a.changeCount, 1, "el estado no suma a la tanda");
+  assert.equal(a.message, "Ana hizo un cambio en el pedido de El Carmen Center");
+  await limpiar();
+});
+
+test("el corte de los cambios de estado es por día argentino: ayer no avisa, hoy sí", async () => {
+  await limpiar();
+  const { periodId } = await prisma.event.findUniqueOrThrow({ where: { id: ids.futuro }, select: { periodId: true } });
+  // El borde: el último minuto de ayer y el primero de hoy.
+  const deAyer = await prisma.event.create({ data: { periodId, lugar: "Ayer tarde", date: instanteDe(sumarDias(hoy(), -1), "23:59") } });
+  const deHoy = await prisma.event.create({ data: { periodId, lugar: "Hoy temprano", date: instanteDe(hoy(), "00:01") } });
+  try {
+    await notify.notifyOrderChange(ACTOR(), deAyer.id, LISTO);
+    await notify.notifyOrderChange(ACTOR(), deAyer.id, BORRADO);
+    assert.equal(await prisma.notification.count({ where: { eventId: deAyer.id } }), 0, "avisó el estado de un evento de ayer");
+
+    await notify.notifyOrderChange(ACTOR(), deHoy.id, LISTO);
+    const [a] = await avisos(ids.logistica);
+    assert.equal(a.eventId, deHoy.id);
+    assert.equal(a.message, "Ana marcó listo Hoy temprano");
+  } finally {
+    await limpiar();
+    await prisma.event.deleteMany({ where: { id: { in: [deAyer.id, deHoy.id] } } });
+  }
+});
+
 test("un evento que no existe no rompe el guardado del pedido", async () => {
   await assert.doesNotReject(() =>
     notify.notifyOrderChange(ACTOR(), "id-que-no-existe", { itemName: "x", kind: "CANTIDAD", after: "1" })

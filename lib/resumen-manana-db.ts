@@ -43,6 +43,22 @@ export async function enviarResumenDeLaManana(ahora: Date = new Date()): Promise
     const hoyDia = diaDe(ahora);
     const mananaDia = sumarDias(hoyDia, 1);
 
+    // Primero quién ya lo recibió: de 7 a 11 esto corre cada 10 minutos, y si ya
+    // les llegó a todos, buscar los eventos y recalcular los faltantes de cada
+    // período (la parte pesada) no sirve para nada. Se sale antes.
+    const personas = await prisma.user.findMany({
+      where: { role: { in: [...ROLES] } },
+      select: { id: true, name: true, role: true },
+      orderBy: { name: "asc" },
+    });
+    const tipo = `RESUMEN:${hoyDia}`;
+    const yaRecibieron = new Set(
+      (await prisma.notification.findMany({ where: { type: tipo, recipientId: { in: personas.map((p) => p.id) } }, select: { recipientId: true } })).map(
+        (n) => n.recipientId,
+      ),
+    );
+    if (personas.every((p) => yaRecibieron.has(p.id))) return { enviados: 0 };
+
     // El día de un evento es el de Argentina, no el del servidor: el rango se
     // arma con instantes argentinos y cada evento se ubica con `diaDe`.
     const eventos = await prisma.event.findMany({
@@ -62,11 +78,6 @@ export async function enviarResumenDeLaManana(ahora: Date = new Date()): Promise
     let faltan = 0;
     for (const periodId of new Set(eventos.map((e) => e.periodId))) faltan += (await periodShortages(periodId)).length;
 
-    const personas = await prisma.user.findMany({
-      where: { role: { in: [...ROLES] } },
-      select: { id: true, name: true, role: true },
-      orderBy: { name: "asc" },
-    });
     const conTelefono = new Set(
       (await prisma.pushSubscription.findMany({ where: { userId: { in: personas.map((p) => p.id) } }, select: { userId: true } })).map((s) => s.userId),
     );
@@ -76,13 +87,6 @@ export async function enviarResumenDeLaManana(ahora: Date = new Date()): Promise
       faltan,
       sinAvisos: personas.filter((p) => !conTelefono.has(p.id)).map((p) => p.name),
     };
-
-    const tipo = `RESUMEN:${hoyDia}`;
-    const yaRecibieron = new Set(
-      (await prisma.notification.findMany({ where: { type: tipo, recipientId: { in: personas.map((p) => p.id) } }, select: { recipientId: true } })).map(
-        (n) => n.recipientId,
-      ),
-    );
 
     // Uno por uno y en orden de prioridad: quienes salen a conseguir o a juntar
     // las cosas se enteran primero.

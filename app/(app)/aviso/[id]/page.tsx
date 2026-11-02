@@ -33,9 +33,17 @@ const KIND_CLASS: Record<string, string> = {
   FECHA: "warn",
   INVITADOS: "warn",
   PERIODO: "crit",
-  ESTADO: "ok",
   PAPELERA: "crit",
 };
+
+// El color sale del tipo, salvo en el estado: ahí depende del valor. Verde para
+// todo el tipo hacía que "Volvió a borrador" (el evento deja de estar listo) se
+// viera como una buena noticia; con `warn` pide fijarse, como los demás cambios
+// que obligan a revisar el pedido.
+function claseDelCambio(kind: string, after: string | null): string {
+  if (kind === "ESTADO") return after === "LISTO" ? "ok" : "warn";
+  return KIND_CLASS[kind] ?? "neutral";
+}
 
 // El estado y la papelera se guardan como códigos (NO_LISTO, BORRADO), que sirven
 // para comparar pero no para leer. Se traducen solo al mostrar: lo guardado no cambia.
@@ -134,7 +142,7 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
                     <tr key={c.id}>
                       <td className="prod">{c.itemName}</td>
                       <td data-label="Qué pasó">
-                        <span className={`chip ${KIND_CLASS[c.kind] ?? "neutral"}`}>
+                        <span className={`chip ${claseDelCambio(c.kind, c.after)}`}>
                           {KIND_LABEL[c.kind] ?? c.kind}
                         </span>
                       </td>

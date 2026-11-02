@@ -130,7 +130,9 @@ export function describirCambio(c: Cambio): string {
     case "ESTADO":
       return c.after === "LISTO" ? "Quedó listo" : "Volvió a borrador";
     case "PAPELERA":
-      return c.after === "BORRADO" ? "Se borró el evento (se puede recuperar desde la papelera)" : "Se recuperó el evento";
+      // "Hasta el lunes": la papelera se vacía sola (lib/trash.ts) y lo tirado
+      // antes del lunes más reciente se pierde. No siempre se puede recuperar.
+      return c.after === "BORRADO" ? "Se borró el evento (queda en la papelera hasta el lunes)" : "Se recuperó el evento";
     default:
       return c.itemName;
   }

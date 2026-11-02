@@ -48,15 +48,35 @@ export type OrderChangeInput = {
 
 const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-function resumen(actorName: string, lugar: string, n: number): string {
-  if (n === 1) return `${actorName} hizo un cambio en el pedido de ${lugar}`;
+/** Qué pasó, cuando el único cambio de la tanda es de estado o de papelera.
+ *  `null` para cualquier otro cambio (o un valor que no se reconoce): ahí
+ *  corresponde la línea de siempre. */
+function lineaDeEstado(actorName: string, lugar: string, c: OrderChangeInput | null): string | null {
+  if (!c) return null;
+  if (c.kind === "ESTADO") {
+    if (c.after === "LISTO") return `${actorName} marcó listo ${lugar}`;
+    if (c.after === "NO_LISTO") return `${actorName} volvió a borrador ${lugar}`;
+  }
+  if (c.kind === "PAPELERA") {
+    if (c.after === "BORRADO") return `${actorName} borró el evento ${lugar}`;
+    if (c.after === "VIVO") return `${actorName} recuperó el evento ${lugar}`;
+  }
+  return null;
+}
+
+// Quien no tiene los avisos en el teléfono solo lee esta línea. "Hizo un cambio
+// en el pedido" no le dice si se marcó listo o se borró el evento, así que
+// cuando la tanda es de UN solo cambio de estado, la línea dice qué pasó.
+// `unico` es ese cambio; con más de uno en la tanda se cuenta, como siempre.
+function resumen(actorName: string, lugar: string, n: number, unico: OrderChangeInput | null): string {
+  if (n === 1) return lineaDeEstado(actorName, lugar, unico) ?? `${actorName} hizo un cambio en el pedido de ${lugar}`;
   return `${actorName} hizo ${n} cambios en el pedido de ${lugar}`;
 }
 
 type TipoDeTanda = "ORDER_EDIT" | "CAMBIO_TARDIO";
 
-function resumenDe(tipo: TipoDeTanda, actorName: string, lugar: string, n: number): string {
-  if (tipo === "ORDER_EDIT") return resumen(actorName, lugar, n);
+function resumenDe(tipo: TipoDeTanda, actorName: string, lugar: string, n: number, unico: OrderChangeInput | null): string {
+  if (tipo === "ORDER_EDIT") return resumen(actorName, lugar, n, unico);
   return n === 1
     ? `${actorName} cambió un ítem ya preparado de ${lugar}`
     : `${actorName} cambió ${n} ítems ya preparados de ${lugar}`;
@@ -71,6 +91,10 @@ async function sumarATanda(
   eventId: string,
   lugar: string,
   n: number,
+  // El cambio que se suma, cuando es uno solo (ver `resumen`). Solo se usa si
+  // la tanda queda en 1: al sumar a una abierta el total es 2 o más y la línea
+  // vuelve a contar cambios.
+  unico: OrderChangeInput | null,
   ahora: Date,
   batchCutoff: Date,
 ): Promise<void> {
@@ -126,7 +150,7 @@ async function sumarATanda(
       if (actual) {
         await prisma.notification.updateMany({
           where: { id: abierto.id, changeCount: actual.changeCount },
-          data: { message: resumenDe(tipo, actor.name, lugar, actual.changeCount) },
+          data: { message: resumenDe(tipo, actor.name, lugar, actual.changeCount, unico) },
         });
       }
       return;
@@ -140,7 +164,7 @@ async function sumarATanda(
       actorName: actor.name,
       type: tipo,
       eventId,
-      message: resumenDe(tipo, actor.name, lugar, n),
+      message: resumenDe(tipo, actor.name, lugar, n, unico),
       changeCount: n,
       sinceAt: ahora,
       createdAt: ahora,
@@ -210,13 +234,22 @@ export async function notifyOrderChange(
     // alta. El cambio igual queda marcado como tardío en el registro de arriba,
     // que mide "el día del evento o después". El corte es por día argentino: el
     // evento de hoy, aunque ya haya empezado, todavía avisa.
-    const comunes = cambios.filter((c) => !c.tardio).length;
-    const tardios = diaDe(ev.date) < hoy() ? 0 : cambios.length - comunes;
+    const yaPaso = diaDe(ev.date) < hoy();
+    // Con el estado y la papelera pasa lo mismo: borrar cuatro eventos del fin
+    // de semana pasado para ordenar mandaba cuatro avisos a todos, al depósito
+    // con prioridad alta, por algo que no le toca hacer. Tampoco suman a una
+    // tanda de cambios comunes; el registro de arriba queda como historial.
+    const sinAviso = (c: OrderChangeInput) => yaPaso && (c.kind === "ESTADO" || c.kind === "PAPELERA");
+    const deLaTanda = cambios.filter((c) => !c.tardio && !sinAviso(c));
+    const comunes = deLaTanda.length;
+    const tardios = yaPaso ? 0 : cambios.filter((c) => c.tardio).length;
+    // Con un solo cambio común, la línea de la bandeja puede decir cuál fue.
+    const unico = comunes === 1 ? deLaTanda[0] : null;
 
     for (const r of recipients) {
       // La tardía primero: si una tanda falla, que no sea la urgente la que se pierda.
-      if (tardios > 0) await sumarATanda("CAMBIO_TARDIO", r.id, actor, eventId, ev.lugar, tardios, ahora, batchCutoff);
-      if (comunes > 0) await sumarATanda("ORDER_EDIT", r.id, actor, eventId, ev.lugar, comunes, ahora, batchCutoff);
+      if (tardios > 0) await sumarATanda("CAMBIO_TARDIO", r.id, actor, eventId, ev.lugar, tardios, null, ahora, batchCutoff);
+      if (comunes > 0) await sumarATanda("ORDER_EDIT", r.id, actor, eventId, ev.lugar, comunes, unico, ahora, batchCutoff);
     }
   } catch {
     // Un fallo de notificación no debe romper el guardado del pedido.
