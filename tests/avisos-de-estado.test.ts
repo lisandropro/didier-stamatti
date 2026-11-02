@@ -68,6 +68,43 @@ test("dos aparatos a la vez: setEventStatus escribe condicionado y avisa solo si
   assert.doesNotMatch(cuerpo, /antes\.status\s*!==\s*status/, "sigue decidiendo con la lectura previa");
 });
 
+test("setEventStatus: si ya estaba así también actualiza la pantalla de quien llegó tarde", () => {
+  const cuerpo = cuerpoDe("app/actions/period.ts", "setEventStatus");
+  // Ese teléfono tiene una vista vieja por definición (si no, no habría tocado el
+  // botón): salir sin revalidar lo deja mirando el estado equivocado.
+  assert.match(
+    cuerpo,
+    /antes\.status\s*===\s*status\)\s*\{[^}]*revalidatePath\("\/"\)[^}]*return\s*\{\s*ok:\s*true\s*\}/,
+    "la salida de 'ya estaba así' no revalida",
+  );
+});
+
+test("dos aparatos a la vez: deleteEvent escribe condicionado a que siga vivo y avisa solo si le tocó borrarlo a él", () => {
+  const cuerpo = cuerpoDe("app/actions/period.ts", "deleteEvent");
+  // Leer y después escribir sin condición deja que dos teléfonos avisen cada uno
+  // "se borró": la escritura tiene que ser la que decide quién lo borró.
+  assert.match(cuerpo, /updateMany\(\{\s*where:\s*\{[^}]*deletedAt:\s*null\s*\}/, "la escritura no es condicionada a que siga vivo");
+  assert.doesNotMatch(cuerpo, /prisma\.event\.update\(/, "sigue habiendo una escritura sin condición");
+  const escritura = cuerpo.indexOf("updateMany(");
+  const aviso = cuerpo.indexOf("notifyOrderChange(");
+  assert.match(cuerpo.slice(escritura, aviso), /\.count\s*===\s*1/, "no avisa solo cuando la escritura cambió una fila");
+  // Si la escritura no cambió nada, otro aparato ya lo borró: la pantalla se actualiza igual.
+  assert.match(cuerpo.slice(aviso), /revalidatePath\("\/"\)/, "no revalida");
+});
+
+test("dos aparatos a la vez: restoreEvent escribe condicionado a que siga borrado y avisa solo si le tocó recuperarlo a él", () => {
+  const cuerpo = cuerpoDe("app/actions/period.ts", "restoreEvent");
+  assert.match(cuerpo, /updateMany\(\{\s*where:\s*\{[^}]*deletedAt:\s*\{\s*not:\s*null\s*\}\s*\}/, "la escritura no es condicionada a que siga borrado");
+  // Sin condición, recuperar un evento que al leer estaba vivo deshacía en
+  // silencio el borrado que otro aparato hizo en el medio.
+  assert.doesNotMatch(cuerpo, /prisma\.event\.update\(/, "sigue habiendo una escritura sin condición");
+  assert.match(cuerpo, /ev\.deletedAt\s*\?\s*\[\s*prisma\.event\.updateMany/, "toca el evento aunque al leer estuviera vivo");
+  const escritura = cuerpo.indexOf("$transaction(");
+  const aviso = cuerpo.indexOf("notifyOrderChange(");
+  assert.match(cuerpo.slice(escritura, aviso), /\.count\s*===\s*1/, "no avisa solo cuando la escritura cambió una fila");
+  assert.doesNotMatch(cuerpo, /if\s*\(ev\.deletedAt\)\s*\{\s*await notifyOrderChange/, "avisa por la lectura previa");
+});
+
 const PAGINA_AVISO = "app/(app)/aviso/[id]/page.tsx";
 const paginaDelAviso = () => fs.readFileSync(path.join(process.cwd(), PAGINA_AVISO), "utf8");
 

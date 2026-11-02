@@ -375,7 +375,13 @@ export async function setEventStatus(eventId: string, status: "LISTO" | "NO_LIST
   // cada uno, un estado y que solo quede el del último.
   const antes = await prisma.event.findFirst({ where: vivo, select: { status: true } });
   if (!antes) return { ok: false, error: "El evento ya no está disponible." };
-  if (antes.status === status) return { ok: true }; // ya estaba así: no hay nada que guardar ni avisar
+  if (antes.status === status) {
+    // Ya estaba así: no hay nada que guardar ni avisar. Pero el teléfono que llegó
+    // acá tiene una vista vieja por definición (si no, no habría tocado el botón),
+    // así que se le actualiza la pantalla igual que en la rama de abajo.
+    revalidatePath("/");
+    return { ok: true };
+  }
   const r = await prisma.event.updateMany({ where: { ...vivo, status: { not: status } }, data: { status } });
   if (r.count === 0) {
     // Entre la lectura y la escritura, o lo borraron o otro aparato ya lo dejó así.
@@ -437,9 +443,16 @@ export async function deleteEvent(eventId: string): Promise<ActionResult> {
   const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { deletedAt: true } });
   if (!ev) return { ok: false, error: "No se encontró el evento." };
   if (ev.deletedAt) return { ok: true }; // ya estaba borrado
-  await prisma.event.update({ where: { id: eventId }, data: { deletedAt: new Date() } });
-  // Se avisa DESPUÉS de guardar. El "ya estaba borrado" de arriba no avisa.
-  await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "VIVO", after: "BORRADO" });
+  // La lectura solo distingue "no existe" de "ya estaba borrado". Quien decide si
+  // el borrado fue de este aparato es la escritura: leer y después escribir sin
+  // condición deja que dos teléfonos a la vez avisen, cada uno, "se borró".
+  const r = await prisma.event.updateMany({ where: { id: eventId, deletedAt: null }, data: { deletedAt: new Date() } });
+  // Se avisa DESPUÉS de guardar, y solo si esta escritura fue la que lo borró. Si
+  // dio 0, otro aparato lo borró en el medio y ya avisó él: acá solo se actualiza
+  // la pantalla.
+  if (r.count === 1) {
+    await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "VIVO", after: "BORRADO" });
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -455,15 +468,25 @@ export async function restoreEvent(eventId: string): Promise<ActionResult> {
   });
   if (!ev) return { ok: false, error: "No se encontró el evento." };
 
-  await prisma.$transaction([
-    prisma.event.update({ where: { id: eventId }, data: { deletedAt: null } }),
+  // El evento se toca SOLO si al leer estaba borrado, y condicionado a que siga
+  // borrado. Sin eso, recuperar uno que al leer estaba vivo (solo su período)
+  // deshacía en silencio el borrado que otro aparato hizo en el medio, y dos
+  // recuperaciones a la vez avisaban las dos "se recuperó". Va primero en la
+  // lista para saber cuál de los resultados es el suyo.
+  const resultados = await prisma.$transaction([
+    ...(ev.deletedAt
+      ? [prisma.event.updateMany({ where: { id: eventId, deletedAt: { not: null } }, data: { deletedAt: null } })]
+      : []),
     ...(ev.period.deletedAt
       ? [prisma.operationalPeriod.update({ where: { id: ev.periodId }, data: { deletedAt: null } })]
       : []),
   ]);
-  // Se avisa DESPUÉS de guardar. Si el evento no estaba borrado (solo su
-  // período), no hay nada que avisar del evento.
-  if (ev.deletedAt) {
+  // Se avisa DESPUÉS de guardar, y solo si esta escritura fue la que lo recuperó.
+  // Si el evento no estaba borrado al leer (solo su período) no se lo tocó, y si
+  // dio 0 otro aparato ya lo recuperó y avisó él.
+  const primero = resultados[0];
+  const recuperoElEvento = ev.deletedAt !== null && "count" in primero && primero.count === 1;
+  if (recuperoElEvento) {
     await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "BORRADO", after: "VIVO" });
   }
   revalidatePath("/");
