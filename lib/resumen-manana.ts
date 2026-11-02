@@ -1,7 +1,7 @@
 // El texto del resumen de la mañana, en un solo lugar y sin base de datos.
 //
 // Es un único push por persona y por día: "qué tengo hoy y mañana". Sale una
-// sola vez para no ser un aviso más entre los de cambios de pedido, y sale de
+// sola vez para no ser un aviso más entre los de cambios de pedido, y sale a la
 // mañana (entre las 7 y las 11, hora argentina) porque a la tarde un "resumen
 // de la mañana" confunde. Esta función solo arma el texto de lo que recibe;
 // quién lo recibe, cuándo y si ya salió hoy lo decide quien la llama.
@@ -38,6 +38,14 @@ export type DatosDelResumen = {
 };
 
 const MAX_NOMBRES = 3;
+// El lugar de un evento y el nombre de quien no tiene avisos son texto libre
+// (un lugar puede ser una dirección entera). El cuerpo se recorta desde la cola,
+// así que un nombre sin tope se comía primero lo que más le importa a cada rol:
+// "Sin pedido", "Faltan" y "Sin avisos". Con cada nombre acotado y a lo sumo 3
+// por línea, el peor caso (40 eventos por día, 999 faltantes, 40 personas sin
+// avisos) mide unos 485 caracteres y entra en MAX_CUERPO sin perder ninguna línea.
+const MAX_LUGAR = 40;
+const MAX_PERSONA = 30;
 
 /** "A", "A y B", "A, B y C". */
 function unidos(nombres: string[]): string {
@@ -45,15 +53,19 @@ function unidos(nombres: string[]): string {
   return `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
 }
 
+/** Hasta tres nombres y cuántos más: "A, B y C", o "A, B, C y 2 más". */
+function listaCorta(nombres: string[]): string {
+  return nombres.length > MAX_NOMBRES
+    ? `${nombres.slice(0, MAX_NOMBRES).join(", ")} y ${nombres.length - MAX_NOMBRES} más`
+    : unidos(nombres);
+}
+
 /** "Hoy: A, B, C y 2 más", o "Hoy no hay eventos." si el día está vacío. */
 function lineaDelDia(dia: string, eventos: EventoDelResumen[]): string {
   if (eventos.length === 0) return `${dia} no hay eventos.`;
-  const nombres = eventos.map((e) => e.lugar);
-  const lista =
-    nombres.length > MAX_NOMBRES
-      ? `${nombres.slice(0, MAX_NOMBRES).join(", ")} y ${nombres.length - MAX_NOMBRES} más`
-      : unidos(nombres);
-  return `${dia}: ${lista}`;
+  // Un lugar vacío o de puros espacios no puede dejar "Hoy:" colgando.
+  const nombres = eventos.map((e) => recortar(e.lugar.trim() || "(sin nombre)", MAX_LUGAR));
+  return `${dia}: ${listaCorta(nombres)}`;
 }
 
 /**
@@ -79,11 +91,12 @@ export function textoDelResumen(rol: string, d: DatosDelResumen): { title: strin
   }
 
   if (d.faltan > 0) {
-    lineas.push(`Faltan ${d.faltan} ${d.faltan === 1 ? "producto" : "productos"} en el depósito.`);
+    // "Faltan 1 producto" no se dice: con uno, el verbo va en singular.
+    lineas.push(d.faltan === 1 ? "Falta 1 producto en el depósito." : `Faltan ${d.faltan} productos en el depósito.`);
   }
 
   if (rol === "ADMIN" && d.sinAvisos.length > 0) {
-    lineas.push(`Sin avisos en el celular: ${d.sinAvisos.join(", ")}`);
+    lineas.push(`Sin avisos en el celular: ${listaCorta(d.sinAvisos.map((n) => recortar(n, MAX_PERSONA)))}`);
   }
 
   return {

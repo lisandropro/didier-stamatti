@@ -55,3 +55,67 @@ test("el cuerpo nunca pasa de 500 caracteres", () => {
   const r = textoDelResumen("ADMIN", { hoy: largo, manana: largo, faltan: 999, sinAvisos: largo.map((e) => e.lugar) })!;
   assert.ok(r.body.length <= 500);
 });
+
+test("los nombres largos no se comen las líneas de cada rol", () => {
+  // El lugar es texto libre y puede ser una dirección entera. Si no se acota
+  // cada nombre, el recorte del final se lleva primero lo que más le importa
+  // a cada rol (Sin pedido, Faltan, Sin avisos) y deja solo la lista de eventos.
+  const direccion = "SALÓN DE EVENTOS LOS ALAMOS, RUTA PROVINCIAL 11 KILÓMETRO 214, ENTRE RÍOS, ENTRADA POR EL PORTÓN LATERAL";
+  const largo = Array.from({ length: 40 }, (_, i) => ev(`${direccion} ${i}`, 0));
+  const r = textoDelResumen("ADMIN", { hoy: largo, manana: largo, faltan: 999, sinAvisos: largo.map((e) => e.lugar) })!;
+  assert.match(r.body, /Sin pedido/);
+  assert.match(r.body, /Faltan 999 productos/);
+  assert.match(r.body, /Sin avisos en el celular/);
+  assert.ok(r.body.length <= 500);
+});
+
+test("un lugar sin nombre no deja una línea vacía", () => {
+  assert.match(textoDelResumen("DEPOSITO", { ...base, hoy: [ev("   ")] })!.body, /Hoy: \(sin nombre\)/);
+});
+
+test("con un solo producto faltante dice Falta, en singular", () => {
+  const uno = textoDelResumen("DEPOSITO", { ...base, faltan: 1 })!;
+  assert.match(uno.body, /Falta 1 producto en el depósito\./);
+  assert.doesNotMatch(uno.body, /Faltan/);
+  assert.match(textoDelResumen("DEPOSITO", { ...base, faltan: 2 })!.body, /Faltan 2 productos en el depósito\./);
+});
+
+test("sin faltantes no hay línea de faltantes", () => {
+  assert.doesNotMatch(textoDelResumen("DEPOSITO", { ...base, faltan: 0 })!.body, /Falta/);
+});
+
+test("el encargado de logística ve hoy, mañana y faltantes, pero no lo de armar pedidos ni quién no tiene avisos", () => {
+  // Mira todo pero no arma pedidos (canEditOrders es solo ADMIN y ARMADOR), y
+  // el depósito es el único que va a Preparar: él entra por el inicio.
+  const r = textoDelResumen("LOGISTICA", base)!;
+  assert.match(r.body, /Hoy: MUSEO/);
+  assert.match(r.body, /Mañana: PUERTO ABAJO y GUALEGUYCHU/);
+  assert.match(r.body, /Faltan 13 productos/);
+  assert.doesNotMatch(r.body, /Sin pedido|Sin marcar listo|Sin avisos/);
+  assert.equal(r.url, "/");
+});
+
+test("con exactamente tres eventos en un día se nombran los tres, sin 'más'", () => {
+  const r = textoDelResumen("DEPOSITO", { ...base, hoy: [ev("A"), ev("B"), ev("C")] })!;
+  assert.match(r.body, /Hoy: A, B y C(\n|$)/);
+  assert.doesNotMatch(r.body, /Hoy:.* más/);
+});
+
+test("quien arma pedidos ve las dos cuentas juntas en una sola línea", () => {
+  const r = textoDelResumen("ADMIN", base)!;
+  assert.ok(r.body.split("\n").includes("Sin pedido: 1 · Sin marcar listo: 1"));
+});
+
+test("quien no tiene avisos se nombra hasta tres, y el resto se cuenta", () => {
+  const nombres = ["Ana", "Beto", "Carla", "Diego", "Eva"];
+  assert.match(textoDelResumen("ADMIN", { ...base, sinAvisos: nombres })!.body, /Sin avisos en el celular: Ana, Beto, Carla y 2 más/);
+  assert.match(textoDelResumen("ADMIN", { ...base, sinAvisos: ["Ana", "Beto"] })!.body, /Sin avisos en el celular: Ana y Beto/);
+  assert.doesNotMatch(textoDelResumen("ADMIN", { ...base, sinAvisos: [] })!.body, /Sin avisos/);
+});
+
+test("el nombre de quien no tiene avisos también se acota", () => {
+  const r = textoDelResumen("ADMIN", { ...base, sinAvisos: ["N".repeat(100)] })!;
+  const linea = r.body.split("\n").find((l) => l.startsWith("Sin avisos en el celular: "))!;
+  assert.equal(linea.length, "Sin avisos en el celular: ".length + 30);
+  assert.ok(linea.endsWith("…"));
+});
