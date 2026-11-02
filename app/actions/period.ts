@@ -368,11 +368,17 @@ export async function setEventStatus(eventId: string, status: "LISTO" | "NO_LIST
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
   // Solo un evento vivo: antes se podía marcar LISTO uno que estaba en la papelera.
-  const r = await prisma.event.updateMany({
-    where: { id: eventId, deletedAt: null, period: { deletedAt: null } },
-    data: { status },
-  });
+  const vivo = { id: eventId, deletedAt: null, period: { deletedAt: null } };
+  // El estado de antes, para avisar solo si de verdad cambió.
+  const antes = await prisma.event.findFirst({ where: vivo, select: { status: true } });
+  if (!antes) return { ok: false, error: "El evento ya no está disponible." };
+  const r = await prisma.event.updateMany({ where: vivo, data: { status } });
   if (r.count === 0) return { ok: false, error: "El evento ya no está disponible." };
+
+  // Se avisa DESPUÉS de guardar. Marcarlo con el estado que ya tenía no avisa.
+  if (antes.status !== status) {
+    await notifyOrderChange(user, eventId, { itemName: "Estado", kind: "ESTADO", before: antes.status, after: status });
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -422,6 +428,8 @@ export async function deleteEvent(eventId: string): Promise<ActionResult> {
   if (!ev) return { ok: false, error: "No se encontró el evento." };
   if (ev.deletedAt) return { ok: true }; // ya estaba borrado
   await prisma.event.update({ where: { id: eventId }, data: { deletedAt: new Date() } });
+  // Se avisa DESPUÉS de guardar. El "ya estaba borrado" de arriba no avisa.
+  await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "VIVO", after: "BORRADO" });
   revalidatePath("/");
   return { ok: true };
 }
@@ -433,7 +441,7 @@ export async function restoreEvent(eventId: string): Promise<ActionResult> {
   if (!user) return { ok: false, error: permiso! };
   const ev = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { periodId: true, period: { select: { deletedAt: true } } },
+    select: { periodId: true, deletedAt: true, period: { select: { deletedAt: true } } },
   });
   if (!ev) return { ok: false, error: "No se encontró el evento." };
 
@@ -443,6 +451,11 @@ export async function restoreEvent(eventId: string): Promise<ActionResult> {
       ? [prisma.operationalPeriod.update({ where: { id: ev.periodId }, data: { deletedAt: null } })]
       : []),
   ]);
+  // Se avisa DESPUÉS de guardar. Si el evento no estaba borrado (solo su
+  // período), no hay nada que avisar del evento.
+  if (ev.deletedAt) {
+    await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "BORRADO", after: "VIVO" });
+  }
   revalidatePath("/");
   return { ok: true, id: ev.periodId };
 }

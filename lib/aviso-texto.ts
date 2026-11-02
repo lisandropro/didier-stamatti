@@ -127,6 +127,10 @@ export function describirCambio(c: Cambio): string {
       return `Período: ${dato(c.after)}`;
     case "RESTAURADO":
       return c.after ?? "Se restauró el pedido";
+    case "ESTADO":
+      return c.after === "LISTO" ? "Quedó listo" : "Volvió a borrador";
+    case "PAPELERA":
+      return c.after === "BORRADO" ? "Se borró el evento (se puede recuperar desde la papelera)" : "Se recuperó el evento";
     default:
       return c.itemName;
   }

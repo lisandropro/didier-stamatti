@@ -19,6 +19,8 @@ const KIND_LABEL: Record<string, string> = {
   FECHA: "Fecha",
   INVITADOS: "Invitados",
   PERIODO: "Período",
+  ESTADO: "Estado",
+  PAPELERA: "Papelera",
 };
 const KIND_CLASS: Record<string, string> = {
   AGREGADO: "ok",
@@ -31,6 +33,8 @@ const KIND_CLASS: Record<string, string> = {
   FECHA: "warn",
   INVITADOS: "warn",
   PERIODO: "crit",
+  ESTADO: "ok",
+  PAPELERA: "crit",
 };
 
 export default async function AvisoPage({ params }: { params: Promise<{ id: string }> }) {

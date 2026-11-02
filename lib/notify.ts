@@ -32,7 +32,10 @@ export type ChangeKind =
   | "LUGAR"
   | "FECHA"
   | "INVITADOS"
-  | "PERIODO";
+  | "PERIODO"
+  // Estado del evento: listo o borrador, y si está en la papelera.
+  | "ESTADO"
+  | "PAPELERA";
 
 export type OrderChangeInput = {
   itemName: string;
