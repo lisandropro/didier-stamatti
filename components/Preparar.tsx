@@ -101,7 +101,12 @@ export function Preparar({ data }: { data: Data }) {
     setError({ texto: (r.ok ? r.aviso : r.error) ?? "No se pudo guardar." });
     // Si falló o hubo aviso, la pantalla quedó vieja (el ítem cambió, ya no
     // está, el evento se fue): se vuelve a pedir para que la lista se ponga al día.
-    router.refresh();
+    // Sin señal no se pide nada: `router.refresh()` falla y Next 16 hace una
+    // navegación completa, que el service worker contesta con la página de "sin
+    // conexión", y esa reemplazaría la lista que se está leyendo, justo donde no
+    // hay señal. La franja de abajo ya avisa; al volver la señal, `SinConexion`
+    // refresca.
+    if (navigator.onLine) router.refresh();
   }
 
   function alternar(i: Item) {

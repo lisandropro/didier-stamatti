@@ -2376,7 +2376,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
    esa clase es `display:contents` en la pantalla ancha y le sacaría a la fila su
    propio relleno y su flex. */
 .prep-saltos{display:flex; gap:var(--sp-2); padding:0 var(--sp-4) var(--sp-2); flex-wrap:wrap}
-@media (max-width:860px){
+@media screen and (max-width:860px){
   .prep-saltos{flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; overscroll-behavior-x:contain}
   .prep-saltos::-webkit-scrollbar{display:none}
 }
@@ -2646,8 +2646,12 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 }
 
 /* ===== Sin conexión ========================================================
-   La franja va fija arriba, por encima de la cabecera, y no tapa nada que se
-   toque: es un aviso, no un bloqueo.
+   La franja va fija abajo, por encima de todo (hojas incluidas), y no tapa
+   nada que se toque: es un aviso, no un bloqueo (`pointer-events:none`). Arriba
+   tapaba la primera fila de la cabecera (volver, lugar, "Faltan N") y quedaba
+   debajo de las hojas (`z-index:50`). En el celular sube por encima de la barra
+   flotante de abajo (76px más la zona de gestos); en la pantalla ancha no hay
+   barra y queda a un paso del borde.
    `width:max-content` la deja del ancho de su texto: con `left:50%` y ancho
    automático el navegador le da como mucho la mitad de la pantalla y el texto
    se partía en 3 o 4 líneas encima de la cabecera. Con el `max-width` de tope,
@@ -2661,12 +2665,15 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .sin-conexion,
 .sin-conexion-aviso{position:fixed}
 .sin-conexion{
-  z-index:40; left:50%; transform:translateX(-50%);
-  top:calc(var(--sp-2) + env(safe-area-inset-top));
+  z-index:70; left:50%; transform:translateX(-50%);
+  top:auto; bottom:var(--sp-4);
   width:max-content; max-width:calc(100% - var(--sp-6)); padding:var(--sp-2) var(--sp-4);
   border-radius:var(--r-pill); background:var(--crit); color:var(--ground);
   font-size:var(--t-sm); font-weight:650; text-align:center;
   box-shadow:0 6px 20px rgba(0,0,0,.25); pointer-events:none;
+}
+@media (max-width:860px){
+  .sin-conexion{bottom:calc(76px + env(safe-area-inset-bottom))}
 }
 .sin-conexion.volvio{background:var(--ok)}
 

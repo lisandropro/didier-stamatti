@@ -71,10 +71,11 @@ export function TirarParaActualizar() {
       soltarGesto();
       if (e.touches.length !== 1 || !celular.matches || window.scrollY > 0) return;
       const donde = e.target instanceof Element ? e.target : null;
-      // Dentro de una hoja abierta (`.overlay`) o del menú "Más" (`.mobmas-fondo`)
-      // el dedo es de esa ventana: actualizar sería tocar la pantalla de atrás.
-      // Y sobre un campo, arrastrar es elegir texto.
-      if (!donde || donde.closest(".overlay, .mobmas-fondo, input, textarea, select") || scrolleado(donde)) return;
+      // Dentro de una hoja abierta (`.overlay`), del menú "Más" (`.mobmas-fondo`)
+      // o del menú ⋯ de la portada (`.rowmenu-list`, que va en el body, encima de
+      // todo) el dedo es de esa ventana: actualizar sería tocar la pantalla de
+      // atrás. Y sobre un campo, arrastrar es elegir texto.
+      if (!donde || donde.closest(".overlay, .mobmas-fondo, .rowmenu-list, input, textarea, select") || scrolleado(donde)) return;
       const t = e.touches[0];
       dedo = { id: t.identifier, x: t.clientX, y: t.clientY };
     };
@@ -107,7 +108,7 @@ export function TirarParaActualizar() {
       // Sin señal no se actualiza: `router.refresh()` falla y Next 16 hace una
       // navegación completa, que el service worker contesta con la página de "sin
       // conexión", y esa reemplazaría la lista que se estaba leyendo. La franja de
-      // arriba ya avisa que no hay red; el indicador simplemente se va.
+      // abajo ya avisa que no hay red; el indicador simplemente se va.
       if (actualizar && navigator.onLine) empezar(() => router.refresh());
     };
 

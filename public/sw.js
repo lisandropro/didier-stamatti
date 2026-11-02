@@ -3,18 +3,23 @@
    estática, /sin-conexion.html, para abrir la app sin señal en vez del
    dinosaurio del navegador. */
 
-// v2: trae la página sin conexión; al activarse borra el caché v1.
+// v3: la página sin conexión vuelve sola cuando vuelve la señal (v2 no llegó a
+// producción, pero no se reutiliza); al activarse borra los cachés viejos.
 // Si se cambia public/sin-conexion.html hay que subir esta versión: si no, los
 // teléfonos que ya la tienen guardada siguen mostrando la vieja.
-const CACHE = "didier-static-v2";
+const CACHE = "didier-static-v3";
 
 // Se guarda al instalar: si no estuviera ya en el teléfono, justo cuando hace
-// falta (sin red) no habría de dónde sacarla.
+// falta (sin red) no habría de dónde sacarla. Pero es un extra: si no se puede
+// guardar (sin espacio, red caída justo ahora), la instalación sigue igual. Si
+// se rechazara, el service worker nunca se activaría y se caerían también los
+// avisos push, que son lo importante de este archivo.
 self.addEventListener("install", (event) =>
   event.waitUntil(
     caches
       .open(CACHE)
       .then((c) => c.add("/sin-conexion.html"))
+      .catch(() => {})
       .then(() => self.skipWaiting())
   )
 );

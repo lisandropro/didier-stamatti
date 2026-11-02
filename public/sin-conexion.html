@@ -20,5 +20,18 @@
   <p>El teléfono no tiene señal ni wifi. Cuando vuelva, tocá Reintentar.</p>
   <button type="button" onclick="location.reload()">Reintentar</button>
 </main>
+<script>
+  // Vuelve sola: cuando el teléfono avisa que hay red, y cada 20 s mientras
+  // se mira (con "señal pero sin datos" el aviso de red no llega). El pedido de
+  // prueba no pasa por el service worker: no es una navegación ni un archivo
+  // guardado.
+  addEventListener("online", () => location.reload());
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    fetch("/sin-conexion.html", { method: "HEAD", cache: "no-store" })
+      .then((r) => { if (r.ok) location.reload(); })
+      .catch(() => {});
+  }, 20000);
+</script>
 </body>
 </html>

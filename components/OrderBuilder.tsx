@@ -183,6 +183,14 @@ export function OrderBuilder({ data }: { data: Data }) {
       void queue.close();
     };
   }, [queue, router, draftKey, drafts]);
+  // Cuando vuelve la señal, lo que no se guardó se reintenta solo. Sin esto,
+  // después de "Volvió la conexión" quedaba esperando que alguien tocara
+  // "Reintentar guardado". Si no hay nada pendiente, `flush` no hace nada.
+  useEffect(() => {
+    const reintentar = () => { void queue.flush(); };
+    window.addEventListener("online", reintentar);
+    return () => window.removeEventListener("online", reintentar);
+  }, [queue]);
 
   function scheduleSave(key: string, pending: OrderSave) {
     drafts.set(key, pending); keepDrafts();

@@ -289,6 +289,13 @@ test("sin red, la app abre una página propia y no el dinosaurio del navegador",
   assert.ok(sw.includes('req.mode === "navigate"'), "abrir una pantalla sin red no tiene respuesta propia");
   const html = fuente("public/sin-conexion.html");
   assert.ok(html.includes("Sin conexión") && html.includes("Reintentar"), "la página sin conexión no explica ni deja reintentar");
+  // Vuelve sola: nadie va a tocar "Reintentar" si el teléfono ya tiene señal. Con
+  // "señal pero sin datos" el aviso del navegador no llega: también se pregunta
+  // cada tanto, sin pasar por el service worker (HEAD, sin caché).
+  const script = html.slice(html.indexOf("<script>"), html.indexOf("</script>"));
+  assert.ok(script.includes('addEventListener("online"'), "la página sin conexión no se entera de que volvió la señal");
+  assert.ok(script.includes("location.reload()"), "la página sin conexión no se recarga sola al volver la señal");
+  assert.ok(script.includes("setInterval(") && script.includes('"HEAD"') && script.includes("no-store"), "con señal pero sin datos la página sin conexión no se entera de que volvió");
 });
 
 test("si se corta la señal, la app lo dice arriba y se pone al día cuando vuelve", () => {
@@ -296,6 +303,49 @@ test("si se corta la señal, la app lo dice arriba y se pone al día cuando vuel
   assert.ok(s.includes('"offline"') && s.includes('"online"'), "nadie escucha si se corta o vuelve la señal");
   assert.ok(s.includes("router.refresh()"), "al volver la señal la pantalla queda vieja");
   assert.ok(fuente("app/(app)/layout.tsx").includes("<SinConexion />"), "el layout no monta el aviso de sin conexión");
+});
+
+test("al volver la señal, el refresco espera a que la red conteste y no se hace en el editor del pedido", () => {
+  const s = fuente("components/SinConexion.tsx");
+  // El evento `online` puede llegar antes de que la red responda: un
+  // `router.refresh()` que falla termina en la página de sin conexión.
+  const desde = s.indexOf("const con = ");
+  assert.notEqual(desde, -1, "no está el manejador de cuando vuelve la señal");
+  const cuerpo = s.slice(desde, s.indexOf("\n    };", desde));
+  assert.ok(/ESPERA_MS\s*=\s*1500/.test(s), "no hay espera de 1500 ms antes de refrescar");
+  assert.ok(/setTimeout\([\s\S]*ESPERA_MS/.test(cuerpo), "refresca en cuanto llega el aviso, sin dejar que la red conteste");
+  assert.ok(cuerpo.includes("navigator.onLine"), "refresca aunque para entonces la señal se haya vuelto a ir");
+  // En el editor (`/evento/…`) el estado se arma una sola vez al montar: refrescar no aporta nada.
+  assert.ok(s.includes("usePathname()") && s.includes('"/evento/"'), "refresca también en el editor del pedido");
+  assert.ok(cuerpo.includes("router.refresh()"), "al volver la señal la pantalla queda vieja");
+  // Esa espera es un reloj más: se corta al desmontar.
+  const limpieza = s.slice(s.indexOf("return () => {"));
+  assert.ok(limpieza.includes("clearTimeout(espera)"), "el reloj de espera sigue corriendo al desmontar");
+});
+
+test("la franja de sin conexión va abajo, por encima de la barra flotante y de las hojas", () => {
+  const css = fuente("app/globals.css").replace(/\r\n/g, "\n");
+  const desde = css.indexOf(".sin-conexion{");
+  assert.notEqual(desde, -1, "no está la regla de la franja");
+  const regla = css.slice(desde, css.indexOf("}", desde));
+  // Arriba tapaba la primera fila de la cabecera y quedaba debajo de las hojas (z-index 50).
+  assert.ok(regla.includes("top:auto") && regla.includes("bottom:var(--sp-4)"), "la franja no va abajo en la pantalla ancha");
+  assert.ok(!regla.includes("safe-area-inset-top"), "la franja sigue pegada arriba");
+  const z = /z-index:(\d+)/.exec(regla);
+  assert.ok(z && Number(z[1]) >= 70, "la franja queda debajo de las hojas o del menú ⋯");
+  assert.ok(
+    /@media \(max-width:860px\)\{\s*\.sin-conexion\{bottom:calc\(76px \+ env\(safe-area-inset-bottom\)\)\}/.test(css),
+    "en el celular la franja no sube por encima de la barra flotante",
+  );
+});
+
+test("los saltos de Preparar del celular no se aplican a lo impreso", () => {
+  const css = fuente("app/globals.css").replace(/\r\n/g, "\n");
+  const regla = css.indexOf(".prep-saltos{flex-wrap:nowrap");
+  assert.notEqual(regla, -1, "no está la regla de los saltos en el celular");
+  const media = css.slice(css.lastIndexOf("@media", regla), regla);
+  // Una hoja A4 mide ~688 px de ancho y entra en el corte del celular.
+  assert.ok(media.startsWith("@media screen and (max-width:860px)"), "los saltos del celular entran también al imprimir");
 });
 
 /**
@@ -341,12 +391,37 @@ test("el tirón para actualizar está montado y no pelea con las hojas", () => {
   assert.ok(s.includes("scrollY"), "tirar en el medio de la lista actualizaría en vez de scrollear");
   // El menú "Más" también es una ventana: el dedo que tira ahí no es de la pantalla de atrás.
   assert.ok(s.includes(".mobmas-fondo"), "tirar dentro del menú Más actualizaría la pantalla de atrás");
+  // Y el menú ⋯ de la portada, que va en el body, encima de todo.
+  assert.ok(s.includes(".rowmenu-list"), "tirar sobre el menú ⋯ actualizaría la pantalla de atrás");
   assert.ok(s.includes("pantallaConTiron("), "el tirón no distingue en qué pantallas existe");
   // Sin señal, `router.refresh()` hace una navegación completa y el service worker
   // contesta con la página de "sin conexión": reemplazaría la lista que se está
   // leyendo. Ni el tirón ni el refresco periódico pueden pedirla sin red.
   assert.ok(s.includes("navigator.onLine"), "tirar sin señal reemplaza la lista por la página de sin conexión");
   assert.ok(fuente("components/RefrescoPeriodico.tsx").includes("navigator.onLine"), "el refresco periódico, sin señal, reemplaza la lista por la página de sin conexión");
+  // Y tildar sin señal: si la acción falla, Preparar vuelve a pedir la lista, y
+  // sin red ese pedido termina en la página de "sin conexión".
+  const prep = fuente("components/Preparar.tsx");
+  const desdeCorrer = prep.indexOf("async function correr");
+  assert.notEqual(desdeCorrer, -1, "no está correr en Preparar");
+  const cuerpoCorrer = prep.slice(desdeCorrer, prep.indexOf("\n  }", desdeCorrer));
+  assert.ok(cuerpoCorrer.includes("navigator.onLine"), "tildar sin señal y fallar reemplaza la lista por la página de sin conexión");
+});
+
+/**
+ * Sin señal en el editor del pedido (23/10). Después de "Volvió la conexión", lo
+ * que no se guardó quedaba esperando que alguien tocara "Reintentar guardado".
+ */
+test("el editor del pedido reintenta guardar solo cuando vuelve la señal", () => {
+  const s = fuente("components/OrderBuilder.tsx");
+  const i = s.indexOf('"online"');
+  assert.notEqual(i, -1, "el editor no escucha cuando vuelve la señal");
+  // En el mismo efecto: escuchar, reintentar y soltar la escucha al salir.
+  const desde = s.lastIndexOf("useEffect(", i);
+  const hasta = s.indexOf("}, [", i);
+  const efecto = s.slice(desde, hasta);
+  assert.ok(efecto.includes("queue.flush()"), "al volver la señal el editor no reintenta guardar");
+  assert.ok(efecto.includes('removeEventListener("online"'), "el editor deja la escucha de la señal puesta al desmontarse");
 });
 
 /**

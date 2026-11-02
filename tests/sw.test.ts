@@ -26,6 +26,8 @@ type Opciones = {
   focoFalla?: boolean;
   /** El caché del teléfono está vacío: /sin-conexion.html no se guardó nunca. */
   sinPaginaGuardada?: boolean;
+  /** Guardar la página sin conexión al instalar falla (sin espacio, red caída). */
+  guardarFalla?: boolean;
 };
 
 const respuestaOk = { ok: true, json: async () => ({ clave: "BClave" }) };
@@ -40,6 +42,7 @@ function cargarSW(opciones: Opciones = {}) {
   const navegadas: string[] = [];
   const abiertas: string[] = [];
   let enfocadas = 0;
+  let activadas = 0;
   const ventana = {
     focus: async () => {
       enfocadas++;
@@ -52,7 +55,7 @@ function cargarSW(opciones: Opciones = {}) {
   };
   const self = {
     addEventListener: (tipo: string, fn: Manejador) => (manejadores[tipo] = fn),
-    skipWaiting: () => {},
+    skipWaiting: () => { activadas++; },
     location: { origin: "https://app.test" },
     registration: {
       showNotification: async (titulo: string, opciones: { data: { url: string; d?: string } }) => {
@@ -92,6 +95,7 @@ function cargarSW(opciones: Opciones = {}) {
         enCache.set(dirDe(x), res);
       },
       add: async (x: string | { url: string }) => {
+        if (opciones.guardarFalla) throw new TypeError("no se pudo guardar");
         guardados.push(dirDe(x));
         enCache.set(dirDe(x), new Response(PAGINA_SIN_CONEXION));
       },
@@ -100,7 +104,7 @@ function cargarSW(opciones: Opciones = {}) {
   const codigo = fs.readFileSync(path.join(process.cwd(), "public", "sw.js"), "utf8");
   // `Response` hay que pasarla: la caja de arena no hereda los globales de Node.
   vm.runInNewContext(codigo, { self, fetch, caches, URL, Response });
-  return { manejadores, pedidos, mostradas, navegadas, abiertas, guardados, enfocadas: () => enfocadas };
+  return { manejadores, pedidos, mostradas, navegadas, abiertas, guardados, enfocadas: () => enfocadas, activadas: () => activadas };
 }
 
 /**
@@ -258,6 +262,17 @@ test("al instalarse, guarda la página sin conexión para tenerla cuando falte l
   const sw = cargarSW({ sinPaginaGuardada: true });
   await disparar(sw.manejadores.install, {});
   assert.deepEqual(sw.guardados, ["/sin-conexion.html"]);
+  assert.equal(sw.activadas(), 1, "no se activó después de guardar la página");
+});
+
+test("si no se puede guardar la página sin conexión, el service worker se instala igual", async () => {
+  // Guardar esa página es un extra: si falla (sin espacio, red caída justo al
+  // instalar), la instalación no puede rechazarse, porque con ella se caen
+  // también los avisos push, que son lo importante de este archivo.
+  const sw = cargarSW({ sinPaginaGuardada: true, guardarFalla: true });
+  await disparar(sw.manejadores.install, {});
+  assert.equal(sw.activadas(), 1, "la instalación quedó trabada por no poder guardar la página");
+  assert.deepEqual(sw.guardados, []);
 });
 
 test("abrir una pantalla con señal trae la del servidor y no guarda nada", async () => {
