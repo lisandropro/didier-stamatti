@@ -281,8 +281,12 @@ export async function eventosParaPreparar(hoyDia: string = hoy()): Promise<Event
     select: { id: true, lugar: true, date: true },
   });
   // El último cambio de cada evento, de una sola vez y no evento por evento.
+  // Solo cambios del PEDIDO: marcar el evento listo o mandarlo a la papelera y
+  // recuperarlo (ESTADO, PAPELERA) también dejan una fila, pero el pedido no se
+  // movió. Si contaran, la tarjeta se pintaría de naranja sin motivo y taparían
+  // el último cambio de verdad.
   const ultimos = await prisma.orderChange.findMany({
-    where: { eventId: { in: eventos.map((e) => e.id) } },
+    where: { eventId: { in: eventos.map((e) => e.id) }, kind: { notIn: ["ESTADO", "PAPELERA"] } },
     orderBy: { createdAt: "desc" },
     distinct: ["eventId"],
     select: { eventId: true, actorName: true, createdAt: true },

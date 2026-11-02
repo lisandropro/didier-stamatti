@@ -30,6 +30,21 @@ export async function register() {
   void avisarVacios();
   setInterval(() => void avisarVacios(), DAY);
 
+  // --- Resumen de la mañana ------------------------------------------------
+  // Cada 10 minutos alcanza: se manda una sola vez por persona y por día, y la
+  // hora (de 7 a 11, hora argentina) se controla adentro. Al arrancar también,
+  // así un servidor que se reinicia a las 8 todavía llega a mandarlo. Fuera de
+  // la condición del respaldo, por lo mismo que el aviso de pedido vacío.
+  const { enviarResumenDeLaManana } = await import("@/lib/resumen-manana-db");
+  const mandarResumen = async () => {
+    const { enviados } = await enviarResumenDeLaManana();
+    // Cuenta personas con el aviso guardado en la app, no pushes aceptados: un
+    // teléfono sin avisos activados también cuenta. Por eso "avisos", no "enviados".
+    if (enviados > 0) console.log(`[resumen] avisos: ${enviados}`);
+  };
+  void mandarResumen();
+  setInterval(() => void mandarResumen(), 10 * MINUTE);
+
   // --- Faltante nuevo --------------------------------------------------------
   // Cada minuto, como los avisos de pedidos: un faltante tiene que llegar al
   // depósito mientras todavía se puede conseguir. Fuera de la condición del

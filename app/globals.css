@@ -470,7 +470,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .notif-icon{flex:0 0 auto; color:var(--muted)}
 .notif-icon svg{width:20px; height:20px; display:block}
 .notif-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
-.notif-msg{font-size:var(--t-base); font-weight:500}
+.notif-msg{font-size:var(--t-base); font-weight:500; white-space:pre-line}
 .notif-item.unread .notif-msg{font-weight:650}
 .notif-time{font-size:var(--t-sm); color:var(--muted)}
 .notif-dot{flex:0 0 auto; width:9px; height:9px; border-radius:50%; background:var(--gold)}

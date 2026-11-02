@@ -328,13 +328,13 @@ test("una tanda que crece mientras se manda no se cierra y sale con todos sus ca
   const push = await import("../lib/push");
   const aceptando = push.transporte.enviar;
   let alguienTocoElPedido = false;
-  push.transporte.enviar = async (destino, cuerpo, urgency) => {
+  push.transporte.enviar = async (destino, cuerpo, urgency, ttl) => {
     if (!alguienTocoElPedido) {
       // Un cambio nuevo llega a mitad del barrido, cuando ya se leyó la tanda.
       alguienTocoElPedido = true;
       await notify.notifyOrderChange(ACTOR(), ids.evento, { itemName: "Vasos", kind: "CANTIDAD", before: "1", after: "2" });
     }
-    return aceptando(destino, cuerpo, urgency);
+    return aceptando(destino, cuerpo, urgency, ttl);
   };
   try {
     await notify.notifyOrderChange(ACTOR(), ids.evento, HIELO);
@@ -369,12 +369,12 @@ async function conCambioAMitadDelEnvio(aMitad: () => Promise<void>, f: () => Pro
   const push = await import("../lib/push");
   const aceptando = push.transporte.enviar;
   let yaPaso = false;
-  push.transporte.enviar = async (destino, cuerpo, urgency) => {
+  push.transporte.enviar = async (destino, cuerpo, urgency, ttl) => {
     if (!yaPaso) {
       yaPaso = true;
       await aMitad();
     }
-    return aceptando(destino, cuerpo, urgency);
+    return aceptando(destino, cuerpo, urgency, ttl);
   };
   try {
     await f();
@@ -490,13 +490,13 @@ test("un barrido no arranca mientras el anterior sigue mandando", async () => {
   let llamadas = 0;
   // Solo el primer envío se traba: si el segundo barrido llegara a mandar, lo
   // haría al toque y la prueba lo vería en vez de quedarse colgada.
-  push.transporte.enviar = async (destino, cuerpo, urgency) => {
+  push.transporte.enviar = async (destino, cuerpo, urgency, ttl) => {
     llamadas++;
     if (llamadas === 1) {
       avisarQueEmpezo();
       await trabado;
     }
-    return aceptando(destino, cuerpo, urgency);
+    return aceptando(destino, cuerpo, urgency, ttl);
   };
   let primero: ReturnType<typeof notify.flushPendingOrderPushes> | undefined;
   try {

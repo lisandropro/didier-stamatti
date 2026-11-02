@@ -279,6 +279,35 @@ test("la tarjeta de cada evento dice qué rehacer y quién lo cambió por últim
   }
 });
 
+test("marcar listo o mandar a la papelera no es un cambio del pedido: la tarjeta sigue mostrando el último de verdad", async () => {
+  // Un evento solo con avisos de estado: el pedido nunca se tocó.
+  const sinPedido = await prisma.event.create({
+    data: { periodId: ids.periodo, lugar: "Solo estado", date: instanteDe(sumarDias(hoy(), 2), "21:00") },
+  });
+  const fila = (eventId: string, actorName: string, itemName: string, kind: string, before: string, after: string, hace: number) =>
+    prisma.orderChange.create({
+      data: { eventId, actorName, itemName, kind, before, after, createdAt: new Date(Date.now() - hace) },
+    });
+  const pedido = await fila(ids.evento, "Enrique", "Hielo", "CANTIDAD", "20", "25", 600_000);
+  // Después del cambio de pedido, alguien lo marca listo y alguien lo borra y lo recupera.
+  const listo = await fila(ids.evento, "Pablo", "Estado", "ESTADO", "NO_LISTO", "LISTO", 120_000);
+  const borrado = await fila(ids.evento, "Aldana", "Evento", "PAPELERA", "VIVO", "BORRADO", 60_000);
+  const recuperado = await fila(ids.evento, "Aldana", "Evento", "PAPELERA", "BORRADO", "VIVO", 30_000);
+  const soloListo = await fila(sinPedido.id, "Pablo", "Estado", "ESTADO", "NO_LISTO", "LISTO", 60_000);
+  try {
+    const lista = await db.eventosParaPreparar();
+    const carmen = lista.find((e) => e.lugar === "El Carmen")!;
+    // La tarjeta se pinta de naranja por "el pedido se movió": un estado no lo mueve.
+    assert.equal(carmen.ultimoCambio?.actorName, "Enrique");
+    assert.equal(carmen.ultimoCambio?.at.getTime(), pedido.createdAt.getTime());
+    // Y sin ningún cambio de pedido, no hay "último cambio" aunque haya estados.
+    assert.equal(lista.find((e) => e.lugar === "Solo estado")!.ultimoCambio, null);
+  } finally {
+    await prisma.orderChange.deleteMany({ where: { id: { in: [pedido.id, listo.id, borrado.id, recuperado.id, soloListo.id] } } });
+    await prisma.event.delete({ where: { id: sinPedido.id } });
+  }
+});
+
 test("faltantes del período: lo pedido entre todos contra el stock", async () => {
   // Otro evento vivo del mismo período suma; uno en la papelera, no.
   const vivo = await prisma.event.create({ data: { periodId: ids.periodo, lugar: "Otro vivo", date: instanteDe(hoy(), "20:00") } });

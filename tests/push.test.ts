@@ -19,13 +19,16 @@ let usuario = "";
 let otro = "";
 let respuesta: number | "red" = 201;
 const cuerpos: string[] = [];
+// La vida (en segundos) con que salió cada push, en el mismo orden que `cuerpos`.
+const vidas: number[] = [];
 
 before(async () => {
   ({ prisma } = await import("../lib/db"));
   push = await import("../lib/push");
   push.transporte.listo = () => true;
-  push.transporte.enviar = async (_destino, cuerpo) => {
+  push.transporte.enviar = async (_destino, cuerpo, _urgency, ttl) => {
     cuerpos.push(cuerpo);
+    vidas.push(ttl);
     if (respuesta === "red") throw new Error("socket hang up");
     if (respuesta >= 200 && respuesta < 300) return { statusCode: respuesta };
     throw Object.assign(new Error(`Received unexpected response code ${respuesta}`), { statusCode: respuesta });
@@ -45,6 +48,7 @@ beforeEach(async () => {
   await prisma.pushDelivery.deleteMany({});
   await prisma.pushSubscription.deleteMany({});
   cuerpos.length = 0;
+  vidas.length = 0;
   respuesta = 201;
   push.transporte.listo = () => true;
 });
@@ -134,6 +138,24 @@ test("500: se reintenta UNA vez, y nunca más", async () => {
   assert.deepEqual(intentos.map((i) => [i.attempt, i.status]), [[1, "ERROR"], [2, "ACEPTADO"]]);
   assert.equal(intentos[1].urgency, "high", "el reintento conserva la prioridad");
   assert.equal(await push.reintentarFallidos(), 0, "un segundo barrido no reintenta de nuevo");
+});
+
+test("la vida del push sale del tipo de aviso: el resumen 4 horas, el resto 12", async () => {
+  await suscribir(usuario, "v1");
+  await push.sendPushToUser(usuario, PAYLOAD, { kind: "RESUMEN" });
+  await push.sendPushToUser(usuario, PAYLOAD, { kind: "ORDER_EDIT" });
+  // Un teléfono apagado a la mañana no puede recibir "Hoy y mañana" a la noche.
+  assert.deepEqual(vidas, [4 * 60 * 60, 12 * 60 * 60]);
+});
+
+test("el reintento de un resumen también vive 4 horas, no las 12 de siempre", async () => {
+  await suscribir(usuario, "v2");
+  respuesta = 500;
+  await push.sendPushToUser(usuario, PAYLOAD, { kind: "RESUMEN" });
+  respuesta = 201;
+  assert.equal(await push.reintentarFallidos(), 1);
+  // El reintento sale con el `kind` guardado en el registro: la vida no depende de quien llama.
+  assert.deepEqual(vidas, [4 * 60 * 60, 4 * 60 * 60]);
 });
 
 test("sin red: error reintentable, sin código", async () => {

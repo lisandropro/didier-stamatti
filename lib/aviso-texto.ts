@@ -8,7 +8,7 @@ export type Cambio = { itemName: string; kind: string; before: string | null; af
 
 const DE_CANTIDAD = new Set(["AGREGADO", "QUITADO", "CANTIDAD"]);
 const MAX_EN_EL_PUSH = 3;
-const MAX_CUERPO = 500;
+export const MAX_CUERPO = 500;
 // El nombre de quién lo hizo lo escribe una persona y no tiene tope: si no se
 // acota, un nombre larguísimo se come el presupuesto del cuerpo entero.
 const MAX_QUIEN = 60;
@@ -127,6 +127,10 @@ export function describirCambio(c: Cambio): string {
       return `Período: ${dato(c.after)}`;
     case "RESTAURADO":
       return c.after ?? "Se restauró el pedido";
+    case "ESTADO":
+      return c.after === "LISTO" ? "Quedó listo" : "Volvió a borrador";
+    case "PAPELERA":
+      return c.after === "BORRADO" ? "Se borró el evento (se puede recuperar desde la papelera)" : "Se recuperó el evento";
     default:
       return c.itemName;
   }
@@ -210,8 +214,10 @@ export function esTituloSinPendientes(title: unknown): boolean {
  *  - `pedido`: un evento cuyo pedido lo empujó (subió lo pedido, o cambió entero);
  *  - `stock`: no hubo un cambio así, pero sí un movimiento de stock del producto;
  *  - `otro`: ninguna de las dos. Pasa con lo que cambia el pedido sin dejar un
- *    cambio registrado: recuperar un evento de la papelera, descartar los
- *    cambios o restaurar una versión. */
+ *    cambio que lo explique: descartar los cambios, restaurar una versión o
+ *    recuperar un evento de la papelera (deja un cambio `PAPELERA`, pero ese
+ *    tipo no está entre los que traen un pedido entero, así que no se culpa a
+ *    nadie). */
 export type CausaDeFaltante = { tipo: "pedido"; lugar: string } | { tipo: "stock" } | { tipo: "otro" };
 
 /** Un faltante a avisar, con lo que lo explica. */
