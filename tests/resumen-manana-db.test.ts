@@ -216,3 +216,80 @@ test("nunca lanza: si la base falla, lo anota y devuelve lo enviado hasta ahí",
   await prisma.event.create({ data: { periodId: p.id, lugar: "Después del error", date: a(dia, "12:00") } });
   assert.equal((await enviarResumen(a(dia, "07:10"))).enviados, 4);
 });
+
+test("un evento de mañana a las 23:30 (hora argentina) entra en Mañana", async () => {
+  // El borde de arriba de la ventana: 23:30 argentinas son las 02:30 UTC del día
+  // siguiente. Un rango armado con la medianoche UTC dejaría este evento afuera.
+  const dia = sumarDias(D1, 80);
+  const p = await prisma.operationalPeriod.create({ data: { label: "Noche tarde", startDay: dia, endDay: sumarDias(dia, 1) } });
+  await prisma.event.create({ data: { periodId: p.id, lugar: "Fiesta tardía", date: a(sumarDias(dia, 1), "23:30") } });
+  await prisma.event.create({ data: { periodId: p.id, lugar: "Pasado de noche", date: a(sumarDias(dia, 2), "00:30") } });
+  assert.equal((await enviarResumen(a(dia, "07:05"))).enviados, 4);
+  const m = (await avisosDe(ids.dante, dia))[0].message;
+  assert.match(m, /^Hoy no hay eventos\.\nMañana: Fiesta tardía/);
+  assert.doesNotMatch(m, /Pasado de noche/, "00:30 de pasado mañana ya no es mañana");
+});
+
+/** Un producto con 250 de stock y un evento que pide 300: al período le falta 1 producto. */
+async function conFaltante(eventoId: string, nombre: string) {
+  const prod = await prisma.product.create({ data: { name: nombre, category: "ENSERES", type: "REUTILIZABLE", stock: 250 } });
+  await prisma.orderLine.create({ data: { eventId: eventoId, productId: prod.id, qty: 300 } });
+}
+
+test("un faltante de un período sin eventos hoy ni mañana no se cuenta", async () => {
+  const dia = sumarDias(D1, 85);
+  const deHoy = await prisma.operationalPeriod.create({ data: { label: "Con evento hoy", startDay: dia, endDay: dia } });
+  await prisma.event.create({ data: { periodId: deHoy.id, lugar: "Hoy sin pedido", date: a(dia, "12:00") } });
+  // Otro período, de la semana que viene, con un faltante: no es de esta mañana.
+  const lejano = await prisma.operationalPeriod.create({ data: { label: "Lejano", startDay: sumarDias(dia, 10), endDay: sumarDias(dia, 10) } });
+  const evLejano = await prisma.event.create({ data: { periodId: lejano.id, lugar: "Lejano", date: a(sumarDias(dia, 10), "12:00") } });
+  await conFaltante(evLejano.id, "Plato lejano");
+  assert.equal((await enviarResumen(a(dia, "07:05"))).enviados, 4);
+  const m = (await avisosDe(ids.dante, dia))[0].message;
+  assert.doesNotMatch(m, /Falt/, "el faltante del período lejano no aparece");
+});
+
+test("los faltantes de dos períodos con eventos hoy y mañana se suman", async () => {
+  const dia = sumarDias(D1, 120);
+  const p1 = await prisma.operationalPeriod.create({ data: { label: "Uno", startDay: dia, endDay: dia } });
+  const p2 = await prisma.operationalPeriod.create({ data: { label: "Dos", startDay: sumarDias(dia, 1), endDay: sumarDias(dia, 1) } });
+  const ev1 = await prisma.event.create({ data: { periodId: p1.id, lugar: "Uno hoy", date: a(dia, "12:00") } });
+  const ev2 = await prisma.event.create({ data: { periodId: p2.id, lugar: "Dos mañana", date: a(sumarDias(dia, 1), "12:00") } });
+  await conFaltante(ev1.id, "Copa del uno");
+  await conFaltante(ev2.id, "Copa del dos");
+  assert.equal((await enviarResumen(a(dia, "07:05"))).enviados, 4);
+  const m = (await avisosDe(ids.dante, dia))[0].message;
+  assert.match(m, /Faltan 2 productos en el depósito\.$/);
+});
+
+test("si a una persona le falla el aviso, las que siguen igual lo reciben y la corrida siguiente la alcanza", async () => {
+  const dia = sumarDias(D1, 70);
+  const p = await prisma.operationalPeriod.create({ data: { label: "Falla una", startDay: dia, endDay: dia } });
+  await prisma.event.create({ data: { periodId: p.id, lugar: "Falla una", date: a(dia, "12:00") } });
+
+  // Dante (el depósito) es de los primeros en la lista: si su fallo cortara la
+  // vuelta, Pablo, Ana y Enrique quedarían sin resumen toda la mañana.
+  const original = prisma.notification.create;
+  const errores: unknown[][] = [];
+  const consolaOriginal = console.error;
+  console.error = (...args: unknown[]) => void errores.push(args);
+  (prisma.notification as { create: unknown }).create = async (args: { data: { recipientId: string } }) => {
+    if (args.data.recipientId === ids.dante) throw new Error("no se pudo guardar");
+    return original.call(prisma.notification, args as never);
+  };
+  try {
+    assert.deepEqual(await enviarResumen(a(dia, "07:05")), { enviados: 3 });
+  } finally {
+    (prisma.notification as { create: unknown }).create = original;
+    console.error = consolaOriginal;
+  }
+  assert.equal((await avisosDe(ids.dante, dia)).length, 0, "Dante no lo recibió");
+  for (const quien of [ids.pablo, ids.ana, ids.enrique]) assert.equal((await avisosDe(quien, dia)).length, 1);
+  assert.equal(errores.length, 1, "y quedó dicho");
+  assert.match(String(errores[0][0]), /^\[resumen\].*Dante/);
+
+  // Sin el fallo, la corrida de 10 minutos después le manda solo a quien faltó.
+  assert.deepEqual(await enviarResumen(a(dia, "07:15")), { enviados: 1 });
+  assert.equal((await avisosDe(ids.dante, dia)).length, 1);
+  assert.equal(await total(dia), 4);
+});

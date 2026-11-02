@@ -38,7 +38,9 @@ export async function register() {
   const { enviarResumenDeLaManana } = await import("@/lib/resumen-manana-db");
   const mandarResumen = async () => {
     const { enviados } = await enviarResumenDeLaManana();
-    if (enviados > 0) console.log(`[resumen] enviados: ${enviados}`);
+    // Cuenta personas con el aviso guardado en la app, no pushes aceptados: un
+    // teléfono sin avisos activados también cuenta. Por eso "avisos", no "enviados".
+    if (enviados > 0) console.log(`[resumen] avisos: ${enviados}`);
   };
   void mandarResumen();
   setInterval(() => void mandarResumen(), 10 * MINUTE);

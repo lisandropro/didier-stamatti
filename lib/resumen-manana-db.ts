@@ -88,24 +88,36 @@ export async function enviarResumenDeLaManana(ahora: Date = new Date()): Promise
     // las cosas se enteran primero.
     for (const u of sortByNotificationPriority(personas)) {
       if (yaRecibieron.has(u.id)) continue;
-      const texto = textoDelResumen(u.role, datos);
-      if (!texto) continue;
-      const { title, body, url } = texto;
-      const aviso = await prisma.notification.create({
-        data: {
-          recipientId: u.id,
-          actorName: "Sistema",
-          type: tipo,
-          message: body,
-          linkUrl: url,
-          // El push sale acá mismo, así que queda marcado como enviado: ningún
-          // barrido lo vuelve a mandar. Si un envío falla y queda registrado, lo
-          // reintenta `reintentarFallidos`.
-          pushedAt: new Date(),
-        },
-      });
-      await sendPushToUser(u.id, { title, body, url, tag: `resumen-${hoyDia}` }, { kind: "RESUMEN", notificationId: aviso.id }, { urgency: "normal" });
-      enviados++;
+      // Cada persona con su propio try/catch: si algo falla con una, y como se
+      // repite en cada corrida (cada 10 minutos), las que siguen en la lista se
+      // quedarían sin resumen toda la mañana. Si falló antes de guardar su aviso,
+      // no queda anotada y la corrida siguiente lo vuelve a intentar.
+      try {
+        const texto = textoDelResumen(u.role, datos);
+        if (!texto) continue;
+        const { title, body, url } = texto;
+        const aviso = await prisma.notification.create({
+          data: {
+            recipientId: u.id,
+            actorName: "Sistema",
+            type: tipo,
+            message: body,
+            linkUrl: url,
+            // El push sale acá mismo, así que queda marcado como enviado: ningún
+            // barrido lo vuelve a mandar. Si un envío falla y queda registrado, lo
+            // reintenta `reintentarFallidos`.
+            pushedAt: new Date(),
+          },
+        });
+        // A lo sumo una vez, como en `lib/faltantes-db.ts`: si el proceso se cae
+        // entre guardar el aviso y mandarlo, esa persona tiene el aviso en la app
+        // pero no el push. Se elige así porque dos resúmenes el mismo día es peor
+        // que uno que queda sin el push.
+        await sendPushToUser(u.id, { title, body, url, tag: `resumen-${hoyDia}` }, { kind: "RESUMEN", notificationId: aviso.id }, { urgency: "normal" });
+        enviados++;
+      } catch (e) {
+        console.error(`[resumen] no se pudo mandar el resumen a ${u.name}:`, mensajeDe(e));
+      }
     }
     return { enviados };
   } catch (e) {

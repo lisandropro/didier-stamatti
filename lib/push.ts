@@ -29,6 +29,20 @@ export type EstadoDeEntrega = "ACEPTADO" | "CADUCADO" | "RECHAZADO" | "ERROR";
 /** Un reintento solo dentro de esta ventana: un aviso de hace horas ya no sirve. */
 const VENTANA_REINTENTO_MIN = 60;
 
+/** Cuánto vive un push en el servicio de mensajería (TTL, en segundos) si el
+ *  teléfono está apagado o sin señal: pasado ese tiempo lo descarta en vez de
+ *  entregarlo tarde. */
+const VIDA_DEL_PUSH_SEG = 12 * 60 * 60;
+
+/** El resumen de la mañana dice "Hoy y mañana": un teléfono apagado a la mañana
+ *  que lo recibe a la noche se confunde más de lo que se informa. Por eso vive
+ *  menos que el resto. */
+const VIDA_POR_TIPO: Partial<Record<TipoDeAviso, number>> = { RESUMEN: 4 * 60 * 60 };
+
+/** La vida sale del tipo de aviso y no de quien llama: el reintento reenvía con
+ *  el `kind` guardado en el registro, y tiene que dar lo mismo que el primer envío. */
+const vidaDelPush = (kind: TipoDeAviso): number => VIDA_POR_TIPO[kind] ?? VIDA_DEL_PUSH_SEG;
+
 /** Los dos motivos por los que no se puede ni intentar el envío. Quedan en
  *  `error` del registro; las constantes evitan que quien lee el texto (la
  *  prueba de un teléfono, la pantalla de dispositivos) dependa de un literal. */
@@ -59,8 +73,9 @@ export const transporte = {
     destino: { endpoint: string; keys: { p256dh: string; auth: string } },
     cuerpo: string,
     urgency: Urgencia,
+    ttl: number,
   ): Promise<{ statusCode: number }> {
-    const r = await webpush.sendNotification(destino, cuerpo, { urgency, TTL: 60 * 60 * 12, timeout: 10_000 });
+    const r = await webpush.sendNotification(destino, cuerpo, { urgency, TTL: ttl, timeout: 10_000 });
     return { statusCode: r.statusCode };
   },
 };
@@ -127,6 +142,8 @@ export async function enviarASuscripcion(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         JSON.stringify({ ...payload, d: id }),
         urgency,
+        // `reintentarFallidos` también pasa por acá, con el `kind` guardado.
+        vidaDelPush(meta.kind),
       );
       statusCode = r.statusCode;
     } catch (e) {

@@ -363,3 +363,13 @@ test("en el celular los textos de contenido miden al menos 12 px", () => {
     assert.ok(css.includes(`${sel}{font-size:var(--t-chico)}`), `${sel} sigue en 11 px`);
   }
 });
+
+/**
+ * El resumen de la mañana es un aviso de varios renglones ("Hoy: …", "Mañana: …",
+ * "Falta 1 producto…"). Sin `white-space`, el navegador junta los saltos de línea
+ * y en Avisos se lee todo corrido. Los demás avisos son de una línea y no cambian.
+ */
+test("en Avisos los renglones del mensaje se respetan", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(/\.notif-msg\{[^}]*white-space:pre-line/.test(css), "el resumen de la mañana se lee todo en una línea");
+});
