@@ -43,6 +43,7 @@
   /* Escala tipográfica — 8 pasos deliberados (antes: 18 tamaños con casi-duplicados).
      Cada paso ya incluye el multiplicador de accesibilidad --fs. */
   --t-xs:calc(11px * var(--fs));    /* etiquetas en mayúscula, micro-texto */
+  --t-chico:calc(12px * var(--fs));    /* textos de contenido chicos en el celular */
   --t-sm:calc(12.5px * var(--fs));  /* meta, rubros, ayudas, chips */
   --t-base:calc(14px * var(--fs));  /* cuerpo, tablas, botones */
   --t-md:calc(15px * var(--fs));    /* navegación, campos de formulario */
@@ -2683,3 +2684,13 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .tiron.actualizando{color:var(--gold)}
 .tiron.actualizando svg{animation:tiron-gira .8s linear infinite}
 @media (prefers-reduced-motion:reduce){ .tiron.actualizando svg{animation:none} }
+
+/* Textos de contenido chicos: 12 px en el celular. A 11 px, "Faltan 10" o la
+   fecha debajo de un título costaban en el depósito. Las etiquetas de la barra
+   de abajo quedan en 11: con seis botones entran justas en 360 px. */
+@media screen and (max-width:860px){
+  .orow-resumen{font-size:var(--t-chico)}
+  .topbar .sub{font-size:var(--t-chico)}
+  .topbar-pedido .sub{font-size:var(--t-chico)}
+  .tile .k{font-size:var(--t-chico)}
+}

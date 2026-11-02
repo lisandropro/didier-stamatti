@@ -331,3 +331,18 @@ test("el tirón para actualizar está montado y no pelea con las hojas", () => {
   assert.ok(s.includes("router.refresh()"), "soltar no actualiza");
   assert.ok(s.includes("scrollY"), "tirar en el medio de la lista actualizaría en vez de scrollear");
 });
+
+/**
+ * Textos chicos a 12 px en el celular (los de contenido, no la barra de abajo,
+ * que queda en 11 a propósito). A 11 px, "Faltan 10" o la fecha debajo de un
+ * título costaban en el depósito. Esta guarda mira que el token y las cuatro
+ * reglas existan; que ninguna regla posterior las pise no lo mide, se verificó
+ * leyendo el archivo.
+ */
+test("en el celular los textos de contenido miden al menos 12 px", () => {
+  const css = fuente("app/globals.css");
+  assert.ok(css.includes("--t-chico:calc(12px * var(--fs))"), "no hay tamaño de 12 px para los textos chicos");
+  for (const sel of [".orow-resumen", ".topbar .sub", ".topbar-pedido .sub", ".tile .k"]) {
+    assert.ok(css.includes(`${sel}{font-size:var(--t-chico)}`), `${sel} sigue en 11 px`);
+  }
+});
