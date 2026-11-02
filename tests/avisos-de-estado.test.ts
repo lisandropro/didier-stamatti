@@ -130,6 +130,11 @@ test("el chip del estado no sale verde cuando el evento vuelve a borrador", () =
   assert.match(s, /claseDelCambio\(c\.kind, c\.after\)/, "el chip no usa el color por valor");
 });
 
+test("el chip de la papelera no sale rojo cuando el evento se recupera", () => {
+  const s = paginaDelAviso();
+  assert.match(s, /kind === "PAPELERA"\) return after === "VIVO" \? "ok" : "crit"/, "recuperar un evento se pinta de alarma");
+});
+
 test("el aviso que avisa el borrado no dice que se borró después de sus cambios", () => {
   const s = paginaDelAviso();
   assert.match(s, /kind === "PAPELERA" && [a-z]+\.after === "BORRADO"/, "no reconoce el aviso del borrado");

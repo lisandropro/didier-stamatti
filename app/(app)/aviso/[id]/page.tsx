@@ -36,12 +36,14 @@ const KIND_CLASS: Record<string, string> = {
   PAPELERA: "crit",
 };
 
-// El color sale del tipo, salvo en el estado: ahí depende del valor. Verde para
-// todo el tipo hacía que "Volvió a borrador" (el evento deja de estar listo) se
-// viera como una buena noticia; con `warn` pide fijarse, como los demás cambios
-// que obligan a revisar el pedido.
+// El color sale del tipo, salvo en el estado y la papelera: ahí depende del
+// valor. Verde para todo el estado hacía que "Volvió a borrador" (el evento deja
+// de estar listo) se viera como una buena noticia; con `warn` pide fijarse, como
+// los demás cambios que obligan a revisar el pedido. Y rojo para toda la
+// papelera pintaba de alarma también "Se recuperó el evento".
 function claseDelCambio(kind: string, after: string | null): string {
   if (kind === "ESTADO") return after === "LISTO" ? "ok" : "warn";
+  if (kind === "PAPELERA") return after === "VIVO" ? "ok" : "crit";
   return KIND_CLASS[kind] ?? "neutral";
 }
 
