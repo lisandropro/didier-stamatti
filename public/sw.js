@@ -4,6 +4,8 @@
    dinosaurio del navegador. */
 
 // v2: trae la página sin conexión; al activarse borra el caché v1.
+// Si se cambia public/sin-conexion.html hay que subir esta versión: si no, los
+// teléfonos que ya la tienen guardada siguen mostrando la vieja.
 const CACHE = "didier-static-v2";
 
 // Se guarda al instalar: si no estuviera ya en el teléfono, justo cuando hace

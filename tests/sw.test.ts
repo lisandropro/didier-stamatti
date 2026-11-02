@@ -24,9 +24,14 @@ type Opciones = {
   navegacionColgada?: boolean;
   /** Traer la ventana al frente falla. */
   focoFalla?: boolean;
+  /** El caché del teléfono está vacío: /sin-conexion.html no se guardó nunca. */
+  sinPaginaGuardada?: boolean;
 };
 
 const respuestaOk = { ok: true, json: async () => ({ clave: "BClave" }) };
+
+/** Lo que dice la página sin conexión que el teléfono tiene guardada. */
+const PAGINA_SIN_CONEXION = "<h1>Sin conexión</h1>";
 
 function cargarSW(opciones: Opciones = {}) {
   const manejadores: Record<string, Manejador> = {};
@@ -63,14 +68,56 @@ function cargarSW(opciones: Opciones = {}) {
       openWindow: async (u: string) => { abiertas.push(u); },
     },
   };
-  const fetch = async (url: string, init?: { method?: string; body?: string }) => {
-    const pedido = { url, init };
+  // `fetch` recibe un texto (las llamadas del propio service worker) o el pedido
+  // del navegador (una navegación): en los dos casos se anota solo la dirección.
+  const dirDe = (x: string | { url: string }) => (typeof x === "string" ? x : x.url);
+  const fetch = async (entrada: string | { url: string }, init?: { method?: string; body?: string }) => {
+    const pedido = { url: dirDe(entrada), init };
     pedidos.push(pedido);
     return opciones.fetch ? opciones.fetch(pedido) : respuestaOk;
   };
+  // El caché del teléfono. `guardados` es todo lo que el service worker le
+  // escribió, con `add` o con `put`: la regla es que ahí solo entre la página sin
+  // conexión (y los archivos de diseño con hash, que acá no se piden).
+  const guardados: string[] = [];
+  const enCache = new Map<string, Response>();
+  if (!opciones.sinPaginaGuardada) enCache.set("/sin-conexion.html", new Response(PAGINA_SIN_CONEXION));
+  const caches = {
+    keys: async () => [],
+    delete: async () => true,
+    match: async (x: string | { url: string }) => enCache.get(dirDe(x))?.clone(),
+    open: async () => ({
+      put: async (x: string | { url: string }, res: Response) => {
+        guardados.push(dirDe(x));
+        enCache.set(dirDe(x), res);
+      },
+      add: async (x: string | { url: string }) => {
+        guardados.push(dirDe(x));
+        enCache.set(dirDe(x), new Response(PAGINA_SIN_CONEXION));
+      },
+    }),
+  };
   const codigo = fs.readFileSync(path.join(process.cwd(), "public", "sw.js"), "utf8");
-  vm.runInNewContext(codigo, { self, fetch, caches: { keys: async () => [], match: async () => undefined, open: async () => ({ put: async () => {} }), delete: async () => true }, URL });
-  return { manejadores, pedidos, mostradas, navegadas, abiertas, enfocadas: () => enfocadas };
+  // `Response` hay que pasarla: la caja de arena no hereda los globales de Node.
+  vm.runInNewContext(codigo, { self, fetch, caches, URL, Response });
+  return { manejadores, pedidos, mostradas, navegadas, abiertas, guardados, enfocadas: () => enfocadas };
+}
+
+/**
+ * Abre una pantalla (o hace otro pedido) como lo haría el navegador, y devuelve
+ * lo que el service worker contestó, o `null` si no se metió en el pedido.
+ */
+async function navegar(sw: ReturnType<typeof cargarSW>, url = "https://app.test/preparar", modo = "navigate") {
+  const salida: { respuesta?: Promise<unknown> } = {};
+  const promesas: Promise<unknown>[] = [];
+  sw.manejadores.fetch({
+    request: { method: "GET", url, mode: modo },
+    respondWith: (p: Promise<unknown>) => (salida.respuesta = Promise.resolve(p)),
+    waitUntil: (p: Promise<unknown>) => promesas.push(p),
+  });
+  const r = salida.respuesta ? await salida.respuesta : null;
+  await Promise.all(promesas);
+  return r;
 }
 
 /** Dispara el evento y devuelve lo que el service worker pidió mantener vivo. */
@@ -198,4 +245,59 @@ test("si el servidor no anotó la suscripción nueva, la vieja no se da de baja"
   await disparar(sw.manejadores.pushsubscriptionchange, { oldSubscription: { endpoint: "https://fcm.googleapis.com/fcm/send/vieja", options: {} } });
   assert.ok(sw.pedidos.some((p) => p.init?.method === "POST" && p.url === "/api/notifications/subscribe"), "ni siquiera intentó anotar la nueva");
   assert.equal(sw.pedidos.some((p) => p.init?.method === "DELETE"), false, "dio de baja la vieja sin tener la nueva");
+});
+
+/**
+ * Abrir una pantalla sin señal (23/10). La regla de fondo: el service worker
+ * nunca guarda pantallas ni datos (el stock y los pedidos jamás se ven viejos);
+ * lo único que tiene guardado es /sin-conexion.html. Se prueba corriendo el
+ * código, no leyendo el texto: así un cambio que empiece a guardar páginas, o
+ * que tape un error del servidor con la página de "sin conexión", se nota.
+ */
+test("al instalarse, guarda la página sin conexión para tenerla cuando falte la señal", async () => {
+  const sw = cargarSW({ sinPaginaGuardada: true });
+  await disparar(sw.manejadores.install, {});
+  assert.deepEqual(sw.guardados, ["/sin-conexion.html"]);
+});
+
+test("abrir una pantalla con señal trae la del servidor y no guarda nada", async () => {
+  const servida = new Response("<h1>Preparar</h1>");
+  const sw = cargarSW({ fetch: async () => servida });
+  const r = await navegar(sw);
+  assert.equal(r, servida, "no devolvió lo que contestó el servidor");
+  assert.deepEqual(sw.guardados, [], "guardó una pantalla en el teléfono");
+});
+
+test("si el servidor contesta con error, se muestra ese error y no la página sin conexión", async () => {
+  // Un 500 es el servidor andando mal, no el teléfono sin señal: taparlo con
+  // "sin conexión" mandaría a la persona a buscar la señal en vez de avisar.
+  const caida = new Response("falló", { status: 500 });
+  const sw = cargarSW({ fetch: async () => caida });
+  const r = (await navegar(sw)) as Response;
+  assert.equal(r, caida);
+  assert.equal(r.status, 500);
+  assert.deepEqual(sw.guardados, []);
+});
+
+test("abrir una pantalla sin señal muestra la página sin conexión guardada", async () => {
+  const sw = cargarSW({ fetch: async () => { throw new TypeError("Failed to fetch"); } });
+  const r = (await navegar(sw)) as Response;
+  assert.equal(await r.text(), PAGINA_SIN_CONEXION);
+  assert.deepEqual(sw.guardados, [], "guardó algo al quedarse sin señal");
+});
+
+test("sin señal y sin la página guardada, falla como siempre en vez de inventar una respuesta", async () => {
+  const sw = cargarSW({ sinPaginaGuardada: true, fetch: async () => { throw new TypeError("Failed to fetch"); } });
+  const r = (await navegar(sw)) as Response;
+  assert.equal(r.type, "error", "devolvió una respuesta común en vez del error de red");
+});
+
+test("los datos y el resto de los pedidos no se atienden ni se guardan", async () => {
+  // Solo las pantallas tienen la salida de "sin conexión". Un pedido de datos
+  // (el stock, los pedidos) pasa derecho al servidor: sin señal tiene que fallar,
+  // nunca devolver algo guardado.
+  const sw = cargarSW({ fetch: async () => new Response("{}") });
+  const r = await navegar(sw, "https://app.test/api/stock", "cors");
+  assert.equal(r, null, "se metió en un pedido de datos");
+  assert.deepEqual(sw.guardados, []);
 });

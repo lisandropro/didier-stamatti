@@ -2644,12 +2644,24 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 
 /* ===== Sin conexión ========================================================
    La franja va fija arriba, por encima de la cabecera, y no tapa nada que se
-   toque: es un aviso, no un bloqueo. */
+   toque: es un aviso, no un bloqueo.
+   `width:max-content` la deja del ancho de su texto: con `left:50%` y ancho
+   automático el navegador le da como mucho la mitad de la pantalla y el texto
+   se partía en 3 o 4 líneas encima de la cabecera. Con el `max-width` de tope,
+   en un celular angosto baja a dos líneas a lo sumo. El texto va en `--ground`
+   y no en blanco: sobre el `--crit` y el `--ok` del tema oscuro (que son
+   claros) el blanco no llega al contraste mínimo; `--ground` sí, en los dos
+   temas.
+   `.sin-conexion-aviso` es el mismo contenedor cuando no hay nada que decir:
+   vacío y sin verse, pero fijo para no ocupar un lugar en la grilla de `.app`
+   (en la pantalla ancha, un hijo suelto le correría la barra lateral). */
+.sin-conexion,
+.sin-conexion-aviso{position:fixed}
 .sin-conexion{
-  position:fixed; z-index:40; left:50%; transform:translateX(-50%);
+  z-index:40; left:50%; transform:translateX(-50%);
   top:calc(var(--sp-2) + env(safe-area-inset-top));
-  max-width:calc(100% - var(--sp-6)); padding:var(--sp-2) var(--sp-4);
-  border-radius:var(--r-pill); background:var(--crit); color:#fff;
+  width:max-content; max-width:calc(100% - var(--sp-6)); padding:var(--sp-2) var(--sp-4);
+  border-radius:var(--r-pill); background:var(--crit); color:var(--ground);
   font-size:var(--t-sm); font-weight:650; text-align:center;
   box-shadow:0 6px 20px rgba(0,0,0,.25); pointer-events:none;
 }
