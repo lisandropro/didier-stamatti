@@ -37,6 +37,17 @@ const KIND_CLASS: Record<string, string> = {
   PAPELERA: "crit",
 };
 
+// El estado y la papelera se guardan como códigos (NO_LISTO, BORRADO), que sirven
+// para comparar pero no para leer. Se traducen solo al mostrar: lo guardado no cambia.
+const VALOR_LEGIBLE: Record<string, Record<string, string>> = {
+  ESTADO: { LISTO: "Listo", NO_LISTO: "Borrador" },
+  PAPELERA: { VIVO: "En su período", BORRADO: "En la papelera" },
+};
+function valorLegible(kind: string, valor: string | null): string | null {
+  if (valor === null) return null;
+  return VALOR_LEGIBLE[kind]?.[valor] ?? valor;
+}
+
 export default async function AvisoPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
@@ -62,6 +73,9 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
 
   // Los cambios de ESTA tanda y no los de las siguientes: ver cambiosDeLaTanda.
   const cambios = await cambiosDeLaTanda(aviso);
+  // En el aviso que avisa justamente el borrado, "se borró después de estos
+  // cambios" sería falso: el borrado ES el cambio.
+  const avisaElBorrado = cambios.some((c) => c.kind === "PAPELERA" && c.after === "BORRADO");
 
   return (
     <>
@@ -87,7 +101,10 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
           <div className="banner crit">
             <div>
               <b>Este evento está en la papelera</b>
-              <p>Se borró después de estos cambios. Se puede recuperar desde Períodos → Papelera.</p>
+              <p>
+                {!avisaElBorrado && "Se borró después de estos cambios. "}
+                Se puede recuperar desde Períodos → Papelera.
+              </p>
             </div>
           </div>
         )}
@@ -121,9 +138,9 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
                           {KIND_LABEL[c.kind] ?? c.kind}
                         </span>
                       </td>
-                      <td className="dim" data-label="Antes">{c.before ?? "—"}</td>
+                      <td className="dim" data-label="Antes">{valorLegible(c.kind, c.before) ?? "—"}</td>
                       <td data-label="Ahora">
-                        {c.after ? <span className="stocknum">{c.after}</span> : <span className="dim">—</span>}
+                        {c.after ? <span className="stocknum">{valorLegible(c.kind, c.after)}</span> : <span className="dim">—</span>}
                       </td>
                     </tr>
                   ))}

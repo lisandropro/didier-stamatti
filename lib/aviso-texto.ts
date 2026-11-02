@@ -214,8 +214,10 @@ export function esTituloSinPendientes(title: unknown): boolean {
  *  - `pedido`: un evento cuyo pedido lo empujó (subió lo pedido, o cambió entero);
  *  - `stock`: no hubo un cambio así, pero sí un movimiento de stock del producto;
  *  - `otro`: ninguna de las dos. Pasa con lo que cambia el pedido sin dejar un
- *    cambio registrado: recuperar un evento de la papelera, descartar los
- *    cambios o restaurar una versión. */
+ *    cambio que lo explique: descartar los cambios, restaurar una versión o
+ *    recuperar un evento de la papelera (deja un cambio `PAPELERA`, pero ese
+ *    tipo no está entre los que traen un pedido entero, así que no se culpa a
+ *    nadie). */
 export type CausaDeFaltante = { tipo: "pedido"; lugar: string } | { tipo: "stock" } | { tipo: "otro" };
 
 /** Un faltante a avisar, con lo que lo explica. */

@@ -369,14 +369,24 @@ export async function setEventStatus(eventId: string, status: "LISTO" | "NO_LIST
   if (!user) return { ok: false, error: permiso! };
   // Solo un evento vivo: antes se podía marcar LISTO uno que estaba en la papelera.
   const vivo = { id: eventId, deletedAt: null, period: { deletedAt: null } };
-  // El estado de antes, para avisar solo si de verdad cambió.
+  // La lectura solo distingue "no existe" de "ya estaba así" (y da el estado de
+  // antes para el aviso). Quien decide si el cambio fue de este aparato es la
+  // escritura: leer y después escribir deja que dos teléfonos a la vez avisen,
+  // cada uno, un estado y que solo quede el del último.
   const antes = await prisma.event.findFirst({ where: vivo, select: { status: true } });
   if (!antes) return { ok: false, error: "El evento ya no está disponible." };
-  const r = await prisma.event.updateMany({ where: vivo, data: { status } });
-  if (r.count === 0) return { ok: false, error: "El evento ya no está disponible." };
+  if (antes.status === status) return { ok: true }; // ya estaba así: no hay nada que guardar ni avisar
+  const r = await prisma.event.updateMany({ where: { ...vivo, status: { not: status } }, data: { status } });
+  if (r.count === 0) {
+    // Entre la lectura y la escritura, o lo borraron o otro aparato ya lo dejó así.
+    const sigue = await prisma.event.findFirst({ where: vivo, select: { id: true } });
+    if (!sigue) return { ok: false, error: "El evento ya no está disponible." };
+    revalidatePath("/");
+    return { ok: true };
+  }
 
-  // Se avisa DESPUÉS de guardar. Marcarlo con el estado que ya tenía no avisa.
-  if (antes.status !== status) {
+  // Se avisa DESPUÉS de guardar, y solo si esta escritura fue la que lo cambió.
+  if (r.count === 1) {
     await notifyOrderChange(user, eventId, { itemName: "Estado", kind: "ESTADO", before: antes.status, after: status });
   }
   revalidatePath("/");

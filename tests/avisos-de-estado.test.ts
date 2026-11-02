@@ -55,3 +55,39 @@ test("las tres acciones avisan, y después de guardar", () => {
     assert.ok(escritura !== -1 && escritura < aviso, `${funcion} avisa antes de guardar`);
   }
 });
+
+test("dos aparatos a la vez: setEventStatus escribe condicionado y avisa solo si le tocó cambiarlo a él", () => {
+  const cuerpo = cuerpoDe("app/actions/period.ts", "setEventStatus");
+  // Leer y después escribir deja que dos teléfonos avisen cada uno su estado y
+  // gane solo uno: la escritura tiene que ser la que decide si cambió.
+  assert.match(cuerpo, /updateMany\(\{[^}]*status:\s*\{\s*not:\s*status\s*\}/, "la escritura no es condicionada al estado distinto");
+  const escritura = cuerpo.indexOf("updateMany(");
+  const aviso = cuerpo.indexOf("notifyOrderChange(");
+  const condicion = cuerpo.slice(escritura, aviso);
+  assert.match(condicion, /\.count\s*===\s*1/, "no avisa solo cuando la escritura cambió una fila");
+  assert.doesNotMatch(cuerpo, /antes\.status\s*!==\s*status/, "sigue decidiendo con la lectura previa");
+});
+
+const PAGINA_AVISO = "app/(app)/aviso/[id]/page.tsx";
+const paginaDelAviso = () => fs.readFileSync(path.join(process.cwd(), PAGINA_AVISO), "utf8");
+
+test("el detalle del aviso traduce el estado y la papelera a palabras, sin tocar lo guardado", () => {
+  const s = paginaDelAviso();
+  assert.match(s, /function valorLegible\(kind: string, valor: string \| null\)/, "falta valorLegible");
+  for (const [codigo, palabra] of [["LISTO", "Listo"], ["NO_LISTO", "Borrador"], ["VIVO", "En su período"], ["BORRADO", "En la papelera"]]) {
+    assert.match(s, new RegExp(`${codigo}:\\s*"${palabra}"`), `${codigo} no se traduce a "${palabra}"`);
+  }
+  // Se traduce al mostrar: las dos columnas pasan por la función.
+  assert.match(s, /valorLegible\(c\.kind, c\.before\)/, "la columna Antes muestra el código");
+  assert.match(s, /valorLegible\(c\.kind, c\.after\)/, "la columna Ahora muestra el código");
+});
+
+test("el aviso que avisa el borrado no dice que se borró después de sus cambios", () => {
+  const s = paginaDelAviso();
+  assert.match(s, /kind === "PAPELERA" && [a-z]+\.after === "BORRADO"/, "no reconoce el aviso del borrado");
+  // La primera frase solo sale cuando el borrado NO es uno de los cambios del aviso.
+  const frase = s.indexOf("Se borró después de estos cambios");
+  assert.notEqual(frase, -1, "se perdió la frase para los demás avisos");
+  assert.match(s.slice(Math.max(0, frase - 200), frase), /!\s*avisaElBorrado|avisaElBorrado\s*\?/, "la frase sale también en el aviso del borrado");
+  assert.match(s, /Se puede recuperar desde Períodos → Papelera\./, "se perdió la forma de recuperarlo");
+});
