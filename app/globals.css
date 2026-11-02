@@ -2367,14 +2367,37 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .prep-titulo b{min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--ink); font-size:var(--t-md)}
 .prep-hoy{color:var(--crit); font-weight:800}
 .prep-faltan{display:flex; align-items:center; min-height:var(--tap); padding:0 var(--sp-2); color:var(--crit); font-weight:700; text-decoration:none; white-space:nowrap}
+/* Los saltos a cada sector van en la cabecera fija. En la computadora entran en
+   una fila (si no, bajan a otra); en el celular se deslizan de costado en una
+   sola, para que la cabecera no se coma la pantalla. No usa `filtros-scroll`:
+   esa clase es `display:contents` en la pantalla ancha y le sacaría a la fila su
+   propio relleno y su flex. */
+.prep-saltos{display:flex; gap:var(--sp-2); padding:0 var(--sp-4) var(--sp-2); flex-wrap:wrap}
+@media (max-width:860px){
+  .prep-saltos{flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; overscroll-behavior-x:contain}
+  .prep-saltos::-webkit-scrollbar{display:none}
+}
+.prep-salto{
+  display:inline-flex; align-items:center; min-height:var(--tap); padding:0 var(--sp-3);
+  border:1px solid var(--hair); border-radius:var(--r-pill); background:var(--surface);
+  color:var(--ink); font-size:var(--t-sm); font-weight:650; text-decoration:none; white-space:nowrap; flex:none;
+}
+.prep-salto.ok{color:var(--ok); border-color:var(--ok)}
+.prep-salto.aplicar{color:var(--warn); border-color:var(--warn)}
 .prep-contenido{display:flex; flex-direction:column; gap:var(--sp-5)}
 .prep-seccion h2{display:flex; align-items:center; gap:var(--sp-2); font-size:var(--t-lg); margin:0 0 var(--sp-2)}
 /* Título y botón en una fila aparte: el botón no forma parte del nombre del h2. */
 .prep-seccion-cab{display:flex; align-items:center; gap:var(--sp-2); margin:0 0 var(--sp-2)}
 .prep-seccion-cab h2{margin:0}
 .prep-sector-btn{margin-left:auto}
-/* Que el título no quede escondido bajo la cabecera fija al saltar desde "Faltan N". */
-#faltantes{scroll-margin-top:72px}
+/* Al saltar (desde "Faltan N" o desde la fila de saltos), el título de la sección
+   no puede quedar escondido bajo la cabecera fija. Medida: 60 px la fila de
+   volver/lugar/faltan (8 + 44 + 8), 52 px la fila de saltos (44 + 8 de abajo)
+   y 1 px del borde = 113 px, más 17 px de aire (y si asoma el aviso de error,
+   la cabecera crece y ese aire se come). Sirve para todas las secciones, así que
+   reemplaza al `#faltantes{scroll-margin-top:72px}` de antes: el selector por id
+   le ganaba a esta regla y "Faltan N" habría quedado tapado por la fila nueva. */
+.prep-seccion{scroll-margin-top:130px}
 .prep-solo-lectura{margin:0; color:var(--muted); font-size:var(--t-sm)}
 .count-pill.ok{color:var(--ok); border-color:var(--ok)}
 .prep-aplicar{background:var(--surface); border:2px solid var(--warn); border-radius:var(--radius); padding:var(--sp-3)}

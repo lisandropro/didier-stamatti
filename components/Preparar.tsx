@@ -184,6 +184,21 @@ export function Preparar({ data }: { data: Data }) {
             <a href="#faltantes" className="prep-faltan">Faltan {data.faltantes.length}</a>
           )}
         </div>
+        {/* Saltos a cada sector, con su avance: para ir de Enseres a Bebida no
+            hay que recorrer la lista entera. Fija con la cabecera. Con un solo
+            destino no hace falta: no hay a dónde saltar. */}
+        {(paraAplicar.length > 0 ? 1 : 0) + sectores.length > 1 && (
+          <nav className="prep-saltos" aria-label="Ir a un sector">
+            {paraAplicar.length > 0 && (
+              <a href="#aplicar" className="prep-salto aplicar">Cambios {paraAplicar.length}</a>
+            )}
+            {sectores.map((s) => (
+              <a key={s.category} href={`#sector-${s.category}`} className={`prep-salto${s.listos === s.total ? " ok" : ""}`}>
+                {s.label} {s.listos}/{s.total}
+              </a>
+            ))}
+          </nav>
+        )}
         {error && <div className="form-error prep-error" role="alert">{error.texto}</div>}
       </div>
 
@@ -193,14 +208,14 @@ export function Preparar({ data }: { data: Data }) {
         )}
 
         {paraAplicar.length > 0 && (
-          <section className="prep-seccion prep-aplicar">
+          <section id="aplicar" className="prep-seccion prep-aplicar">
             <h2>Cambios para aplicar <span className="count-pill">{paraAplicar.length}</span></h2>
             {paraAplicar.map((i) => fila(i))}
           </section>
         )}
 
         {sectores.map((s) => (
-          <section key={s.category} className="prep-seccion">
+          <section key={s.category} id={`sector-${s.category}`} className="prep-seccion">
             {/* El botón fuera del h2: si no, el nombre del título leído por un
                 lector de pantalla sería "Enseres 1/5 Tildar todo". */}
             <div className="prep-seccion-cab">

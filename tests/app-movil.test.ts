@@ -297,3 +297,16 @@ test("si se corta la señal, la app lo dice arriba y se pone al día cuando vuel
   assert.ok(s.includes("router.refresh()"), "al volver la señal la pantalla queda vieja");
   assert.ok(fuente("app/(app)/layout.tsx").includes("<SinConexion />"), "el layout no monta el aviso de sin conexión");
 });
+
+/**
+ * Preparar, de Enseres a Bebida (23/10). Cada sector es una lista larga: para
+ * ir de uno a otro había que scrollear todo lo del medio. Una fila de saltos en
+ * la cabecera fija lleva directo, con el avance de cada sector a la vista.
+ */
+test("en Preparar se salta a cada sector desde una fila fija, con su avance", () => {
+  const s = fuente("components/Preparar.tsx");
+  assert.ok(s.includes('className="prep-saltos'), "no hay fila de saltos a los sectores");
+  assert.ok(s.includes("href={`#sector-${s.category}`}"), "los saltos no llevan a cada sector");
+  assert.ok(s.includes("id={`sector-${s.category}`}"), "los sectores no tienen a dónde saltar");
+  assert.ok(/\.prep-seccion\{[^}]*scroll-margin-top/.test(fuente("app/globals.css")), "el salto deja el título del sector debajo de la cabecera fija");
+});
