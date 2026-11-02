@@ -289,33 +289,48 @@ test("si no se puede guardar la página sin conexión, el service worker se inst
   assert.deepEqual(sw.guardados, []);
 });
 
-test("si la página sin conexión no se pudo guardar al instalar, al activarse se vuelve a intentar", async () => {
+test("si la página sin conexión no se pudo guardar al instalar, la próxima pantalla con señal la guarda", async () => {
   // Sin esto, tolerar el fallo de la instalación dejaba al teléfono sin la página
   // hasta el próximo cambio del archivo: sin señal, la pantalla de error del
   // navegador en vez de la propia.
-  const sw = cargarSW({ sinPaginaGuardada: true, guardarFalla: true });
+  const servida = new Response("<h1>Preparar</h1>");
+  const sw = cargarSW({ sinPaginaGuardada: true, guardarFalla: true, fetch: async () => servida });
   await disparar(sw.manejadores.install, {});
   assert.deepEqual(sw.guardados, [], "la instalación no debería haber guardado nada");
   sw.arreglarGuardado();
-  await disparar(sw.manejadores.activate, {});
-  assert.deepEqual(sw.intentosAdd, ["/sin-conexion.html", "/sin-conexion.html"], "al activarse no volvió a pedir la página");
-  assert.deepEqual(sw.guardados, ["/sin-conexion.html"]);
+  const r = await navegar(sw);
+  assert.equal(r, servida, "no devolvió lo que contestó el servidor");
+  assert.deepEqual(sw.guardados, ["/sin-conexion.html"], "con señal no volvió a guardar la página");
 });
 
-test("si el reintento al activarse también falla, el service worker se activa igual", async () => {
-  // Es un extra: si falla, la activación no puede rechazarse, porque con ella se
-  // caen también los avisos push.
-  const sw = cargarSW({ sinPaginaGuardada: true, guardarFalla: true });
+test("activarse no pide nada a la red, aunque falte la página sin conexión", async () => {
+  // Con "señal pero sin datos" un pedido colgado demoraría la activación, y
+  // mientras tanto la app no abre.
+  const sw = cargarSW({ sinPaginaGuardada: true });
   await disparar(sw.manejadores.activate, {});
-  assert.equal(sw.reclamadas(), 1, "la activación quedó sin tomar el control de las ventanas");
+  assert.deepEqual(sw.intentosAdd, [], "la activación pidió la página a la red");
+  assert.equal(sw.reclamadas(), 1);
+});
+
+test("si guardarla al abrir una pantalla falla, la pantalla se muestra igual", async () => {
+  const servida = new Response("<h1>Preparar</h1>");
+  const sw = cargarSW({ sinPaginaGuardada: true, guardarFalla: true, fetch: async () => servida });
+  const r = await navegar(sw);
+  assert.equal(r, servida);
+  assert.deepEqual(sw.intentosAdd, ["/sin-conexion.html"]);
   assert.deepEqual(sw.guardados, []);
 });
 
-test("con la página sin conexión ya guardada, activarse no la vuelve a pedir", async () => {
-  const sw = cargarSW();
-  await disparar(sw.manejadores.activate, {});
+test("con la página sin conexión ya guardada, abrir pantallas no la vuelve a pedir", async () => {
+  const sw = cargarSW({ fetch: async () => new Response("<h1>Preparar</h1>") });
+  await navegar(sw);
   assert.deepEqual(sw.intentosAdd, [], "volvió a bajar una página que el teléfono ya tiene");
-  assert.equal(sw.reclamadas(), 1);
+});
+
+test("sin señal no intenta guardar la página sin conexión", async () => {
+  const sw = cargarSW({ sinPaginaGuardada: true, fetch: async () => { throw new TypeError("Failed to fetch"); } });
+  await navegar(sw);
+  assert.deepEqual(sw.intentosAdd, []);
 });
 
 test("abrir una pantalla con señal trae la del servidor y no guarda nada", async () => {

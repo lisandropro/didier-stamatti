@@ -15,32 +15,28 @@ const CACHE = "didier-static-v3";
 // se rechazara, el service worker nunca se activaría y se caerían también los
 // avisos push, que son lo importante de este archivo.
 self.addEventListener("install", (event) =>
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((c) => c.add("/sin-conexion.html"))
-      .catch(() => {})
-      .then(() => self.skipWaiting())
-  )
+  event.waitUntil(guardarSinConexion().then(() => self.skipWaiting()))
 );
 
+/** Guarda la página sin conexión si todavía no está guardada. Nunca falla. */
+async function guardarSinConexion() {
+  try {
+    const cache = await caches.open(CACHE);
+    if (!(await cache.match("/sin-conexion.html"))) await cache.add("/sin-conexion.html");
+  } catch {
+    // Queda como estaba: se vuelve a intentar con la próxima pantalla que se abra con señal.
+  }
+}
+
+// La activación no pide nada a la red: con "señal pero sin datos" un pedido
+// colgado la demoraría, y mientras no termina el navegador no le pasa las
+// pantallas al service worker (la app no abriría).
 self.addEventListener("activate", (event) =>
   event.waitUntil(
     (async () => {
       const names = await caches.keys();
       await Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n)));
       await self.clients.claim();
-      // Si al instalarse no se pudo guardar la página sin conexión (se tolera, ver
-      // arriba), no quedaría guardada hasta el próximo cambio del archivo, y sin
-      // red saldría la pantalla de error del navegador. Se vuelve a intentar acá,
-      // pero sin que un fallo frene la activación: es un extra, y con ella se
-      // caerían también los avisos push.
-      try {
-        const cache = await caches.open(CACHE);
-        if (!(await cache.match("/sin-conexion.html"))) await cache.add("/sin-conexion.html");
-      } catch {
-        // Queda como estaba: se volverá a intentar en la próxima activación.
-      }
     })()
   )
 );
@@ -63,9 +59,16 @@ self.addEventListener("fetch", (event) => {
   // propia de "sin conexión". La pantalla en sí NUNCA se guarda: con red se pide
   // siempre al servidor, así el stock y los pedidos no se ven viejos.
   if (req.mode === "navigate") {
+    const pantalla = fetch(req);
     event.respondWith(
-      fetch(req).catch(async () => (await caches.match("/sin-conexion.html")) ?? Response.error()),
+      pantalla.catch(async () => (await caches.match("/sin-conexion.html")) ?? Response.error()),
     );
+    // Si al instalarse no se pudo guardar la página sin conexión (se tolera, ver
+    // arriba), sin red saldría la pantalla de error del navegador hasta el próximo
+    // cambio de este archivo. Se vuelve a intentar después de cada pantalla que
+    // llegó del servidor: hay red de verdad y la pantalla ya se entregó, así que
+    // no demora nada. Ya guardada, no se vuelve a pedir.
+    event.waitUntil(pantalla.then(guardarSinConexion, () => {}));
     return;
   }
 
