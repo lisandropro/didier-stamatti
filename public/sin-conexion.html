@@ -25,13 +25,17 @@
   // se mira (con "señal pero sin datos" el aviso de red no llega). El pedido de
   // prueba no pasa por el service worker: no es una navegación ni un archivo
   // guardado.
-  addEventListener("online", () => location.reload());
-  setInterval(() => {
+  function probar() {
     if (document.visibilityState !== "visible") return;
     fetch("/sin-conexion.html", { method: "HEAD", cache: "no-store" })
       .then((r) => { if (r.ok) location.reload(); })
       .catch(() => {});
-  }, 20000);
+  }
+  addEventListener("online", () => location.reload());
+  setInterval(probar, 20000);
+  // Si la app estaba en segundo plano y se reabre, el intervalo no probó mientras
+  // no se veía: sin esto habría que esperar hasta 20 s al próximo intento.
+  document.addEventListener("visibilitychange", probar);
 </script>
 </body>
 </html>

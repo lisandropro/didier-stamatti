@@ -30,6 +30,17 @@ self.addEventListener("activate", (event) =>
       const names = await caches.keys();
       await Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n)));
       await self.clients.claim();
+      // Si al instalarse no se pudo guardar la página sin conexión (se tolera, ver
+      // arriba), no quedaría guardada hasta el próximo cambio del archivo, y sin
+      // red saldría la pantalla de error del navegador. Se vuelve a intentar acá,
+      // pero sin que un fallo frene la activación: es un extra, y con ella se
+      // caerían también los avisos push.
+      try {
+        const cache = await caches.open(CACHE);
+        if (!(await cache.match("/sin-conexion.html"))) await cache.add("/sin-conexion.html");
+      } catch {
+        // Queda como estaba: se volverá a intentar en la próxima activación.
+      }
     })()
   )
 );

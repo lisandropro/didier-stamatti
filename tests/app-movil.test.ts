@@ -296,6 +296,9 @@ test("sin red, la app abre una página propia y no el dinosaurio del navegador",
   assert.ok(script.includes('addEventListener("online"'), "la página sin conexión no se entera de que volvió la señal");
   assert.ok(script.includes("location.reload()"), "la página sin conexión no se recarga sola al volver la señal");
   assert.ok(script.includes("setInterval(") && script.includes('"HEAD"') && script.includes("no-store"), "con señal pero sin datos la página sin conexión no se entera de que volvió");
+  // Si la app estaba en segundo plano (el intervalo no prueba mientras no se ve)
+  // y se reabre, no tiene que esperar hasta 20 s al próximo intento.
+  assert.ok(script.includes("visibilitychange"), "al volver a mirar la página sin conexión espera hasta 20 s para probar");
 });
 
 test("si se corta la señal, la app lo dice arriba y se pone al día cuando vuelve", () => {
@@ -336,6 +339,14 @@ test("la franja de sin conexión va abajo, por encima de la barra flotante y de 
   assert.ok(
     /@media \(max-width:860px\)\{\s*\.sin-conexion\{bottom:calc\(76px \+ env\(safe-area-inset-bottom\)\)\}/.test(css),
     "en el celular la franja no sube por encima de la barra flotante",
+  );
+  // Abajo, a esa altura, taparía la mitad de abajo del menú "Más" (`.mobmas`,
+  // que solo existe en el DOM mientras está abierto) y el pie de las hojas
+  // (Guardar/Cancelar). Con cualquiera de los dos abierto solo hay fondo
+  // oscurecido: la franja se va arriba.
+  assert.ok(
+    css.includes(":has(.overlay, .mobmas-fondo) .sin-conexion"),
+    "con el menú Más o una hoja abiertos la franja sigue abajo, tapando el menú o los botones de la hoja",
   );
 });
 
@@ -422,6 +433,10 @@ test("el editor del pedido reintenta guardar solo cuando vuelve la señal", () =
   const efecto = s.slice(desde, hasta);
   assert.ok(efecto.includes("queue.flush()"), "al volver la señal el editor no reintenta guardar");
   assert.ok(efecto.includes('removeEventListener("online"'), "el editor deja la escucha de la señal puesta al desmontarse");
+  // Igual que `SinConexion`: el aviso de red puede llegar antes de que la red
+  // conteste, y un guardado que falla ahí queda esperando "Reintentar guardado".
+  assert.ok(efecto.includes("setTimeout("), "el editor reintenta en cuanto llega el aviso, sin dejar que la red conteste");
+  assert.ok(efecto.includes("clearTimeout("), "el reloj de espera del editor sigue corriendo al desmontar");
 });
 
 /**

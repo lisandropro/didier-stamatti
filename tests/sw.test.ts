@@ -43,6 +43,10 @@ function cargarSW(opciones: Opciones = {}) {
   const abiertas: string[] = [];
   let enfocadas = 0;
   let activadas = 0;
+  let reclamadas = 0;
+  // Se puede "arreglar" después de instalar: el guardado falla solo mientras el
+  // teléfono está sin espacio o sin red, y al activarse puede haber vuelto.
+  let guardarFalla = Boolean(opciones.guardarFalla);
   const ventana = {
     focus: async () => {
       enfocadas++;
@@ -66,7 +70,7 @@ function cargarSW(opciones: Opciones = {}) {
       },
     },
     clients: {
-      claim: async () => {},
+      claim: async () => { reclamadas++; },
       matchAll: async () => (opciones.sinVentanas ? [] : [ventana]),
       openWindow: async (u: string) => { abiertas.push(u); },
     },
@@ -83,6 +87,8 @@ function cargarSW(opciones: Opciones = {}) {
   // escribió, con `add` o con `put`: la regla es que ahí solo entre la página sin
   // conexión (y los archivos de diseño con hash, que acá no se piden).
   const guardados: string[] = [];
+  // Cada vez que el service worker pidió guardar con `add`, haya salido bien o no.
+  const intentosAdd: string[] = [];
   const enCache = new Map<string, Response>();
   if (!opciones.sinPaginaGuardada) enCache.set("/sin-conexion.html", new Response(PAGINA_SIN_CONEXION));
   const caches = {
@@ -90,12 +96,14 @@ function cargarSW(opciones: Opciones = {}) {
     delete: async () => true,
     match: async (x: string | { url: string }) => enCache.get(dirDe(x))?.clone(),
     open: async () => ({
+      match: async (x: string | { url: string }) => enCache.get(dirDe(x))?.clone(),
       put: async (x: string | { url: string }, res: Response) => {
         guardados.push(dirDe(x));
         enCache.set(dirDe(x), res);
       },
       add: async (x: string | { url: string }) => {
-        if (opciones.guardarFalla) throw new TypeError("no se pudo guardar");
+        intentosAdd.push(dirDe(x));
+        if (guardarFalla) throw new TypeError("no se pudo guardar");
         guardados.push(dirDe(x));
         enCache.set(dirDe(x), new Response(PAGINA_SIN_CONEXION));
       },
@@ -104,7 +112,13 @@ function cargarSW(opciones: Opciones = {}) {
   const codigo = fs.readFileSync(path.join(process.cwd(), "public", "sw.js"), "utf8");
   // `Response` hay que pasarla: la caja de arena no hereda los globales de Node.
   vm.runInNewContext(codigo, { self, fetch, caches, URL, Response });
-  return { manejadores, pedidos, mostradas, navegadas, abiertas, guardados, enfocadas: () => enfocadas, activadas: () => activadas };
+  return {
+    manejadores, pedidos, mostradas, navegadas, abiertas, guardados, intentosAdd,
+    enfocadas: () => enfocadas,
+    activadas: () => activadas,
+    reclamadas: () => reclamadas,
+    arreglarGuardado: () => { guardarFalla = false; },
+  };
 }
 
 /**
@@ -273,6 +287,35 @@ test("si no se puede guardar la página sin conexión, el service worker se inst
   await disparar(sw.manejadores.install, {});
   assert.equal(sw.activadas(), 1, "la instalación quedó trabada por no poder guardar la página");
   assert.deepEqual(sw.guardados, []);
+});
+
+test("si la página sin conexión no se pudo guardar al instalar, al activarse se vuelve a intentar", async () => {
+  // Sin esto, tolerar el fallo de la instalación dejaba al teléfono sin la página
+  // hasta el próximo cambio del archivo: sin señal, la pantalla de error del
+  // navegador en vez de la propia.
+  const sw = cargarSW({ sinPaginaGuardada: true, guardarFalla: true });
+  await disparar(sw.manejadores.install, {});
+  assert.deepEqual(sw.guardados, [], "la instalación no debería haber guardado nada");
+  sw.arreglarGuardado();
+  await disparar(sw.manejadores.activate, {});
+  assert.deepEqual(sw.intentosAdd, ["/sin-conexion.html", "/sin-conexion.html"], "al activarse no volvió a pedir la página");
+  assert.deepEqual(sw.guardados, ["/sin-conexion.html"]);
+});
+
+test("si el reintento al activarse también falla, el service worker se activa igual", async () => {
+  // Es un extra: si falla, la activación no puede rechazarse, porque con ella se
+  // caen también los avisos push.
+  const sw = cargarSW({ sinPaginaGuardada: true, guardarFalla: true });
+  await disparar(sw.manejadores.activate, {});
+  assert.equal(sw.reclamadas(), 1, "la activación quedó sin tomar el control de las ventanas");
+  assert.deepEqual(sw.guardados, []);
+});
+
+test("con la página sin conexión ya guardada, activarse no la vuelve a pedir", async () => {
+  const sw = cargarSW();
+  await disparar(sw.manejadores.activate, {});
+  assert.deepEqual(sw.intentosAdd, [], "volvió a bajar una página que el teléfono ya tiene");
+  assert.equal(sw.reclamadas(), 1);
 });
 
 test("abrir una pantalla con señal trae la del servidor y no guarda nada", async () => {

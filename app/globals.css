@@ -2675,6 +2675,14 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 @media (max-width:860px){
   .sin-conexion{bottom:calc(76px + env(safe-area-inset-bottom))}
 }
+/* Con el menú "Más" (`.mobmas`, que solo existe en el DOM mientras está abierto)
+   o una hoja (`.overlay`, con los botones Guardar/Cancelar apoyados abajo)
+   abiertos, la franja a esa altura les taparía la mitad de abajo. Ahí solo hay
+   fondo oscurecido arriba, así que se va para allá. Va fuera de cualquier
+   `@media`: en la pantalla ancha las hojas son centradas y arriba tampoco molesta. */
+html:has(.overlay, .mobmas-fondo) .sin-conexion{
+  bottom:auto; top:calc(var(--sp-2) + env(safe-area-inset-top));
+}
 .sin-conexion.volvio{background:var(--ok)}
 
 /* ===== Tirar para actualizar ===============================================

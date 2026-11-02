@@ -186,10 +186,21 @@ export function OrderBuilder({ data }: { data: Data }) {
   // Cuando vuelve la señal, lo que no se guardó se reintenta solo. Sin esto,
   // después de "Volvió la conexión" quedaba esperando que alguien tocara
   // "Reintentar guardado". Si no hay nada pendiente, `flush` no hace nada.
+  // El aviso de red puede llegar antes de que la red conteste: si se reintenta en
+  // el acto, el pedido falla y queda esperando igual (lo mismo que `SinConexion`
+  // resolvió esperando 1500 ms). Si llega otro `online` antes, se reinicia la espera.
   useEffect(() => {
-    const reintentar = () => { void queue.flush(); };
+    let espera: ReturnType<typeof setTimeout> | undefined;
+    const reintentar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => { void queue.flush(); }, 1500);
+    };
     window.addEventListener("online", reintentar);
-    return () => window.removeEventListener("online", reintentar);
+    return () => {
+      window.removeEventListener("online", reintentar);
+      // Al salir del editor, el reintento que estaba esperando ya no va.
+      clearTimeout(espera);
+    };
   }, [queue]);
 
   function scheduleSave(key: string, pending: OrderSave) {
