@@ -78,8 +78,14 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
   if (aviso.type !== "ORDER_EDIT") redirect(aviso.linkUrl ?? "/notificaciones");
 
   const evento = aviso.eventId
-    ? await prisma.event.findUnique({ where: { id: aviso.eventId }, select: { lugar: true, deletedAt: true } })
+    ? await prisma.event.findUnique({
+        where: { id: aviso.eventId },
+        select: { lugar: true, deletedAt: true, period: { select: { deletedAt: true } } },
+      })
     : null;
+  // Al borrar un período sus eventos conservan `deletedAt` nulo: mirar solo el
+  // evento escondía el cartel y ofrecía abrir el pedido de algo que ya no se ve.
+  const enLaPapelera = Boolean(evento?.deletedAt || evento?.period.deletedAt);
 
   // Los cambios de ESTA tanda y no los de las siguientes: ver cambiosDeLaTanda.
   const cambios = await cambiosDeLaTanda(aviso);
@@ -98,7 +104,7 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
         </div>
         <div className="spacer" />
         <Link className="btn ghost" href="/notificaciones">Volver a los avisos</Link>
-        {aviso.eventId && !evento?.deletedAt && (
+        {aviso.eventId && !enLaPapelera && (
           // Quien no ve el editor (el depósito) va a la preparación del evento.
           canVerStock(user.role)
             ? <Link className="btn primary" href={`/evento/${aviso.eventId}`}>Abrir el pedido</Link>
@@ -107,7 +113,7 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
       </div>
 
       <div className="content">
-        {evento?.deletedAt && (
+        {enLaPapelera && (
           <div className="banner crit">
             <div>
               <b>Este evento está en la papelera</b>

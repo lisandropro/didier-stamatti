@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { canManagePeriods, canSetResponsable } from "@/lib/permissions";
 import { notifyOrderChange } from "@/lib/notify";
+import { avisarEventosDelPeriodo } from "@/lib/avisos-del-periodo";
 import { planEventEdit } from "@/lib/event-edit";
 import { diaDe, esDia, fmtRangoDias, instanteDeLocal } from "@/lib/dates";
 import {
@@ -164,7 +165,17 @@ export async function deletePeriod(periodId: string): Promise<ActionResult> {
   const p = await prisma.operationalPeriod.findUnique({ where: { id: periodId }, select: { deletedAt: true } });
   if (!p) return { ok: false, error: "No se encontró el período." };
   if (p.deletedAt) return { ok: true };
-  await prisma.operationalPeriod.update({ where: { id: periodId }, data: { deletedAt: new Date() } });
+  // La lectura solo distingue "no existe" de "ya estaba borrado". Quien decide si
+  // el borrado fue de este aparato es la escritura: con dos teléfonos a la vez,
+  // leer y escribir sin condición avisaba dos veces a cada evento.
+  const r = await prisma.operationalPeriod.updateMany({ where: { id: periodId, deletedAt: null }, data: { deletedAt: new Date() } });
+  // Se avisa DESPUÉS de guardar, y solo si esta escritura fue la que lo borró. Los
+  // eventos no se tocan (siguen vivos adentro del período), pero para quien
+  // prepara es como si se hubieran ido todos: se avisa de cada uno por el mismo
+  // camino que el evento suelto. Si dio 0, otro aparato ya lo borró y avisó él.
+  if (r.count === 1) {
+    await avisarEventosDelPeriodo(user, periodId, "VIVO", "BORRADO");
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -172,9 +183,21 @@ export async function deletePeriod(periodId: string): Promise<ActionResult> {
 export async function restorePeriod(periodId: string): Promise<ActionResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
-  const p = await prisma.operationalPeriod.findUnique({ where: { id: periodId }, select: { id: true } });
+  const p = await prisma.operationalPeriod.findUnique({ where: { id: periodId }, select: { deletedAt: true } });
   if (!p) return { ok: false, error: "No se encontró el período." };
-  await prisma.operationalPeriod.update({ where: { id: periodId }, data: { deletedAt: null } });
+  if (!p.deletedAt) {
+    // Ya estaba vivo: no hay nada que recuperar ni que avisar. Se actualiza la
+    // pantalla igual, porque quien llegó acá miraba una papelera vieja.
+    revalidatePath("/");
+    return { ok: true, id: periodId };
+  }
+  // Condicionada a que siga borrado: dos recuperaciones a la vez avisaban las dos.
+  const r = await prisma.operationalPeriod.updateMany({ where: { id: periodId, deletedAt: { not: null } }, data: { deletedAt: null } });
+  // Se avisa DESPUÉS de guardar, y solo si esta escritura fue la que lo recuperó.
+  // Los eventos que alguien borró por su cuenta siguen en la papelera y no avisan.
+  if (r.count === 1) {
+    await avisarEventosDelPeriodo(user, periodId, "BORRADO", "VIVO");
+  }
   revalidatePath("/");
   return { ok: true, id: periodId };
 }
@@ -472,21 +495,31 @@ export async function restoreEvent(eventId: string): Promise<ActionResult> {
   // borrado. Sin eso, recuperar uno que al leer estaba vivo (solo su período)
   // deshacía en silencio el borrado que otro aparato hizo en el medio, y dos
   // recuperaciones a la vez avisaban las dos "se recuperó". Va primero en la
-  // lista para saber cuál de los resultados es el suyo.
+  // lista para saber cuál de los resultados es el suyo. Con el período pasa lo
+  // mismo: también condicionado, para que solo avise quien lo trajo de vuelta.
   const resultados = await prisma.$transaction([
     ...(ev.deletedAt
       ? [prisma.event.updateMany({ where: { id: eventId, deletedAt: { not: null } }, data: { deletedAt: null } })]
       : []),
     ...(ev.period.deletedAt
-      ? [prisma.operationalPeriod.update({ where: { id: ev.periodId }, data: { deletedAt: null } })]
+      ? [prisma.operationalPeriod.updateMany({ where: { id: ev.periodId, deletedAt: { not: null } }, data: { deletedAt: null } })]
       : []),
   ]);
   // Se avisa DESPUÉS de guardar, y solo si esta escritura fue la que lo recuperó.
   // Si el evento no estaba borrado al leer (solo su período) no se lo tocó, y si
-  // dio 0 otro aparato ya lo recuperó y avisó él.
-  const primero = resultados[0];
-  const recuperoElEvento = ev.deletedAt !== null && "count" in primero && primero.count === 1;
-  if (recuperoElEvento) {
+  // dio 0 otro aparato ya lo recuperó y avisó él. Cada resultado se lee por su
+  // posición: el del evento va primero solo si estaba borrado.
+  const resultadoDelEvento = ev.deletedAt ? resultados[0] : null;
+  const resultadoDelPeriodo = ev.period.deletedAt ? resultados[ev.deletedAt ? 1 : 0] : null;
+  const recuperoElEvento = resultadoDelEvento?.count === 1;
+  const recuperoElPeriodo = resultadoDelPeriodo?.count === 1;
+  if (recuperoElPeriodo) {
+    // El período volvió con todos sus eventos: para quien prepara reaparece cada
+    // uno, no solo el que se tocó. Ese aviso ya incluye al evento recuperado (en
+    // la transacción volvió antes), así que NO se avisa además el evento solo:
+    // saldría "hizo 2 cambios" por una sola recuperación.
+    await avisarEventosDelPeriodo(user, ev.periodId, "BORRADO", "VIVO");
+  } else if (recuperoElEvento) {
     await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "BORRADO", after: "VIVO" });
   }
   revalidatePath("/");
