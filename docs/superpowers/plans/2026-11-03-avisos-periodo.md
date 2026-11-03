@@ -47,7 +47,7 @@ Escrituras condicionadas: con dos teléfonos a la vez, avisa solo el que de verd
 - [ ] **Step 2: `lib/avisos-del-periodo.ts`.**
 
 ```ts
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 import { notifyOrderChange } from "@/lib/notify";
 
 /**
