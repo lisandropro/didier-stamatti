@@ -15,6 +15,8 @@ import {
   seccionesDeLevante,
   sonVistosDeLevante,
   stockDespuesDeBaja,
+  cuantoBaja,
+  TEXTO_DE_BAJA,
   textoDelLevante,
   vuelveDelEvento,
   type EstadoLevante,
@@ -213,4 +215,14 @@ test("la nota del movimiento dice el lugar y el día del evento en Argentina", (
   // 23:30 del 8/11 en Argentina ya es 9/11 en UTC: la nota tiene que decir 8/11.
   assert.equal(notaDeBaja("MUSEO", instanteDe("2026-11-08", "23:30")), "Levante de MUSEO 8/11");
   assert.ok(notaDeBaja("L".repeat(300), instanteDe("2026-11-08", "21:00")).length < 80);
+});
+
+test("cuánto baja de verdad: lo que faltó, sin pasar de lo que hay", () => {
+  assert.equal(cuantoBaja(250, 5), 5);
+  assert.equal(cuantoBaja(3, 5), 3);
+  assert.equal(cuantoBaja(5, 5), 5);
+});
+
+test("nunca contado: no manda a contar, porque contar después del evento descuenta dos veces", () => {
+  assert.equal(TEXTO_DE_BAJA.SIN_CONTAR, "Nunca se contó en el inventario: no hay de dónde descontar.");
 });

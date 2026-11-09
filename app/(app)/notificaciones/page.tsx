@@ -52,7 +52,7 @@ export default async function NotificacionesPage() {
       <div className="topbar">
         <div>
           <h1>Avisos</h1>
-          <div className="sub">Cambios en los pedidos y faltantes de stock</div>
+          <div className="sub">Cambios en los pedidos, faltantes de stock y levantes</div>
         </div>
       </div>
       <div className="content">

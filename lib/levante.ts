@@ -340,9 +340,16 @@ export function bajaDe(clave: string, producto: { type: string; stock: number | 
 export const TEXTO_DE_BAJA: Record<Exclude<Baja, "DESCONTABLE">, string> = {
   SUELTO: "Ítem suelto: no lleva stock, queda anotado.",
   NO_LLEVA_STOCK: "No lleva control de stock: queda anotado.",
-  SIN_CONTAR: "Nunca se contó en el inventario: contalo antes de descontar.",
+  SIN_CONTAR: "Nunca se contó en el inventario: no hay de dónde descontar.",
   SIN_STOCK: "El stock ya está en 0: no hay nada que descontar.",
 };
+
+/** Cuántas unidades baja de verdad un faltante: no más de las que hay. Es lo
+ *  que dice el botón; si dijera `faltan` con stock 3 y 5 faltantes, prometería 5
+ *  y bajaría 3. */
+export function cuantoBaja(stock: number, faltan: number): number {
+  return stock - stockDespuesDeBaja(stock, faltan);
+}
 
 /** Lo que queda al dar de baja lo que no volvió. Nunca menos de 0: si el evento
  *  llevó más de lo que hay en el depósito (se completó con algo alquilado o

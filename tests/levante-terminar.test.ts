@@ -160,12 +160,12 @@ test("un evento en la papelera no se termina", async () => {
 test("reabrir deja marcar de nuevo y el evento vuelve a Para levantar", async () => {
   const ev = await evento("Reabrir");
   await db.terminarLevante(ev, pablo, 2);
-  assert.ok(!(await db.eventosParaLevantar(HOY)).some((e) => e.id === ev), "un terminado sigue en Para levantar");
+  assert.ok(!(await db.eventosParaLevantar(HOY, false, instanteDe(HOY, "12:00"))).some((e) => e.id === ev), "un terminado sigue en Para levantar");
   assert.equal(await db.reabrirLevante(ev), "reabierto");
   assert.equal(await db.reabrirLevante(ev), "ya");
   const e = await prisma.event.findUniqueOrThrow({ where: { id: ev } });
   assert.deepEqual([e.levanteAt, e.levantePorId, e.levantePorName], [null, null, null]);
   assert.equal(await db.marcarVolvio(ev, ids.copa, pablo, 40), "marcado");
-  assert.ok((await db.eventosParaLevantar(HOY)).some((x) => x.id === ev));
+  assert.ok((await db.eventosParaLevantar(HOY, false, instanteDe(HOY, "12:00"))).some((x) => x.id === ev));
   assert.equal(await db.reabrirLevante("no-existe"), "no-existe");
 });

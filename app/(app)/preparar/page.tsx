@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
-import { canVerPreparacion } from "@/lib/permissions";
+import { canEditStock, canVerPreparacion } from "@/lib/permissions";
 import { eventosParaPreparar, DIAS_A_PREPARAR } from "@/lib/preparacion-db";
 import { eventosParaLevantar } from "@/lib/levante-db";
 import { linkDelLevante } from "@/lib/levante";
@@ -21,8 +21,9 @@ export default async function PrepararPage() {
   const sesion = await getSessionUser();
   if (!sesion || !canVerPreparacion(sesion.role)) notFound();
 
-  const [eventos, levantar] = await Promise.all([eventosParaPreparar(), eventosParaLevantar()]);
   const hoyDia = hoy();
+  // Quien toca el stock ve también los levantes terminados con algo por descontar.
+  const [eventos, levantar] = await Promise.all([eventosParaPreparar(), eventosParaLevantar(hoyDia, canEditStock(sesion.role))]);
   const manana = sumarDias(hoyDia, 1);
   const ayer = sumarDias(hoyDia, -1);
   const ahora = new Date();
@@ -41,7 +42,7 @@ export default async function PrepararPage() {
       <div className="content">
         <InstalarApp />
         {/* Lo que hay que juntar después de cada evento. Va arriba: son pocos (los
-            de la última semana sin terminar) y se usan con apuro, en el salón, al
+            de la última semana sin terminar, ya empezados) y se usan con apuro, en el salón, al
             final de la noche. */}
         {levantar.length > 0 && (
           <section className="lev-seccion" aria-labelledby="lev-para-levantar">
@@ -56,9 +57,13 @@ export default async function PrepararPage() {
                   </div>
                   <div className="prep-card-cuando">{fmtEvento(e.date)}</div>
                   <div className="prep-avance">
-                    <span className={`prep-chip${e.marcados === e.total ? " ok" : ""}`}>
-                      Levante · {e.marcados} de {e.total}
-                    </span>
+                    {e.terminado ? (
+                      <span className="prep-chip">Levante terminado · {e.paraDescontar} para descontar</span>
+                    ) : (
+                      <span className={`prep-chip${e.marcados === e.total ? " ok" : ""}`}>
+                        Levante · {e.marcados} de {e.total}
+                      </span>
+                    )}
                   </div>
                 </Link>
               ))}

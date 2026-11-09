@@ -3,11 +3,16 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { canEditStock, canPreparar, canVerPreparacion } from "@/lib/permissions";
 import { levanteDelEvento } from "@/lib/levante-db";
-import { bajaDe, etiquetaDeMotivo } from "@/lib/levante";
+import { bajaDe, cuantoBaja, etiquetaDeMotivo } from "@/lib/levante";
 import { diaDe, fmtEvento, fmtMomento, hoy } from "@/lib/dates";
 import { Levante } from "@/components/Levante";
 
 export const dynamic = "force-dynamic";
+
+/** Lo que baja el botón de un faltante descontable; null si no hay stock contado. */
+function cuantoBajaDe(i: { faltan: number }, stock: number | null): number | null {
+  return stock === null ? null : cuantoBaja(stock, i.faltan);
+}
 
 export default async function LevantePage({ params }: { params: Promise<{ eventId: string }> }) {
   // Como Preparar: la pantalla comprueba su propio permiso.
@@ -54,6 +59,8 @@ export default async function LevantePage({ params }: { params: Promise<{ eventI
           marcadoPor: i.marca ? `${i.marca.porName} · ${fmtMomento(i.marca.at)}` : null,
           descontado: i.descontado ? etiquetaDeMotivo(i.descontado.motivo) : null,
           baja: aDescontar.includes(i) ? bajaDe(i.clave, productos.get(i.clave) ?? null) : null,
+          // Lo que de verdad baja el botón: no más que el stock de ahora.
+          bajan: aDescontar.includes(i) ? cuantoBajaDe(i, productos.get(i.clave)?.stock ?? null) : null,
         })),
         terminado,
         // Terminado, nadie marca: para corregir, la administradora lo reabre.

@@ -200,29 +200,66 @@ export type EventoParaLevantar = {
   /** Lo revisado ("Levante · N de M"). */
   marcados: number;
   total: number;
+  /** El levante ya está terminado: solo lo ve quien toca el stock, porque queda
+   *  algo por descontar ("Levante terminado · N para descontar"). */
+  terminado: boolean;
+  /** Faltantes sin descontar que se pueden descontar (solo en un terminado). */
+  paraDescontar: number;
 };
 
+/** Cuántos faltantes de un levante terminado todavía se pueden descontar. Usa
+ *  `bajaDe`, la misma regla que aplica la acción: un faltante que nunca se va a
+ *  poder descontar (suelto, sin contar, en 0) no deja al evento en la lista. */
+async function paraDescontarDe(items: ItemLevante[]): Promise<number> {
+  const faltas = items.filter((i) => i.estado === "FALTA" && !i.descontado);
+  if (faltas.length === 0) return 0;
+  const ids = faltas.map((i) => productoDeClave(i.clave)).filter((id): id is string => id !== null);
+  const productos = new Map(
+    (ids.length === 0 ? [] : await prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, type: true, stock: true } })).map(
+      (p) => [p.id, p],
+    ),
+  );
+  return faltas.filter((i) => bajaDe(i.clave, productos.get(i.clave) ?? null) === "DESCONTABLE").length;
+}
+
 /**
- * Los eventos vivos con el levante sin terminar, desde su día (en Argentina)
- * hasta `DIAS_PARA_LEVANTAR` días para atrás. El más reciente primero: es el
- * que se está levantando. Un evento sin nada que vuelva (sin pedido, o solo
+ * Los eventos vivos con el levante sin terminar, desde `DIAS_PARA_LEVANTAR`
+ * días atrás (en Argentina) hasta ahora: un evento aparece cuando empieza, no a
+ * la medianoche. Si no, el día de más trabajo del depósito la lista se llenaría
+ * de eventos que todavía ni empezaron. El más reciente primero: es el que se
+ * está levantando. Un evento sin nada que vuelva (sin pedido, o solo
  * consumibles) no tiene levante y no aparece.
+ *
+ * `puedeDescontar` (quien toca el stock): ve además los terminados que todavía
+ * tienen algo por descontar. Si el aviso se perdió o lo terminó ella misma, es
+ * la única forma de llegar a Rotura/Pérdida o a "Reabrir" desde Preparar.
  */
-export async function eventosParaLevantar(hoyDia: string = hoy()): Promise<EventoParaLevantar[]> {
+export async function eventosParaLevantar(
+  hoyDia: string = hoy(),
+  puedeDescontar: boolean = false,
+  ahora: Date = new Date(),
+): Promise<EventoParaLevantar[]> {
   const eventos = await prisma.event.findMany({
     where: {
       ...VIVO,
-      levanteAt: null,
-      date: { gte: instanteDe(sumarDias(hoyDia, -DIAS_PARA_LEVANTAR), "00:00"), lt: instanteDe(sumarDias(hoyDia, 1), "00:00") },
+      ...(puedeDescontar ? {} : { levanteAt: null }),
+      date: { gte: instanteDe(sumarDias(hoyDia, -DIAS_PARA_LEVANTAR), "00:00"), lte: ahora },
     },
     orderBy: { date: "desc" },
-    select: { id: true, lugar: true, date: true },
+    select: { id: true, lugar: true, date: true, levanteAt: true },
   });
   const out: EventoParaLevantar[] = [];
-  for (const e of eventos) {
-    const { total, marcados } = resumenDeLevante(await levanteDelEvento(e.id));
+  for (const { levanteAt, ...e } of eventos) {
+    const items = await levanteDelEvento(e.id);
+    const { total, marcados } = resumenDeLevante(items);
     if (total === 0) continue;
-    out.push({ ...e, dia: diaDe(e.date), marcados, total });
+    if (levanteAt) {
+      const paraDescontar = await paraDescontarDe(items);
+      if (paraDescontar === 0) continue;
+      out.push({ ...e, dia: diaDe(e.date), marcados, total, terminado: true, paraDescontar });
+    } else {
+      out.push({ ...e, dia: diaDe(e.date), marcados, total, terminado: false, paraDescontar: 0 });
+    }
   }
   return out;
 }
@@ -317,8 +354,10 @@ export async function terminarLevante(
 export async function reabrirLevante(eventId: string): Promise<"reabierto" | "ya" | "no-existe"> {
   const ev = await prisma.event.findFirst({ where: { id: eventId, ...VIVO }, select: { id: true } });
   if (!ev) return "no-existe";
+  // El evento vivo también va en la escritura: si lo borraron entre la lectura
+  // de arriba y esta, no se reabre un levante de un evento en la papelera.
   const r = await prisma.event.updateMany({
-    where: { id: eventId, levanteAt: { not: null } },
+    where: { id: eventId, ...VIVO, levanteAt: { not: null } },
     data: { levanteAt: null, levantePorId: null, levantePorName: null },
   });
   return r.count === 1 ? "reabierto" : "ya";

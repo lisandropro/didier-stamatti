@@ -44,6 +44,8 @@ type Item = {
   /** Solo en un faltante sin descontar, para quien puede descontar: si se
    *  puede, y si no, por qué. */
   baja: Baja | null;
+  /** Cuántas unidades baja de verdad "Dar de baja": no más que el stock. */
+  bajan: number | null;
 };
 type Data = {
   evento: { id: string; lugar: string; cuando: string; esHoy: boolean };
@@ -518,7 +520,7 @@ function Fila({
       {puedeDescontar && falta && i.descontado === null && i.baja !== null && (
         i.baja === "DESCONTABLE" ? (
           <div className="lev-baja" role="group" aria-label={`Descontar ${i.itemName} del stock`}>
-            <span className="lev-baja-texto">Dar de baja {i.faltan}{unidad(i.unit)} del stock por</span>
+            <span className="lev-baja-texto">Dar de baja {i.bajan}{unidad(i.unit)} del stock por</span>
             <button type="button" className="btn ghost" onClick={() => alDescontar("ROTURA")} disabled={ocupada}>Rotura</button>
             <button type="button" className="btn ghost" onClick={() => alDescontar("PERDIDA")} disabled={ocupada}>Pérdida</button>
           </div>

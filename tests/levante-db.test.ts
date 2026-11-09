@@ -18,6 +18,8 @@ const DANTE = { id: "u-dante", name: "Dante" };
 // Un martes cualquiera: todo se fecha respecto de este día, no del reloj.
 const HOY = "2026-11-10";
 const AYER = sumarDias(HOY, -1);
+// "Ahora" de las pruebas: el mediodía de HOY, no el reloj de la máquina.
+const AHORA = instanteDe(HOY, "12:00");
 let ids: { periodo: string; evento: string; copa: string; mantel: string; hielo: string; bandeja: string };
 
 before(async () => {
@@ -181,7 +183,7 @@ test("borrar el evento borra lo marcado", async () => {
   assert.equal(await prisma.levante.count({ where: { eventId: otro.id } }), 0);
 });
 
-test("para levantar: desde su día hasta 7 días atrás, sin terminar, vivos y con algo que vuelva", async () => {
+test("para levantar: desde que empezó hasta 7 días atrás, sin terminar, vivos y con algo que vuelva", async () => {
   const mk = (lugar: string, dia: string, hora: string, extra: { deletedAt?: Date; levanteAt?: Date } = {}) =>
     prisma.event.create({ data: { periodId: ids.periodo, lugar, date: instanteDe(dia, hora), ...extra } });
   const conCopa = async (e: { id: string }) => {
@@ -189,7 +191,9 @@ test("para levantar: desde su día hasta 7 días atrás, sin terminar, vivos y c
     return e;
   };
   const creados = [
+    // Hoy, pero todavía no empezó (son las 12:00): aparece recién cuando empieza.
     await conCopa(await mk("Hoy a la noche", HOY, "23:30")),
+    await conCopa(await mk("Hoy recién empezó", HOY, "11:59")),
     // Los bordes: el día 7 para atrás entra a primera hora; el 8 ya no, aunque sea tarde.
     await conCopa(await mk("Hace 7 días", sumarDias(HOY, -7), "00:30")),
     await conCopa(await mk("Hace 8 días", sumarDias(HOY, -8), "23:30")),
@@ -202,10 +206,10 @@ test("para levantar: desde su día hasta 7 días atrás, sin terminar, vivos y c
   await prisma.orderLine.create({ data: { eventId: soloHielo.id, productId: ids.hielo, qty: 20 } });
   creados.push(soloHielo);
   try {
-    const lista = await db.eventosParaLevantar(HOY);
+    const lista = await db.eventosParaLevantar(HOY, false, AHORA);
     assert.deepEqual(
       lista.map((e) => e.lugar),
-      ["Hoy a la noche", "El Carmen", "Hace 7 días"],
+      ["Hoy recién empezó", "El Carmen", "Hace 7 días"],
       "el más reciente primero, y solo los que entran",
     );
     const carmen = lista.find((e) => e.lugar === "El Carmen")!;
@@ -213,5 +217,44 @@ test("para levantar: desde su día hasta 7 días atrás, sin terminar, vivos y c
     assert.deepEqual([carmen.marcados, carmen.total, carmen.dia], [2, 3, AYER]);
   } finally {
     await prisma.event.deleteMany({ where: { id: { in: creados.map((e) => e.id) } } });
+  }
+});
+
+test("para levantar, quien toca el stock ve también los terminados con algo por descontar", async () => {
+  const sinContar = await prisma.product.create({ data: { name: "Fuente sin contar", category: "ENSERES", type: "REUTILIZABLE", stock: null } });
+  const fuente = await prisma.product.create({ data: { name: "Fuente contada", category: "ENSERES", type: "REUTILIZABLE", stock: 30 } });
+  const terminado = (lugar: string) =>
+    prisma.event.create({ data: { periodId: ids.periodo, lugar, date: instanteDe(AYER, "20:00"), levanteAt: new Date(), levantePorName: "Pablo" } });
+  const marca = (eventId: string, clave: string, faltan: number) =>
+    prisma.levante.create({ data: { eventId, clave, itemName: "X", unit: "Unidad", category: "ENSERES", qty: 5, faltan, porName: "Pablo" } });
+  const linea = (eventId: string, productId: string) => prisma.orderLine.create({ data: { eventId, productId, qty: 5 } });
+
+  const descontable = await terminado("Terminado con faltante");
+  await linea(descontable.id, fuente.id);
+  await marca(descontable.id, fuente.id, 2);
+  const noDescontables = await terminado("Terminado sin descontables");
+  await linea(noDescontables.id, sinContar.id);
+  await marca(noDescontables.id, sinContar.id, 2);
+  const suelta = await prisma.orderLine.create({
+    data: { eventId: noDescontables.id, customName: "Cubre suelto", customCategory: "ENSERES", customUnit: "Unidad", qty: 5 },
+  });
+  await marca(noDescontables.id, `custom:${suelta.id}`, 2);
+  const todoVolvio = await terminado("Terminado todo volvio");
+  await linea(todoVolvio.id, fuente.id);
+  await marca(todoVolvio.id, fuente.id, 0);
+
+  const lugares = async (puede: boolean) => (await db.eventosParaLevantar(HOY, puede, AHORA)).filter((e) => e.lugar.startsWith("Terminado"));
+  try {
+    assert.deepEqual(await lugares(false), [], "el depósito no ve los terminados");
+    assert.deepEqual((await lugares(true)).map((e) => [e.lugar, e.terminado, e.paraDescontar]), [["Terminado con faltante", true, 1]]);
+    // Descontado ese faltante, deja de aparecer.
+    await prisma.levante.update({
+      where: { eventId_clave: { eventId: descontable.id, clave: fuente.id } },
+      data: { descontadoAt: new Date(), descontadoMotivo: "ROTURA", descontadoPorName: "Ana" },
+    });
+    assert.deepEqual(await lugares(true), []);
+  } finally {
+    await prisma.event.deleteMany({ where: { id: { in: [descontable.id, noDescontables.id, todoVolvio.id] } } });
+    await prisma.product.deleteMany({ where: { id: { in: [sinContar.id, fuente.id] } } });
   }
 });

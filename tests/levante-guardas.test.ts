@@ -114,10 +114,13 @@ test("las pantallas del levante comprueban su permiso; marcar se ofrece solo a q
 
 test("Preparar muestra Para levantar, con cada evento llevando a su levante", () => {
   const s = fuente("app/(app)/preparar/page.tsx");
-  assert.match(s, /eventosParaLevantar\(\)/);
+  assert.match(s, /eventosParaLevantar\(/);
   assert.match(s, /Para levantar/);
   assert.match(s, /href=\{linkDelLevante\(e\.id\)\}/);
   assert.match(s, /Levante · \{e\.marcados\} de \{e\.total\}/);
+  // La administradora vuelve a lo terminado que falta descontar.
+  assert.match(s, /eventosParaLevantar\(hoyDia, canEditStock\(sesion\.role\)\)/);
+  assert.match(s, /Levante terminado · \{e\.paraDescontar\} para descontar/);
 });
 
 test("la pantalla del levante manda lo que se ve y no refresca sin señal", () => {
@@ -184,4 +187,18 @@ test("los botones de descontar se ofrecen solo con el levante terminado y a quie
   assert.match(c, /alDescontar\("ROTURA"\)/);
   assert.match(c, /alDescontar\("PERDIDA"\)/);
   assert.match(c, /TEXTO_DE_BAJA\[i\.baja\]/);
+  // El botón dice lo que de verdad baja, no lo que faltó.
+  assert.match(c, /Dar de baja \{i\.bajan\}/);
+  assert.match(pagina, /cuantoBaja\(/);
+});
+
+test("reabrir comprueba que el evento siga vivo en la misma escritura", () => {
+  const s = fuente("lib/levante-db.ts");
+  const desde = s.indexOf("export async function reabrirLevante");
+  const cuerpo = s.slice(desde, s.indexOf("\n}", desde));
+  assert.match(cuerpo, /where: \{ id: eventId, \.\.\.VIVO, levanteAt: \{ not: null \} \}/);
+});
+
+test("la bandeja de Avisos nombra los levantes", () => {
+  assert.match(fuente("app/(app)/notificaciones/page.tsx"), /Cambios en los pedidos, faltantes de stock y levantes/);
 });
