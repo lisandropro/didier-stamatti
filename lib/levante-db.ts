@@ -210,11 +210,14 @@ export async function eventosParaLevantar(hoyDia: string = hoy()): Promise<Event
 // ---------------------------------------------------------------------------
 
 /** `confirmar`: cambió cuántos quedan sin revisar desde que se preguntó; trae
- *  el número de ahora para volver a preguntar. `ya`: otro teléfono lo terminó. */
+ *  el número de ahora para volver a preguntar. `ya`: otro teléfono lo terminó.
+ *  `vacio`: el evento no tiene nada que vuelva (la pantalla no lo ofrece; esto
+ *  frena un llamado directo, que avisaría "Levante de X:" sin nada). */
 export type ResultadoTerminar =
   | { r: "terminado"; avisados: number }
   | { r: "confirmar"; sinRevisar: number }
   | { r: "ya" }
+  | { r: "vacio" }
   | { r: "no-existe" };
 
 /**
@@ -222,8 +225,9 @@ export type ResultadoTerminar =
  *
  * `sinRevisarVisto` es el número que se confirmó en la pantalla ("Quedan 3 sin
  * revisar"). Si mientras tanto otro teléfono marcó o desmarcó algo, no se
- * termina: vuelve "confirmar" con el número de ahora. Lo que queda sin revisar
- * queda así, no como faltante.
+ * termina: vuelve "confirmar" con el número de ahora. Salvo que ahora sea 0: ya
+ * no hay nada que confirmar ("Quedan 0 sin revisar" sería una pregunta de más) y
+ * se termina. Lo que queda sin revisar queda así, no como faltante.
  *
  * La marca del evento es condicionada (`levanteAt: null`) y los avisos de la
  * app se crean en la misma transacción: con dos teléfonos a la vez, termina y
@@ -242,8 +246,9 @@ export async function terminarLevante(
     if (!ev) return { r: "no-existe" as const };
     if (ev.levanteAt) return { r: "ya" as const };
     const items = await levanteDelEvento(eventId, tx);
+    if (items.length === 0) return { r: "vacio" as const };
     const { sinRevisar } = resumenDeLevante(items);
-    if (sinRevisar !== sinRevisarVisto) return { r: "confirmar" as const, sinRevisar };
+    if (sinRevisar !== sinRevisarVisto && sinRevisar > 0) return { r: "confirmar" as const, sinRevisar };
     const puesta = await tx.event.updateMany({
       where: { id: eventId, levanteAt: null },
       data: { levanteAt: ahora, levantePorId: actor.id, levantePorName: actor.name },

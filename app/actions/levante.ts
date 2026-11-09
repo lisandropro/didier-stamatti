@@ -119,6 +119,7 @@ export async function terminarElLevante(eventId: string, sinRevisarVisto: number
   const r = await terminarLevante(eventId, user, sinRevisarVisto);
   if (r.r === "confirmar") return { ok: false, confirmar: r.sinRevisar };
   if (r.r === "no-existe") return { ok: false, error: "El evento ya no está disponible." };
+  if (r.r === "vacio") return { ok: false, error: "Este evento no tiene nada que levantar." };
   // "ya": otro teléfono lo terminó recién. Para quien tocó es lo mismo: quedó terminado.
   revalidar(eventId);
   return { ok: true };

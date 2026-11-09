@@ -69,6 +69,24 @@ test("si cambió cuántos quedan sin revisar, no termina: vuelve el número de a
   assert.equal((await avisosDe(ev)).length, 0);
 });
 
+test("si mientras tanto se revisó todo, termina sin volver a preguntar", async () => {
+  const ev = await evento("Ya revisado");
+  // La pantalla preguntó "Quedan 2 sin revisar"; otro teléfono marcó las dos.
+  await db.marcarVolvio(ev, ids.copa, pablo, 40);
+  await db.marcarVolvio(ev, ids.mantel, pablo, 6);
+  assert.deepEqual(await db.terminarLevante(ev, pablo, 2), { r: "terminado", avisados: 1 });
+  const e = await prisma.event.findUniqueOrThrow({ where: { id: ev } });
+  assert.ok(e.levanteAt, "no quedó terminado");
+});
+
+test("un evento sin nada que vuelva no se termina ni avisa", async () => {
+  const ev = await prisma.event.create({ data: { periodId: ids.periodo, lugar: "Sin nada", date: instanteDe(AYER, "21:00") } });
+  assert.deepEqual(await db.terminarLevante(ev.id, pablo, 0), { r: "vacio" });
+  const e = await prisma.event.findUniqueOrThrow({ where: { id: ev.id } });
+  assert.equal(e.levanteAt, null);
+  assert.equal((await avisosDe(ev.id)).length, 0);
+});
+
 test("terminar marca el evento y le avisa a quien toca el stock, con lo que faltó", async () => {
   const ev = await evento("MUSEO");
   await db.marcarFalta(ev, ids.copa, pablo, 40, 5);
