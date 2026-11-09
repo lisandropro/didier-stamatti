@@ -5,13 +5,16 @@ import {
   esMotivoBaja,
   etiquetaDeMotivo,
   itemsDeLevante,
+  linkDelLevante,
   ordenarLevante,
   paraMarcarSector,
   productoDeClave,
   resumenDeLevante,
   seccionesDeLevante,
   sonVistosDeLevante,
+  textoDelLevante,
   vuelveDelEvento,
+  type EstadoLevante,
   type LineaLevante,
   type Marca,
 } from "../lib/levante";
@@ -140,4 +143,49 @@ test("los motivos de baja son rotura y pérdida, con su nombre", () => {
   assert.equal(esMotivoBaja("COMPRA"), false);
   assert.equal(etiquetaDeMotivo("PERDIDA"), "Pérdida");
   assert.equal(etiquetaDeMotivo("OTRO"), "OTRO");
+});
+
+/** Un ítem como lo mira el aviso: nombre, estado y cuántos faltan. */
+const I = (itemName: string, estado: EstadoLevante, faltan = 0) => ({ itemName, estado, faltan });
+
+test("el aviso nombra lo que faltó, con quién lo terminó en el push", () => {
+  const t = textoDelLevante("MUSEO", [I("Copa vino", "FALTA", 5), I("Mantel redondo", "FALTA", 2), I("Plato", "VOLVIO")], "Pablo");
+  assert.equal(t.mensaje, "Levante de MUSEO: faltaron 5 Copa vino y 2 Mantel redondo");
+  assert.equal(t.title, "Levante de MUSEO");
+  assert.equal(t.body, "Faltaron 5 Copa vino y 2 Mantel redondo\n— Pablo");
+});
+
+test("volvió todo solo si se revisó todo", () => {
+  assert.equal(textoDelLevante("MUSEO", [I("Copa", "VOLVIO"), I("Plato", "VOLVIO")], "Pablo").mensaje, "Levante de MUSEO: volvió todo");
+  assert.equal(
+    textoDelLevante("MUSEO", [I("Copa", "VOLVIO"), I("Plato", "PENDIENTE"), I("Vaso", "PENDIENTE"), I("Silla", "PENDIENTE")], "Pablo").mensaje,
+    "Levante de MUSEO: volvió todo lo revisado · 3 sin revisar",
+  );
+  assert.equal(textoDelLevante("MUSEO", [I("Copa", "PENDIENTE"), I("Plato", "PENDIENTE")], "Pablo").mensaje, "Levante de MUSEO: 2 sin revisar");
+});
+
+test("lo que faltó y lo que quedó sin revisar van juntos", () => {
+  const t = textoDelLevante("MUSEO", [I("Copa vino", "FALTA", 5), I("Plato", "PENDIENTE")], "Pablo");
+  assert.equal(t.mensaje, "Levante de MUSEO: faltaron 5 Copa vino · 1 sin revisar");
+});
+
+test("un solo faltante de uno se dice en singular", () => {
+  assert.equal(textoDelLevante("MUSEO", [I("Brasero", "FALTA", 1)], "Pablo").mensaje, "Levante de MUSEO: faltó 1 Brasero");
+});
+
+test("más de tres faltantes: los tres primeros y cuántos más", () => {
+  const items = [I("A", "FALTA", 1), I("B", "FALTA", 2), I("C", "FALTA", 3), I("D", "FALTA", 4), I("E", "FALTA", 5)];
+  assert.equal(textoDelLevante("MUSEO", items, "Pablo").mensaje, "Levante de MUSEO: faltaron 1 A, 2 B, 3 C y 2 más");
+});
+
+test("el aviso no pasa del tope del push aunque el lugar y los nombres sean larguísimos", () => {
+  const t = textoDelLevante("L".repeat(300), [I("X".repeat(400), "FALTA", 2), I("Y".repeat(400), "FALTA", 3)], "P".repeat(300));
+  assert.ok(t.mensaje.length <= 500, `mensaje de ${t.mensaje.length}`);
+  assert.ok(t.body.length <= 500, `cuerpo de ${t.body.length}`);
+  assert.ok(t.title.length <= 80, `título de ${t.title.length}`);
+  assert.ok(t.body.endsWith(`— ${"P".repeat(59)}…`), "se perdió la firma");
+});
+
+test("el aviso lleva al levante del evento", () => {
+  assert.equal(linkDelLevante("ev-1"), "/preparar/ev-1/levante");
 });

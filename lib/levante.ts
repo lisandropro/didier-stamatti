@@ -10,6 +10,7 @@
 // la preparación (lib/preparacion.ts): así no puede quedar desactualizado.
 
 import { esClave } from "@/lib/preparacion";
+import { MAX_CUERPO, recortar } from "@/lib/aviso-texto";
 import { nombreDeCategoria, ordenDeCategoria } from "@/lib/categories";
 import { validQuantity } from "@/lib/quantity";
 
@@ -245,4 +246,67 @@ export function paraMarcarSector(
     } else salteados++;
   }
   return { claves, salteados };
+}
+
+// ---------------------------------------------------------------------------
+// El aviso de fin de levante
+// ---------------------------------------------------------------------------
+
+/** A dónde lleva el aviso al tocarlo, y la tarjeta de "Para levantar". */
+export function linkDelLevante(eventId: string): string {
+  return `/preparar/${eventId}/levante`;
+}
+
+/** Cuántos faltantes se nombran en el aviso; el resto se cuenta ("y 2 más"). */
+const MAX_EN_EL_AVISO = 3;
+// El lugar y el nombre de quien terminó los escribe una persona y no tienen
+// tope: acotados, no se comen el detalle.
+const MAX_LUGAR = 60;
+const MAX_QUIEN = 60;
+
+/** "a", "a y b", "a, b y c". */
+function enLista(partes: string[]): string {
+  if (partes.length <= 1) return partes.join("");
+  return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
+}
+
+/**
+ * El aviso que le llega a quien toca el stock al terminar un levante.
+ *
+ * - `mensaje`, para la lista de Avisos: "Levante de MUSEO: faltaron 5 Copa vino
+ *   y 2 Mantel redondo".
+ * - `title` y `body`, para el push: "Levante de MUSEO" / "Faltaron 5 Copa vino
+ *   y 2 Mantel redondo", firmado con quien lo terminó.
+ *
+ * No promete nada que no se marcó: "volvió todo" solo si se revisó todo. Si
+ * quedó algo sin revisar, lo revisado que volvió es "volvió todo lo revisado"
+ * y se dice cuánto quedó sin revisar.
+ */
+export function textoDelLevante(
+  lugar: string,
+  items: { itemName: string; estado: EstadoLevante; faltan: number }[],
+  porName: string,
+): { title: string; body: string; mensaje: string } {
+  const { faltantes, sinRevisar, marcados } = resumenDeLevante(items);
+  const partes: string[] = [];
+  if (faltantes.length > 0) {
+    const nombrados = faltantes.slice(0, MAX_EN_EL_AVISO).map((f) => `${f.faltan} ${f.itemName}`);
+    const resto = faltantes.length - nombrados.length;
+    const lista = resto > 0 ? `${nombrados.join(", ")} y ${resto} más` : enLista(nombrados);
+    const verbo = faltantes.length === 1 && faltantes[0].faltan === 1 ? "faltó" : "faltaron";
+    partes.push(`${verbo} ${lista}`);
+  } else if (sinRevisar === 0) {
+    partes.push("volvió todo");
+  } else if (marcados > 0) {
+    partes.push("volvió todo lo revisado");
+  }
+  if (sinRevisar > 0) partes.push(`${sinRevisar} sin revisar`);
+  const detalle = partes.join(" · ");
+  const titulo = `Levante de ${recortar(lugar, MAX_LUGAR)}`;
+  const pie = `\n— ${recortar(porName, MAX_QUIEN)}`;
+  return {
+    title: titulo,
+    body: recortar(detalle.charAt(0).toUpperCase() + detalle.slice(1), MAX_CUERPO - pie.length) + pie,
+    mensaje: recortar(`${titulo}: ${detalle}`, MAX_CUERPO),
+  };
 }

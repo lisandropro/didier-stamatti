@@ -74,3 +74,29 @@ test("las acciones de marcar comprueban lo que llega y le pasan lo visto a la es
     assert.match(c, pasa, `${nombre} no le pasa lo visto a la escritura`);
   }
 });
+
+test("terminar lo deciden los que marcan; reabrir, solo quien toca el stock", () => {
+  const s = fuente("app/actions/levante.ts");
+  assert.match(cuerpoDe(s, "terminarElLevante"), /requerirMarcar\(eventId\)/);
+  assert.match(cuerpoDe(s, "terminarElLevante"), /terminarLevante\(eventId, user, sinRevisarVisto\)/);
+  // Un número viejo no termina: vuelve el de ahora para volver a preguntar.
+  assert.match(cuerpoDe(s, "terminarElLevante"), /confirmar: r\.sinRevisar/);
+  assert.match(cuerpoDe(s, "reabrirElLevante"), /requerirStock\(eventId\)/);
+  assert.match(s, /function requerirStock\(eventId: string\): Promise<Guarda> \{\s*return requerirEvento\(eventId, canEditStock,/);
+});
+
+test("terminar avisa una sola vez: la marca condicionada y los avisos van en la misma transacción, el push después", () => {
+  const s = fuente("lib/levante-db.ts");
+  const desde = s.indexOf("export async function terminarLevante");
+  assert.ok(desde > -1, "no existe terminarLevante");
+  const cuerpo = s.slice(desde, s.indexOf("\n}\n", desde));
+  const marca = cuerpo.indexOf("where: { id: eventId, levanteAt: null }");
+  const corta = cuerpo.indexOf("if (puesta.count !== 1)");
+  const aviso = cuerpo.indexOf("tx.notification.create(");
+  const push = cuerpo.indexOf("sendPushToUser(");
+  assert.ok(marca > -1 && corta > marca && aviso > corta, "avisa sin saber si esta escritura fue la que terminó");
+  assert.ok(push > aviso, "el push sale antes de guardar el aviso");
+  assert.match(cuerpo, /canEditStock\(p\.role\)/, "el aviso no va a quien toca el stock");
+  assert.match(cuerpo, /id: \{ not: actor\.id \}/, "quien terminó se avisa a sí mismo");
+  assert.match(fuente("lib/push.ts"), /\| "LEVANTE"/);
+});

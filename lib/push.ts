@@ -17,6 +17,7 @@ export type TipoDeAviso =
   | "FALTANTE"
   | "PEDIDO_VACIO"
   | "RESUMEN"
+  | "LEVANTE"
   | "SISTEMA"
   | "SUGERENCIA"
   | "PRUEBA";

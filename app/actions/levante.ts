@@ -3,12 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { canPreparar } from "@/lib/permissions";
+import { canEditStock, canPreparar } from "@/lib/permissions";
 import { esCategoria } from "@/lib/categories";
 import { esClave } from "@/lib/preparacion";
 import { validQuantity } from "@/lib/quantity";
 import { esFaltaValida, sonVistosDeLevante, type VistoDeLevante } from "@/lib/levante";
-import { desmarcar, marcarFalta, marcarSector, marcarVolvio, type ResultadoMarca } from "@/lib/levante-db";
+import {
+  desmarcar,
+  marcarFalta,
+  marcarSector,
+  marcarVolvio,
+  reabrirLevante,
+  terminarLevante,
+  type ResultadoMarca,
+} from "@/lib/levante-db";
 
 /** `aviso`: salió bien, pero hay algo que mirar (no es un error, no bloquea).
  *  `confirmar`: no se terminó porque cambió cuántos quedan sin revisar; es el
@@ -101,4 +109,32 @@ export async function marcarSectorEntero(eventId: string, category: string, vist
       ? "1 ítem cambió mientras tanto y no se tachó: revisalo."
       : `${salteados} ítems cambiaron mientras tanto y no se tacharon: revisalos.`;
   return { ok: true, count: marcados, aviso };
+}
+
+/** Termina el levante con lo que quedó sin revisar confirmado en la pantalla. */
+export async function terminarElLevante(eventId: string, sinRevisarVisto: number): Promise<LevanteResult> {
+  const { user, error } = await requerirMarcar(eventId);
+  if (!user) return { ok: false, error: error! };
+  if (!validQuantity(sinRevisarVisto)) return { ok: false, error: "Pedido inválido." };
+  const r = await terminarLevante(eventId, user, sinRevisarVisto);
+  if (r.r === "confirmar") return { ok: false, confirmar: r.sinRevisar };
+  if (r.r === "no-existe") return { ok: false, error: "El evento ya no está disponible." };
+  // "ya": otro teléfono lo terminó recién. Para quien tocó es lo mismo: quedó terminado.
+  revalidar(eventId);
+  return { ok: true };
+}
+
+/** Reabrir y descontar: solo quien puede tocar el stock (hoy, la administradora). */
+function requerirStock(eventId: string): Promise<Guarda> {
+  return requerirEvento(eventId, canEditStock, "Solo la administradora puede reabrir el levante o descontar del stock.");
+}
+
+/** Reabre un levante terminado para corregirlo. */
+export async function reabrirElLevante(eventId: string): Promise<LevanteResult> {
+  const { user, error } = await requerirStock(eventId);
+  if (!user) return { ok: false, error: error! };
+  const r = await reabrirLevante(eventId);
+  if (r === "no-existe") return { ok: false, error: "El evento ya no está disponible." };
+  revalidar(eventId);
+  return { ok: true };
 }

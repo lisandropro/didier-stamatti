@@ -1,12 +1,16 @@
 import { prisma } from "@/lib/db";
 import { diaDe, hoy, instanteDe, sumarDias } from "@/lib/dates";
 import { claveDeLinea } from "@/lib/preparacion";
+import { canEditStock } from "@/lib/permissions";
+import { sendPushToUser } from "@/lib/push";
 import {
   DIAS_PARA_LEVANTAR,
   itemsDeLevante,
+  linkDelLevante,
   ordenarLevante,
   paraMarcarSector,
   resumenDeLevante,
+  textoDelLevante,
   vuelveDelEvento,
   type ItemLevante,
   type LineaLevante,
@@ -199,4 +203,96 @@ export async function eventosParaLevantar(hoyDia: string = hoy()): Promise<Event
     out.push({ ...e, dia: diaDe(e.date), marcados, total });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Terminar y reabrir
+// ---------------------------------------------------------------------------
+
+/** `confirmar`: cambió cuántos quedan sin revisar desde que se preguntó; trae
+ *  el número de ahora para volver a preguntar. `ya`: otro teléfono lo terminó. */
+export type ResultadoTerminar =
+  | { r: "terminado"; avisados: number }
+  | { r: "confirmar"; sinRevisar: number }
+  | { r: "ya" }
+  | { r: "no-existe" };
+
+/**
+ * Termina el levante y le avisa a quien puede tocar el stock.
+ *
+ * `sinRevisarVisto` es el número que se confirmó en la pantalla ("Quedan 3 sin
+ * revisar"). Si mientras tanto otro teléfono marcó o desmarcó algo, no se
+ * termina: vuelve "confirmar" con el número de ahora. Lo que queda sin revisar
+ * queda así, no como faltante.
+ *
+ * La marca del evento es condicionada (`levanteAt: null`) y los avisos de la
+ * app se crean en la misma transacción: con dos teléfonos a la vez, termina y
+ * avisa uno solo, y no puede quedar un levante terminado sin su aviso. El push
+ * sale después, fuera de la transacción: `sendPushToUser` nunca lanza. No le
+ * llega a quien lo terminó (como el resto de los avisos de la app).
+ */
+export async function terminarLevante(
+  eventId: string,
+  actor: Actor,
+  sinRevisarVisto: number,
+  ahora: Date = new Date(),
+): Promise<ResultadoTerminar> {
+  const hecho = await prisma.$transaction(async (tx) => {
+    const ev = await tx.event.findFirst({ where: { id: eventId, ...VIVO }, select: { lugar: true, levanteAt: true } });
+    if (!ev) return { r: "no-existe" as const };
+    if (ev.levanteAt) return { r: "ya" as const };
+    const items = await levanteDelEvento(eventId, tx);
+    const { sinRevisar } = resumenDeLevante(items);
+    if (sinRevisar !== sinRevisarVisto) return { r: "confirmar" as const, sinRevisar };
+    const puesta = await tx.event.updateMany({
+      where: { id: eventId, levanteAt: null },
+      data: { levanteAt: ahora, levantePorId: actor.id, levantePorName: actor.name },
+    });
+    if (puesta.count !== 1) return { r: "ya" as const };
+    const texto = textoDelLevante(ev.lugar, items, actor.name);
+    const link = linkDelLevante(eventId);
+    const personas = await tx.user.findMany({ where: { id: { not: actor.id } }, select: { id: true, role: true }, orderBy: { name: "asc" } });
+    const avisos: { id: string; userId: string }[] = [];
+    for (const u of personas.filter((p) => canEditStock(p.role))) {
+      const n = await tx.notification.create({
+        data: {
+          recipientId: u.id,
+          actorName: actor.name,
+          type: "LEVANTE",
+          message: texto.mensaje,
+          eventId,
+          linkUrl: link,
+          // El push sale acá mismo: nace marcado como enviado para que ningún
+          // barrido lo vuelva a mandar (como el resumen de la mañana).
+          pushedAt: ahora,
+        },
+      });
+      avisos.push({ id: n.id, userId: u.id });
+    }
+    return { r: "terminado" as const, texto, link, avisos };
+  });
+  if (hecho.r !== "terminado") return hecho;
+  for (const a of hecho.avisos) {
+    await sendPushToUser(
+      a.userId,
+      { title: hecho.texto.title, body: hecho.texto.body, url: hecho.link, tag: `levante-${eventId}` },
+      { kind: "LEVANTE", notificationId: a.id },
+    );
+  }
+  return { r: "terminado", avisados: hecho.avisos.length };
+}
+
+/**
+ * Reabre un levante terminado para corregirlo: el evento vuelve a "Para
+ * levantar" (si está dentro de la semana) y se puede marcar de nuevo. Lo ya
+ * descontado del stock no se toca. Condicionado: con dos toques, reabre uno.
+ */
+export async function reabrirLevante(eventId: string): Promise<"reabierto" | "ya" | "no-existe"> {
+  const ev = await prisma.event.findFirst({ where: { id: eventId, ...VIVO }, select: { id: true } });
+  if (!ev) return "no-existe";
+  const r = await prisma.event.updateMany({
+    where: { id: eventId, levanteAt: { not: null } },
+    data: { levanteAt: null, levantePorId: null, levantePorName: null },
+  });
+  return r.count === 1 ? "reabierto" : "ya";
 }
