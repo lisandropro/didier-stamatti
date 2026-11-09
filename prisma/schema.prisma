@@ -271,6 +271,12 @@ model Event {
   lines       OrderLine[]
   changes     OrderChange[]
   preparaciones Preparacion[]
+  levantes      Levante[]
+  // Cuándo y quién terminó el levante (juntar todo después del evento). Nulo =
+  // todavía no se terminó: el evento sigue en "Para levantar" y se puede marcar.
+  levanteAt      DateTime?
+  levantePorId   String?
+  levantePorName String?
 
   @@index([periodId, deletedAt])
   @@index([date])
@@ -306,7 +312,7 @@ model PushDelivery {
   notificationId String?
   userId         String
   subscriptionId String?
-  // ORDER_EDIT | CAMBIO_TARDIO | FALTANTE | PEDIDO_VACIO | SISTEMA | SUGERENCIA | PRUEBA
+  // ORDER_EDIT | CAMBIO_TARDIO | FALTANTE | PEDIDO_VACIO | RESUMEN | LEVANTE | SISTEMA | SUGERENCIA | PRUEBA
   kind           String
   // ACEPTADO | CADUCADO | RECHAZADO | ERROR
   status         String
@@ -360,6 +366,36 @@ model Preparacion {
 /// El barrido de cada minuto compara lo que falta ahora con esto: avisa si
 /// falta algo nuevo o más que lo avisado, y borra la fila cuando deja de
 /// faltar. `missing` es lo que decía el último aviso, no lo que falta hoy.
+/// Lo que se revisó al levantar un evento: una fila por ÍTEM, como Preparacion.
+///
+/// La clave es la misma (`productId`, o `custom:<orderLineId>` para los
+/// sueltos). Se copian nombre, unidad y sector para que la fila se lea sola, y
+/// `qty` es lo que se mandó EN EL MOMENTO de marcar: si el pedido cambia
+/// después, la marca deja de valer y el ítem vuelve a estar sin revisar.
+///
+/// `faltan` 0 = volvió todo. Lo descontado del stock queda anotado acá (motivo,
+/// cuándo, quién): es lo que impide descontar dos veces el mismo renglón.
+model Levante {
+  id                String    @id @default(cuid())
+  eventId           String
+  event             Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  clave             String
+  itemName          String
+  unit              String
+  category          String
+  qty               Int
+  faltan            Int       @default(0)
+  porId             String?
+  porName           String
+  at                DateTime  @default(now())
+  descontadoMotivo  String? // ROTURA | PERDIDA
+  descontadoAt      DateTime?
+  descontadoPorId   String?
+  descontadoPorName String?
+
+  @@unique([eventId, clave])
+}
+
 model FaltanteAvisado {
   id        String            @id @default(cuid())
   periodId  String
