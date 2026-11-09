@@ -12,6 +12,7 @@
 import { esClave } from "@/lib/preparacion";
 import { MAX_CUERPO, recortar } from "@/lib/aviso-texto";
 import { nombreDeCategoria, ordenDeCategoria } from "@/lib/categories";
+import { partesDe } from "@/lib/dates";
 import { validQuantity } from "@/lib/quantity";
 
 export type EstadoLevante = "PENDIENTE" | "VOLVIO" | "FALTA";
@@ -309,4 +310,50 @@ export function textoDelLevante(
     body: recortar(detalle.charAt(0).toUpperCase() + detalle.slice(1), MAX_CUERPO - pie.length) + pie,
     mensaje: recortar(`${titulo}: ${detalle}`, MAX_CUERPO),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Dar de baja lo que no volvió
+// ---------------------------------------------------------------------------
+
+/** Si un faltante se puede descontar del stock y, si no, por qué. */
+export type Baja = "DESCONTABLE" | "SUELTO" | "NO_LLEVA_STOCK" | "SIN_CONTAR" | "SIN_STOCK";
+
+/**
+ * Lo decide el producto como está ahora:
+ * - un ítem suelto no tiene producto ni stock: queda anotado y nada más;
+ * - un consumible no lleva stock (pudo pasar a consumible después del evento);
+ * - un producto que nunca se contó no tiene de dónde descontar: "hay cero" y
+ *   "nunca se contó" son cosas distintas (ver `Product.stock`), e inventar un
+ *   número sería peor que no descontar;
+ * - con el stock ya en 0 no hay nada que bajar.
+ */
+export function bajaDe(clave: string, producto: { type: string; stock: number | null } | null): Baja {
+  if (productoDeClave(clave) === null) return "SUELTO";
+  if (!producto || producto.type !== "REUTILIZABLE") return "NO_LLEVA_STOCK";
+  if (producto.stock === null) return "SIN_CONTAR";
+  if (producto.stock === 0) return "SIN_STOCK";
+  return "DESCONTABLE";
+}
+
+/** Por qué un faltante no se puede descontar, como lo lee la administradora. */
+export const TEXTO_DE_BAJA: Record<Exclude<Baja, "DESCONTABLE">, string> = {
+  SUELTO: "Ítem suelto: no lleva stock, queda anotado.",
+  NO_LLEVA_STOCK: "No lleva control de stock: queda anotado.",
+  SIN_CONTAR: "Nunca se contó en el inventario: contalo antes de descontar.",
+  SIN_STOCK: "El stock ya está en 0: no hay nada que descontar.",
+};
+
+/** Lo que queda al dar de baja lo que no volvió. Nunca menos de 0: si el evento
+ *  llevó más de lo que hay en el depósito (se completó con algo alquilado o
+ *  prestado), el stock no puede quedar negativo. */
+export function stockDespuesDeBaja(stock: number, faltan: number): number {
+  return Math.max(0, stock - faltan);
+}
+
+/** La nota del movimiento de stock: "Levante de MUSEO 8/11", con el día del
+ *  evento en Argentina. Es lo que se lee en el historial del producto. */
+export function notaDeBaja(lugar: string, fecha: Date): string {
+  const p = partesDe(fecha);
+  return `Levante de ${recortar(lugar, MAX_LUGAR)} ${p.day}/${p.month}`;
 }

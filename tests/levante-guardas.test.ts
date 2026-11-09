@@ -154,3 +154,34 @@ test("la hoja de cuántos faltan es un formulario: no se cierra deslizando", () 
   const apertura = c.slice(c.lastIndexOf("<div", desde), desde);
   assert.match(apertura, /className="modal"\s+data-sin-deslizar/);
 });
+
+test("descontar del stock lo decide solo quien toca el stock, y pasa por el mismo camino que el ajuste", () => {
+  const s = fuente("app/actions/levante.ts");
+  const c = cuerpoDe(s, "descontarItem");
+  assert.match(c, /requerirStock\(eventId\)/);
+  assert.ok(c.indexOf("esMotivoBaja(motivo)") > -1 && c.indexOf("esMotivoBaja(motivo)") < c.search(ESCRITURA), "descuenta sin comprobar el motivo");
+  // El stock se ve en Inventario, el historial y los faltantes: se refresca todo.
+  assert.match(c, /revalidatePath\("\/", "layout"\)/);
+  // Un solo camino escribe el stock: el ajuste de Inventario y la baja del levante.
+  assert.match(fuente("lib/stock.ts"), /prisma\.\$transaction\(\(tx\) => moverStock\(tx, input, userId\)\)/);
+  const db = fuente("lib/levante-db.ts");
+  const desde = db.indexOf("export async function descontarFaltante");
+  const cuerpo = db.slice(desde, db.indexOf("\n}\n", desde));
+  const marca = cuerpo.indexOf("descontadoAt: null }");
+  const corta = cuerpo.indexOf("if (marcada.count !== 1)");
+  const mueve = cuerpo.indexOf("moverStock(");
+  assert.ok(marca > -1 && corta > marca && mueve > corta, "mueve el stock sin saber si este toque fue el que marcó el renglón");
+  assert.doesNotMatch(cuerpo, /product\.update(Many)?\(/, "escribe el stock por su cuenta, sin moverStock");
+});
+
+test("los botones de descontar se ofrecen solo con el levante terminado y a quien toca el stock", () => {
+  const pagina = fuente("app/(app)/preparar/[eventId]/levante/page.tsx");
+  assert.match(pagina, /const puedeDescontar = terminado !== null && canEditStock\(sesion\.role\)/);
+  assert.match(pagina, /bajaDe\(i\.clave, productos\.get\(i\.clave\) \?\? null\)/);
+  const c = fuente("components/Levante.tsx");
+  assert.match(c, /puedeDescontar=\{data\.terminado !== null && data\.puedeAjustarStock\}/);
+  assert.match(c, /descontarItem\(data\.evento\.id, i\.clave, motivo\)/);
+  assert.match(c, /alDescontar\("ROTURA"\)/);
+  assert.match(c, /alDescontar\("PERDIDA"\)/);
+  assert.match(c, /TEXTO_DE_BAJA\[i\.baja\]/);
+});

@@ -3,18 +3,25 @@ import { diaDe, hoy, instanteDe, sumarDias } from "@/lib/dates";
 import { claveDeLinea } from "@/lib/preparacion";
 import { canEditStock } from "@/lib/permissions";
 import { sendPushToUser } from "@/lib/push";
+import { moverStock } from "@/lib/stock";
 import {
   DIAS_PARA_LEVANTAR,
+  bajaDe,
   itemsDeLevante,
   linkDelLevante,
+  notaDeBaja,
   ordenarLevante,
   paraMarcarSector,
+  productoDeClave,
   resumenDeLevante,
+  stockDespuesDeBaja,
   textoDelLevante,
   vuelveDelEvento,
+  type Baja,
   type ItemLevante,
   type LineaLevante,
   type Marca,
+  type MotivoBaja,
   type VistoDeLevante,
 } from "@/lib/levante";
 
@@ -98,8 +105,6 @@ async function marcar(eventId: string, clave: string, actor: Actor, mandado: num
     const linea = (await lineasParaLevantar(tx, eventId)).find((l) => l.clave === clave);
     if (!linea) return "no-existe";
     if (linea.qty !== mandado) return "cambio";
-    const previa = await tx.levante.findUnique({ where: { eventId_clave: { eventId, clave } }, select: { descontadoAt: true } });
-    if (previa?.descontadoAt) return "descontado";
     const datos = {
       itemName: linea.itemName,
       unit: linea.unit,
@@ -110,13 +115,28 @@ async function marcar(eventId: string, clave: string, actor: Actor, mandado: num
       porName: actor.name,
       at: new Date(),
     };
-    await tx.levante.upsert({
-      where: { eventId_clave: { eventId, clave } },
-      update: datos,
-      create: { eventId, clave, ...datos },
-    });
-    return "marcado";
+    return (await escribirMarca(tx, eventId, clave, datos)) ? "marcado" : "descontado";
   });
+}
+
+/**
+ * Escribe una marca sin pisar un renglón ya descontado del stock. La guarda va
+ * en la escritura misma (`descontadoAt: null`) y no solo en una lectura previa:
+ * lo descontado ya movió el stock y no se vuelve a tocar, pase lo que pase en el
+ * medio. Devuelve `false` si el renglón está descontado y no se escribió nada.
+ */
+async function escribirMarca(
+  tx: Pick<typeof prisma, "levante">,
+  eventId: string,
+  clave: string,
+  datos: { itemName: string; unit: string; category: string; qty: number; faltan: number; porId: string; porName: string; at: Date },
+): Promise<boolean> {
+  const hecha = await tx.levante.updateMany({ where: { eventId, clave, descontadoAt: null }, data: datos });
+  if (hecha.count === 1) return true;
+  const existe = await tx.levante.findUnique({ where: { eventId_clave: { eventId, clave } }, select: { id: true } });
+  if (existe) return false;
+  await tx.levante.create({ data: { eventId, clave, ...datos } });
+  return true;
 }
 
 /** Volvió todo lo que se mandó de este ítem. */
@@ -159,14 +179,16 @@ export async function marcarSector(
     const { claves, salteados } = paraMarcarSector(items, category, vistos);
     const porClave = new Map(items.map((i) => [i.clave, i]));
     const at = new Date();
+    let marcados = 0;
     for (const clave of claves) {
       const i = porClave.get(clave)!;
       const datos = { itemName: i.itemName, unit: i.unit, category: i.category, qty: i.qty, faltan: 0, porId: actor.id, porName: actor.name, at };
-      // upsert y no create: un ítem pendiente puede tener una marca vieja (el
-      // pedido cambió después de marcarlo), y esa se pisa con lo de ahora.
-      await tx.levante.upsert({ where: { eventId_clave: { eventId, clave } }, update: datos, create: { eventId, clave, ...datos } });
+      // Actualiza y no solo crea: un ítem pendiente puede tener una marca vieja
+      // (el pedido cambió después de marcarlo), y esa se pisa con lo de ahora.
+      // Un renglón descontado nunca se pisa: se saltea.
+      if (await escribirMarca(tx, eventId, clave, datos)) marcados++;
     }
-    return { resultado: "ok" as const, marcados: claves.length, salteados };
+    return { resultado: "ok" as const, marcados, salteados: salteados + (claves.length - marcados) };
   });
 }
 
@@ -300,4 +322,66 @@ export async function reabrirLevante(eventId: string): Promise<"reabierto" | "ya
     data: { levanteAt: null, levantePorId: null, levantePorName: null },
   });
   return r.count === 1 ? "reabierto" : "ya";
+}
+
+// ---------------------------------------------------------------------------
+// Descontar del stock lo que no volvió
+// ---------------------------------------------------------------------------
+
+/** `abierto`: el levante no está terminado (se reabrió). `cambio`: el stock
+ *  cambió entre la lectura y la escritura; se puede volver a intentar. El resto
+ *  de los motivos son los de `bajaDe`. */
+export type ResultadoDescuento = "descontado" | "ya" | "abierto" | "no-existe" | "cambio" | Exclude<Baja, "DESCONTABLE">;
+
+/** Para deshacer la marca de descontado si el stock no se pudo mover. */
+class StockCambio extends Error {}
+
+/**
+ * Da de baja del stock lo que no volvió de un ítem, una sola vez.
+ *
+ * Solo en un levante terminado y sobre un ítem que hoy figura como FALTA. La
+ * marca del renglón va primero y condicionada (`descontadoAt: null`): de dos
+ * toques a la vez, uno solo la pone y uno solo descuenta. El stock se mueve por
+ * el mismo camino que el ajuste de Inventario (`moverStock`): mismo control de
+ * que nadie lo cambió en el medio, mismo movimiento en el historial. Si ese
+ * control falla, se deshace la marca (la transacción entera vuelve atrás).
+ */
+export async function descontarFaltante(eventId: string, clave: string, motivo: MotivoBaja, actor: Actor): Promise<ResultadoDescuento> {
+  try {
+    return await prisma.$transaction(async (tx): Promise<ResultadoDescuento> => {
+      const ev = await tx.event.findFirst({ where: { id: eventId, ...VIVO }, select: { lugar: true, date: true, levanteAt: true } });
+      if (!ev) return "no-existe";
+      if (!ev.levanteAt) return "abierto";
+      const item = (await levanteDelEvento(eventId, tx)).find((i) => i.clave === clave);
+      if (!item || item.estado !== "FALTA") return "no-existe";
+      if (item.descontado) return "ya";
+      const productId = productoDeClave(clave);
+      const producto = productId ? await tx.product.findUnique({ where: { id: productId }, select: { type: true, stock: true } }) : null;
+      const baja = bajaDe(clave, producto);
+      if (baja !== "DESCONTABLE") return baja;
+      // `bajaDe` ya garantizó un producto reutilizable con stock contado y mayor que 0.
+      const stock = producto!.stock!;
+      const marcada = await tx.levante.updateMany({
+        where: { eventId, clave, descontadoAt: null },
+        data: { descontadoMotivo: motivo, descontadoAt: new Date(), descontadoPorId: actor.id, descontadoPorName: actor.name },
+      });
+      if (marcada.count !== 1) return "ya";
+      const r = await moverStock(
+        tx,
+        {
+          productId: productId!,
+          expectedStock: stock,
+          newStock: stockDespuesDeBaja(stock, item.faltan),
+          reason: motivo,
+          note: notaDeBaja(ev.lugar, ev.date),
+        },
+        actor.id,
+      );
+      if (!r.ok) throw new StockCambio();
+      return "descontado";
+    });
+  } catch (e) {
+    if (e instanceof StockCambio) return "cambio";
+    throw e;
+  }
 }

@@ -1,23 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  bajaDe,
   esFaltaValida,
   esMotivoBaja,
   etiquetaDeMotivo,
   itemsDeLevante,
   linkDelLevante,
+  notaDeBaja,
   ordenarLevante,
   paraMarcarSector,
   productoDeClave,
   resumenDeLevante,
   seccionesDeLevante,
   sonVistosDeLevante,
+  stockDespuesDeBaja,
   textoDelLevante,
   vuelveDelEvento,
   type EstadoLevante,
   type LineaLevante,
   type Marca,
 } from "../lib/levante";
+import { instanteDe } from "../lib/dates";
 
 /**
  * El levante calculado: qué entra en la lista, cómo se cruza con lo marcado y
@@ -188,4 +192,25 @@ test("el aviso no pasa del tope del push aunque el lugar y los nombres sean larg
 
 test("el aviso lleva al levante del evento", () => {
   assert.equal(linkDelLevante("ev-1"), "/preparar/ev-1/levante");
+});
+
+test("qué faltantes se pueden descontar del stock, y por qué no los otros", () => {
+  const contado = { type: "REUTILIZABLE", stock: 250 };
+  assert.equal(bajaDe("copa", contado), "DESCONTABLE");
+  assert.equal(bajaDe("custom:linea-1", null), "SUELTO");
+  assert.equal(bajaDe("hielo", { type: "CONSUMIBLE", stock: 0 }), "NO_LLEVA_STOCK");
+  assert.equal(bajaDe("copa", null), "NO_LLEVA_STOCK", "el producto ya no existe");
+  assert.equal(bajaDe("copa", { type: "REUTILIZABLE", stock: null }), "SIN_CONTAR");
+  assert.equal(bajaDe("copa", { type: "REUTILIZABLE", stock: 0 }), "SIN_STOCK");
+});
+
+test("el stock baja lo que faltó, sin quedar negativo", () => {
+  assert.equal(stockDespuesDeBaja(250, 5), 245);
+  assert.equal(stockDespuesDeBaja(3, 5), 0);
+});
+
+test("la nota del movimiento dice el lugar y el día del evento en Argentina", () => {
+  // 23:30 del 8/11 en Argentina ya es 9/11 en UTC: la nota tiene que decir 8/11.
+  assert.equal(notaDeBaja("MUSEO", instanteDe("2026-11-08", "23:30")), "Levante de MUSEO 8/11");
+  assert.ok(notaDeBaja("L".repeat(300), instanteDe("2026-11-08", "21:00")).length < 80);
 });

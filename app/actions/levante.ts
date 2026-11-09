@@ -7,14 +7,16 @@ import { canEditStock, canPreparar } from "@/lib/permissions";
 import { esCategoria } from "@/lib/categories";
 import { esClave } from "@/lib/preparacion";
 import { validQuantity } from "@/lib/quantity";
-import { esFaltaValida, sonVistosDeLevante, type VistoDeLevante } from "@/lib/levante";
+import { TEXTO_DE_BAJA, esFaltaValida, esMotivoBaja, sonVistosDeLevante, type MotivoBaja, type VistoDeLevante } from "@/lib/levante";
 import {
   desmarcar,
+  descontarFaltante,
   marcarFalta,
   marcarSector,
   marcarVolvio,
   reabrirLevante,
   terminarLevante,
+  type ResultadoDescuento,
   type ResultadoMarca,
 } from "@/lib/levante-db";
 
@@ -137,5 +139,25 @@ export async function reabrirElLevante(eventId: string): Promise<LevanteResult> 
   const r = await reabrirLevante(eventId);
   if (r === "no-existe") return { ok: false, error: "El evento ya no está disponible." };
   revalidar(eventId);
+  return { ok: true };
+}
+
+const ERROR_DE_DESCUENTO: Record<Exclude<ResultadoDescuento, "descontado" | "ya">, string> = {
+  abierto: "El levante se reabrió: hay que terminarlo antes de descontar.",
+  "no-existe": "Ese faltante ya no está: revisá el levante.",
+  cambio: "El stock cambió recién: probá de nuevo.",
+  ...TEXTO_DE_BAJA,
+};
+
+/** Da de baja del stock lo que no volvió de un ítem, por rotura o pérdida. */
+export async function descontarItem(eventId: string, clave: string, motivo: MotivoBaja): Promise<LevanteResult> {
+  const { user, error } = await requerirStock(eventId);
+  if (!user) return { ok: false, error: error! };
+  if (!esClave(clave) || !esMotivoBaja(motivo)) return { ok: false, error: "Pedido inválido." };
+  const r = await descontarFaltante(eventId, clave, motivo, user);
+  // "ya": otro teléfono lo descontó recién. Quedó descontado una vez, que es lo que se quería.
+  if (r !== "descontado" && r !== "ya") return { ok: false, error: ERROR_DE_DESCUENTO[r] };
+  // El stock se ve en Inventario, en el historial y en los faltantes de cada período.
+  revalidatePath("/", "layout");
   return { ok: true };
 }

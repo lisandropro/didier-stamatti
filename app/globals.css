@@ -2464,6 +2464,13 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .lev-terminado{align-items:center; flex-wrap:wrap; margin-bottom:0}
 .lev-terminado-texto{flex:1 1 220px; display:flex; flex-direction:column; gap:2px; font-size:var(--t-sm)}
 .lev-terminar{display:flex; flex-direction:column; align-items:flex-start; gap:var(--sp-2)}
+/* Debajo de un faltante, lo que hace la administradora con el stock: pegado a
+   la fila (la fila pierde las esquinas de abajo), con los dos botones grandes. */
+.lev-fila-caja:has(.lev-baja) .prep-fila{border-bottom-left-radius:0; border-bottom-right-radius:0}
+.lev-baja{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); padding:var(--sp-3); background:var(--crit-soft); border:1px solid var(--crit); border-top:0; border-radius:0 0 var(--radius) var(--radius)}
+.lev-baja-texto{flex:1 1 100%; font-weight:700; color:var(--ink)}
+.lev-baja .btn{flex:1 1 0; justify-content:center; touch-action:manipulation}
+.lev-baja-nota{margin:var(--sp-1) 0 0; padding:0 var(--sp-3); font-size:var(--t-sm); color:var(--muted)}
 @media screen and (max-width:860px){
   /* En el teléfono el botón del pie va a lo ancho y alto: se toca con el pulgar. */
   .lev-terminar{align-items:stretch}

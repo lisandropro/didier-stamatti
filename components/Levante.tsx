@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
+  descontarItem,
   desmarcarItem,
   marcarFaltaItem,
   marcarSectorEntero,
@@ -13,7 +14,17 @@ import {
   type LevanteResult,
 } from "@/app/actions/levante";
 import { intentar } from "@/lib/actualizacion";
-import { esFaltaValida, resumenDeLevante, seccionesDeLevante, type EstadoLevante, type ResumenDeLevante, type VistoDeLevante } from "@/lib/levante";
+import {
+  TEXTO_DE_BAJA,
+  esFaltaValida,
+  resumenDeLevante,
+  seccionesDeLevante,
+  type Baja,
+  type EstadoLevante,
+  type MotivoBaja,
+  type ResumenDeLevante,
+  type VistoDeLevante,
+} from "@/lib/levante";
 import { esCategoria } from "@/lib/categories";
 import { vibrar, PATRON } from "@/lib/vibrar";
 import { RefrescoPeriodico } from "@/components/RefrescoPeriodico";
@@ -30,6 +41,9 @@ type Item = {
   marcadoPor: string | null;
   /** "Rotura", "Pérdida": ya se descontó del stock. */
   descontado: string | null;
+  /** Solo en un faltante sin descontar, para quien puede descontar: si se
+   *  puede, y si no, por qué. */
+  baja: Baja | null;
 };
 type Data = {
   evento: { id: string; lugar: string; cuando: string; esHoy: boolean };
@@ -196,6 +210,14 @@ export function Levante({ data }: { data: Data }) {
     void correr("reabrir", () => reabrirElLevante(data.evento.id));
   }
 
+  /** Da de baja del stock lo que no volvió. Una sola vez: el servidor lo
+   *  garantiza aunque se toque dos veces o desde dos teléfonos. */
+  function descontar(i: Item, motivo: MotivoBaja) {
+    if (enVuelo.has(i.clave)) return;
+    vibrar(PATRON.tildar);
+    void correr(i.clave, () => descontarItem(data.evento.id, i.clave, motivo));
+  }
+
   /** Salta a un sector sin tocar el historial (ver `saltarA` en Preparar). */
   function saltarA(id: string) {
     return (e: MouseEvent<HTMLAnchorElement>) => {
@@ -303,6 +325,8 @@ export function Levante({ data }: { data: Data }) {
                 ocupada={enVuelo.has(i.clave)}
                 alTocar={() => alternar(i)}
                 alFalta={() => abrirHoja(i)}
+                puedeDescontar={data.terminado !== null && data.puedeAjustarStock}
+                alDescontar={(motivo) => descontar(i, motivo)}
               />
             ))}
           </section>
@@ -432,12 +456,16 @@ function Fila({
   ocupada,
   alTocar,
   alFalta,
+  puedeDescontar,
+  alDescontar,
 }: {
   item: Item;
   puedeMarcar: boolean;
   ocupada: boolean;
   alTocar: () => void;
   alFalta: () => void;
+  puedeDescontar: boolean;
+  alDescontar: (motivo: MotivoBaja) => void;
 }) {
   const volvio = i.estado === "VOLVIO";
   const falta = i.estado === "FALTA";
@@ -485,6 +513,19 @@ function Fila({
           </button>
         )}
       </div>
+      {/* Lo que hace la administradora con un faltante, pegado debajo de la fila.
+          Lo que no se descuenta no toca el stock: queda anotado y se dice por qué. */}
+      {puedeDescontar && falta && i.descontado === null && i.baja !== null && (
+        i.baja === "DESCONTABLE" ? (
+          <div className="lev-baja" role="group" aria-label={`Descontar ${i.itemName} del stock`}>
+            <span className="lev-baja-texto">Dar de baja {i.faltan}{unidad(i.unit)} del stock por</span>
+            <button type="button" className="btn ghost" onClick={() => alDescontar("ROTURA")} disabled={ocupada}>Rotura</button>
+            <button type="button" className="btn ghost" onClick={() => alDescontar("PERDIDA")} disabled={ocupada}>Pérdida</button>
+          </div>
+        ) : (
+          <p className="lev-baja-nota">{TEXTO_DE_BAJA[i.baja]}</p>
+        )
+      )}
     </div>
   );
 }
