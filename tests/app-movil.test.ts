@@ -241,7 +241,7 @@ test("los detalles de las listas del celular", () => {
 test("tocar responde también en avisos, sugerencias, segmentos y el resto de lo que se toca", () => {
   const css = fuente("app/globals.css");
   const seccion = css.slice(css.indexOf("/* ===== Al tocar"));
-  for (const sel of [".notif-item:not(:disabled)", "button.sug-row", "a.sug-row", ".seg button", ".miniedit", ".prep-faltan", ".prep-salto", ".prep-volver", ".pasados > summary"]) {
+  for (const sel of [".notif-item:not(:disabled)", "button.sug-row", "a.sug-row", ".seg button", ".miniedit", ".prep-faltan", ".prep-salto", ".prep-volver", ".pasados > summary", ".lev-card"]) {
     assert.ok(seccion.includes(sel), `${sel} no responde al tocar`);
   }
   assert.ok(!/\.event, \.event-falta,/.test(seccion), ".event-falta está adentro de .event: se apagaban los dos a la vez");

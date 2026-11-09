@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { canVerPreparacion } from "@/lib/permissions";
 import { eventosParaPreparar, DIAS_A_PREPARAR } from "@/lib/preparacion-db";
+import { eventosParaLevantar } from "@/lib/levante-db";
+import { linkDelLevante } from "@/lib/levante";
 import { fmtEvento, haceCuanto, hoy, sumarDias } from "@/lib/dates";
 import { InstalarApp } from "@/components/InstalarApp";
 import { RefrescoPeriodico } from "@/components/RefrescoPeriodico";
@@ -19,9 +21,10 @@ export default async function PrepararPage() {
   const sesion = await getSessionUser();
   if (!sesion || !canVerPreparacion(sesion.role)) notFound();
 
-  const eventos = await eventosParaPreparar();
+  const [eventos, levantar] = await Promise.all([eventosParaPreparar(), eventosParaLevantar()]);
   const hoyDia = hoy();
   const manana = sumarDias(hoyDia, 1);
+  const ayer = sumarDias(hoyDia, -1);
   const ahora = new Date();
 
   return (
@@ -37,6 +40,32 @@ export default async function PrepararPage() {
       </div>
       <div className="content">
         <InstalarApp />
+        {/* Lo que hay que juntar después de cada evento. Va arriba: son pocos (los
+            de la última semana sin terminar) y se usan con apuro, en el salón, al
+            final de la noche. */}
+        {levantar.length > 0 && (
+          <section className="lev-seccion" aria-labelledby="lev-para-levantar">
+            <h2 id="lev-para-levantar" className="lev-lista-titulo">Para levantar</h2>
+            <div className="prep-lista">
+              {levantar.map((e) => (
+                <Link key={e.id} href={linkDelLevante(e.id)} className="prep-card lev-card">
+                  <div className="prep-card-top">
+                    <b>{e.lugar}</b>
+                    {e.dia === hoyDia && <span className="prep-dia hoy">HOY</span>}
+                    {e.dia === ayer && <span className="prep-dia">AYER</span>}
+                  </div>
+                  <div className="prep-card-cuando">{fmtEvento(e.date)}</div>
+                  <div className="prep-avance">
+                    <span className={`prep-chip${e.marcados === e.total ? " ok" : ""}`}>
+                      Levante · {e.marcados} de {e.total}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+        {levantar.length > 0 && <h2 className="lev-lista-titulo">Para preparar</h2>}
         {eventos.length === 0 ? (
           <div className="empty-card">
             <p className="empty-title">No hay eventos para preparar</p>

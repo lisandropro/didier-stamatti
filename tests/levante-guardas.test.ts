@@ -100,3 +100,57 @@ test("terminar avisa una sola vez: la marca condicionada y los avisos van en la 
   assert.match(cuerpo, /id: \{ not: actor\.id \}/, "quien terminó se avisa a sí mismo");
   assert.match(fuente("lib/push.ts"), /\| "LEVANTE"/);
 });
+
+test("las pantallas del levante comprueban su permiso; marcar se ofrece solo a quien puede y con el levante abierto", () => {
+  const pagina = fuente("app/(app)/preparar/[eventId]/levante/page.tsx");
+  assert.match(pagina, /canVerPreparacion\(sesion\.role\)\) notFound\(\)/);
+  assert.match(pagina, /deletedAt: null, period: \{ deletedAt: null \}/);
+  assert.match(pagina, /puedeMarcar: canPreparar\(sesion\.role\) && !terminado/);
+  const c = fuente("components/Levante.tsx");
+  assert.match(c, /if \(!data\.puedeMarcar/);
+  // "Reabrir" solo a quien toca el stock.
+  assert.match(c, /data\.puedeAjustarStock && \(\s*<button[^>]*onClick=\{reabrir\}/);
+});
+
+test("Preparar muestra Para levantar, con cada evento llevando a su levante", () => {
+  const s = fuente("app/(app)/preparar/page.tsx");
+  assert.match(s, /eventosParaLevantar\(\)/);
+  assert.match(s, /Para levantar/);
+  assert.match(s, /href=\{linkDelLevante\(e\.id\)\}/);
+  assert.match(s, /Levante · \{e\.marcados\} de \{e\.total\}/);
+});
+
+test("la pantalla del levante manda lo que se ve y no refresca sin señal", () => {
+  const c = fuente("components/Levante.tsx");
+  assert.match(c, /<RefrescoPeriodico \/>/);
+  const desde = c.indexOf("async function correr");
+  assert.ok(desde > -1, "no está correr");
+  assert.ok(c.slice(desde, c.indexOf("\n  }", desde)).includes("navigator.onLine"), "marcar sin señal y fallar reemplaza la lista por la página de sin conexión");
+  // Lo que mostraba la fila viaja con el toque.
+  assert.match(c, /marcarVolvioItem\(data\.evento\.id, i\.clave, i\.qty\)/);
+  assert.match(c, /desmarcarItem\(data\.evento\.id, i\.clave, 0\)/);
+  assert.match(c, /marcarFaltaItem\(data\.evento\.id, h\.clave, h\.qty, n\)/);
+  assert.match(c, /desmarcarItem\(data\.evento\.id, h\.clave, h\.faltanVisto\)/);
+  assert.match(c, /vistos: s\.filas\.filter\(\(i\) => i\.estado === "PENDIENTE"\)/);
+  assert.match(c, /terminarElLevante\(data\.evento\.id, sinRevisarVisto\)/);
+  // La hoja se cierra si la fila cambió mientras estaba abierta.
+  assert.match(c, /!data\.items\.some\(\(i\) => sigueComoSeAbrio\(hoja, i\)\)\)\) setHoja\(null\)/);
+});
+
+test("en el levante el teléfono vibra al marcar, y solo si el toque hace algo", () => {
+  const c = fuente("components/Levante.tsx");
+  const desde = c.indexOf("function alternar");
+  const cuerpo = c.slice(desde, c.indexOf("\n  }", desde));
+  assert.ok(cuerpo.includes("vibrar("), "marcar no da ninguna señal física");
+  assert.ok(cuerpo.indexOf("vibrar(") > cuerpo.indexOf("return;"), "vibra aunque el toque no haga nada");
+  const sector = c.slice(c.indexOf("function tacharSector"), c.indexOf("\n  }", c.indexOf("function tacharSector")));
+  assert.ok(sector.includes("vibrar("), "tachar un sector no da ninguna señal física");
+});
+
+test("la hoja de cuántos faltan es un formulario: no se cierra deslizando", () => {
+  const c = fuente("components/Levante.tsx");
+  const desde = c.indexOf('aria-labelledby="lev-hoja-titulo"');
+  assert.ok(desde > -1, "no está la hoja de cuántos faltan");
+  const apertura = c.slice(c.lastIndexOf("<div", desde), desde);
+  assert.match(apertura, /className="modal"\s+data-sin-deslizar/);
+});

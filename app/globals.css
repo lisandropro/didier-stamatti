@@ -2444,6 +2444,32 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .prep-card-cambio{margin-top:var(--sp-1); font-size:var(--t-sm); color:var(--muted)}
 .prep-card-cambio.reciente{color:var(--warn); font-weight:600}
 
+/* ===== Levante ==============================================================
+   La ayuda memoria para juntar todo después del evento. Usa la cabecera, los
+   sectores y las filas de Preparar; acá va solo lo propio: lo que volvió se
+   tacha, lo que falta va en rojo, y "Falta" va al lado de cada fila. */
+.lev-seccion{margin-bottom:var(--sp-6)}
+.lev-lista-titulo{font-size:var(--t-lg); margin:0 0 var(--sp-3)}
+.lev-fila-caja{margin-bottom:var(--sp-2)}
+.lev-fila-linea{display:flex; align-items:stretch; gap:var(--sp-2)}
+.lev-fila-linea .prep-fila{flex:1; min-width:0}
+/* Ancho fijo: "Falta" y "Corregir" ocupan lo mismo y la fila no salta al marcar. */
+.lev-falta-btn{flex:0 0 auto; min-width:92px; justify-content:center; touch-action:manipulation}
+.prep-fila.estado-volvio .prep-check{background:var(--ok); border-color:var(--ok); color:var(--surface)}
+.prep-fila.estado-volvio .prep-nombre{text-decoration:line-through; color:var(--muted)}
+.prep-fila.estado-falta{border-color:var(--crit)}
+.prep-fila.estado-falta .prep-check{border-color:var(--crit); color:var(--crit)}
+.lev-faltan{color:var(--crit); font-weight:700}
+.lev-descontado{font-size:var(--t-sm); color:var(--muted); font-weight:600}
+.lev-terminado{align-items:center; flex-wrap:wrap; margin-bottom:0}
+.lev-terminado-texto{flex:1 1 220px; display:flex; flex-direction:column; gap:2px; font-size:var(--t-sm)}
+.lev-terminar{display:flex; flex-direction:column; align-items:flex-start; gap:var(--sp-2)}
+@media screen and (max-width:860px){
+  /* En el teléfono el botón del pie va a lo ancho y alto: se toca con el pulgar. */
+  .lev-terminar{align-items:stretch}
+  .lev-terminar-btn{min-height:52px}
+}
+
 /* ===== Celular (etapa 4) ==================================================
    Medido el 19/10 a 375×812 con datos de producción: en el editor la cabecera
    fija ocupaba el 40 % de la pantalla y entraban 2 productos. La meta es 6 o
@@ -2636,7 +2662,8 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
          .mobnav button, .rowmenu-list button, .revision-item > a, .resp-chip-btn,
          .pname-btn, .topbar-volver, .rowmenu-btn, .nav, .step-btn,
          .notif-item:not(:disabled), button.sug-row, a.sug-row, .seg button,
-         .miniedit, .prep-faltan, .prep-salto, .prep-volver, .pasados > summary):active{
+         .miniedit, .prep-faltan, .prep-salto, .prep-volver, .pasados > summary,
+         .lev-card):active{
     opacity:.6; transition:opacity 0s;
   }
   /* Las tarjetas de eventos pasados ya están a .72 (`.pasados .event`), y esa
