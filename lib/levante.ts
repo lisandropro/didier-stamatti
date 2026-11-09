@@ -120,9 +120,10 @@ export function itemsDeLevante(lineas: LineaLevante[], marcas: Marca[]): ItemLev
 }
 
 /** Por sector y, dentro del sector, por nombre. Es el orden en que llegan a la
- *  pantalla; `seccionesDeLevante` después sube lo pendiente. */
+ *  pantalla; `seccionesDeLevante` después sube lo pendiente. Devuelve una copia:
+ *  ordenar en el lugar reacomodaría el arreglo de quien la llama sin avisar. */
 export function ordenarLevante<T extends { category: string; itemName: string }>(items: T[]): T[] {
-  return items.sort(
+  return [...items].sort(
     (a, b) => ordenDeCategoria(a.category) - ordenDeCategoria(b.category) || a.itemName.localeCompare(b.itemName, "es"),
   );
 }

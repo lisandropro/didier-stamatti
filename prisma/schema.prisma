@@ -361,11 +361,6 @@ model Preparacion {
   @@unique([eventId, clave])
 }
 
-/// Lo último que se avisó que falta de un producto en un período.
-///
-/// El barrido de cada minuto compara lo que falta ahora con esto: avisa si
-/// falta algo nuevo o más que lo avisado, y borra la fila cuando deja de
-/// faltar. `missing` es lo que decía el último aviso, no lo que falta hoy.
 /// Lo que se revisó al levantar un evento: una fila por ÍTEM, como Preparacion.
 ///
 /// La clave es la misma (`productId`, o `custom:<orderLineId>` para los
@@ -396,6 +391,11 @@ model Levante {
   @@unique([eventId, clave])
 }
 
+/// Lo último que se avisó que falta de un producto en un período.
+///
+/// El barrido de cada minuto compara lo que falta ahora con esto: avisa si
+/// falta algo nuevo o más que lo avisado, y borra la fila cuando deja de
+/// faltar. `missing` es lo que decía el último aviso, no lo que falta hoy.
 model FaltanteAvisado {
   id        String            @id @default(cuid())
   periodId  String
