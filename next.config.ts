@@ -50,6 +50,13 @@ export default function config(phase: string): NextConfig {
     serverExternalPackages: ["@react-pdf/renderer", "web-push"],
     async headers() {
       return [
+        // El logo y los íconos no cambian con cada versión: que el teléfono no
+        // vuelva a preguntar por ellos en cada apertura. Una semana alcanza, y
+        // si algún día cambian se ven a los pocos días sin tocar nada.
+        ...["/logo.svg", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png"].map((source) => ({
+          source,
+          headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
+        })),
         {
           source: "/:path*",
           headers: [

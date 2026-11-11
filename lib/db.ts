@@ -83,3 +83,8 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 // vez de morir.
 void prisma.$executeRawUnsafe("PRAGMA journal_mode=WAL").catch(() => {});
 void prisma.$executeRawUnsafe("PRAGMA busy_timeout=5000").catch(() => {});
+// Con WAL, NORMAL deja de pedirle al disco que confirme cada escritura (un
+// guardado del pedido son una docena) y solo lo hace al consolidar. La base no
+// se puede corromper por esto; lo único que se arriesga es perder los últimos
+// segundos ante un corte de energía del servidor, no ante una caída de la app.
+void prisma.$executeRawUnsafe("PRAGMA synchronous=NORMAL").catch(() => {});

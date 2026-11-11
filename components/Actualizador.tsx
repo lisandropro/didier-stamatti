@@ -51,6 +51,9 @@ export function Actualizador({ version }: { version: string }) {
     }
 
     async function mirar() {
+      // Con la app en segundo plano no hay nadie mirando el contador ni a quien
+      // actualizarle la pantalla: se pregunta de nuevo al volver (alVolver).
+      if (document.visibilityState !== "visible") return;
       try {
         const res = await fetch("/api/notifications/count", { cache: "no-store" });
         if (!res.ok || !vivo) return;
