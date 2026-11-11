@@ -89,6 +89,9 @@ export function PeriodHub({ data }: { data: HubData }) {
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
+  // Al descartar o restaurar, los renglones de un producto que ya se eliminó
+  // del catálogo no pueden volver. Se dice cuántos fueron, no se calla.
+  const [omitidas, setOmitidas] = useState(0);
   const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
   const { selected, periodos, alert, trash, canManage, canEdit } = data;
@@ -227,6 +230,24 @@ export function PeriodHub({ data }: { data: HubData }) {
       </div>
 
       <div className="content">
+        {omitidas > 0 && (
+          <div className="banner crit hub-banner" role="status">
+            <div>
+              <b>
+                {omitidas === 1
+                  ? "1 renglón no volvió al pedido"
+                  : `${omitidas} renglones no volvieron al pedido`}
+              </b>
+              <p>
+                Su producto se eliminó del catálogo después de guardada esa versión. El resto se
+                recuperó como estaba.
+              </p>
+            </div>
+            <button type="button" className="btn ghost" onClick={() => setOmitidas(0)}>
+              Entendido
+            </button>
+          </div>
+        )}
         {selected?.isPast && (
           <div className="snapshot-bar">
             {IconHistory}
@@ -421,8 +442,9 @@ export function PeriodHub({ data }: { data: HubData }) {
           currentLines={[...selected.events, ...selected.pasados].reduce((n, e) => n + e.lineCount, 0)}
           eventCount={totalEventos}
           onClose={() => setShowDiscard(false)}
-          onDiscarded={() => {
+          onDiscarded={(n) => {
             setShowDiscard(false);
+            setOmitidas(n);
             router.refresh();
           }}
         />
@@ -438,8 +460,9 @@ export function PeriodHub({ data }: { data: HubData }) {
         <TrashModal
           trash={trash}
           onClose={() => setShowTrash(false)}
-          onRestored={(periodId) => {
+          onRestored={(periodId, n = 0) => {
             setShowTrash(false);
+            setOmitidas(n);
             if (periodId) router.push(`/?w=${periodId}`);
             router.refresh();
           }}
@@ -456,7 +479,7 @@ function TrashModal({
 }: {
   trash: HubData["trash"];
   onClose: () => void;
-  onRestored: (periodId?: string) => void;
+  onRestored: (periodId?: string, omitidas?: number) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -470,7 +493,7 @@ function TrashModal({
       const res = await intentar(() => restorePeriodVersion(id));
       setBusy(null);
       if (!res.ok) return setErr(res.error ?? "No se pudo restaurar.");
-      return onRestored();
+      return onRestored(undefined, res.omitidas ?? 0);
     }
     const res = await intentar(() => (kind === "period" ? restorePeriod(id) : restoreEvent(id)));
     setBusy(null);
@@ -558,16 +581,21 @@ function ConfirmDiscardChanges({
   currentLines: number;
   eventCount: number;
   onClose: () => void;
-  onDiscarded: () => void;
+  onDiscarded: (omitidas: number) => void;
 }) {
+  const omitidas = useRef(0);
   return (
     <Confirmar
       titulo="¿Descartar cambios?"
       textoConfirmar="Sí, descartar cambios"
       textoEnCurso="Descartando…"
       peligro
-      accion={() => discardPeriodChanges(id)}
-      alListo={onDiscarded}
+      accion={async () => {
+        const res = await discardPeriodChanges(id);
+        omitidas.current = res.omitidas ?? 0;
+        return res;
+      }}
+      alListo={() => onDiscarded(omitidas.current)}
       onCerrar={onClose}
       pie={
         <div className="banner ok" style={{ marginBottom: "var(--sp-4)" }}>

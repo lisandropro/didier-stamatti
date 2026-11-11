@@ -38,7 +38,7 @@ export default async function PrepararPage() {
       <div className="topbar">
         <div>
           <h1>Preparar</h1>
-          <div className="sub">Los eventos de los próximos {DIAS_A_PREPARAR} días</div>
+          <div className="sub">Lo que hay que levantar y los eventos de los próximos {DIAS_A_PREPARAR} días</div>
         </div>
       </div>
       <div className="content">
