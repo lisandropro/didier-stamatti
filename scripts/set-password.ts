@@ -3,7 +3,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import bcrypt from "bcryptjs";
+import { hashearClave, problemaDeClave } from "../lib/clave";
 
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
 const prisma = new PrismaClient({ adapter });
@@ -20,10 +20,17 @@ async function main() {
     console.error(`No existe un usuario con el email ${email}`);
     process.exit(1);
   }
-  await prisma.user.update({
-    where: { email },
-    data: { passwordHash: bcrypt.hashSync(pass, 10) },
-  });
+  const problema = problemaDeClave(pass, user);
+  if (problema) {
+    console.error(problema);
+    process.exit(1);
+  }
+  // La contraseña nueva cierra las sesiones de esa persona, y sus teléfonos se
+  // desanotan de los avisos (se vuelven a anotar solos al entrar).
+  await prisma.$transaction([
+    prisma.user.update({ where: { email }, data: { passwordHash: await hashearClave(pass) } }),
+    prisma.pushSubscription.deleteMany({ where: { userId: user.id } }),
+  ]);
   console.log(`Contraseña actualizada para ${email}`);
 }
 

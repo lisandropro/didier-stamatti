@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
-import { issueSessionToken, resolveSessionToken, type SessionUser } from "./session-token";
+import { duraUnMes, issueSessionToken, resolveSessionToken, type SessionUser } from "./session-token";
 
 export type { SessionUser } from "./session-token";
 const COOKIE = "didier_session";
@@ -14,6 +14,18 @@ export async function createSession(user: SessionUser & { passwordHash: string }
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/",
     ...(remember ? { maxAge: 60 * 60 * 24 * 30 } : {}),
   });
+}
+
+/**
+ * Vuelve a firmar la sesión de este navegador con la contraseña nueva.
+ *
+ * La sesión va atada a la contraseña: al cambiarla, todas dejan de valer. La
+ * de quien la acaba de cambiar tiene que seguir, con la misma duración que
+ * tenía ("Recordarme" o no).
+ */
+export async function renovarSesion(user: SessionUser & { passwordHash: string }) {
+  const actual = (await cookies()).get(COOKIE)?.value;
+  await createSession(user, actual ? duraUnMes(actual) : false);
 }
 
 export async function destroySession() { (await cookies()).delete(COOKIE); }

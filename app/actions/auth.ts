@@ -1,9 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/email";
-import bcrypt from "bcryptjs";
-import { loginLimiter } from "@/lib/login-limit";
+import { claveCorrecta } from "@/lib/clave";
+import { direccionDe, limiteDeIngreso } from "@/lib/login-limit";
 import { createSession, destroySession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -24,13 +25,18 @@ export async function login(
   }
 
   if (email.length > 254 || password.length > 256) return { error: "Email o contraseña incorrectos." };
-  if (!loginLimiter.take(email)) return { error: "Demasiados intentos. Esperá 15 minutos antes de volver a intentar." };
+  const direccion = direccionDe(await headers());
+  if (!limiteDeIngreso.permitir(email, direccion)) {
+    return { error: "Demasiados intentos. Esperá 15 minutos antes de volver a intentar." };
+  }
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  // Se compara siempre, exista o no la cuenta: si no, la respuesta de un correo
+  // sin cuenta llega mucho antes y por el reloj se sabe quién tiene usuario.
+  if (!(await claveCorrecta(password, user?.passwordHash)) || !user) {
     return { error: "Email o contraseña incorrectos." };
   }
 
-  loginLimiter.clear(email);
+  limiteDeIngreso.ingresoCorrecto(email, direccion);
   await createSession(
     user,
     remember

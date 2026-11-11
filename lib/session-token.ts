@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, decodeJwt, jwtVerify } from "jose";
 import { isRole } from "./permissions";
 
 export type SessionUser = { id: string; name: string; role: string; email: string };
@@ -19,6 +19,19 @@ export async function issueSessionToken(user: Account, remember: boolean) {
   return new SignJWT({ id: user.id, credentialVersion: credentialVersion(user) })
     .setProtectedHeader({ alg: "HS256" }).setIssuedAt()
     .setExpirationTime(remember ? "30d" : "8h").sign(secret());
+}
+
+/**
+ * ¿Esta sesión se pidió con "Recordarme"? Se lee de su propia duración.
+ *
+ * No verifica la firma: solo sirve para renovar con la misma duración una
+ * sesión que ya se comprobó en este mismo pedido. Ante cualquier duda, la corta.
+ */
+export function duraUnMes(token: string): boolean {
+  try {
+    const { exp, iat } = decodeJwt(token);
+    return typeof exp === "number" && typeof iat === "number" && exp - iat > 8 * 60 * 60;
+  } catch { return false; }
 }
 
 /** El rol siempre sale de la base. Cambiar la contraseña revoca los tokens anteriores. */

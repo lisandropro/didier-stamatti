@@ -2,14 +2,14 @@
 
 import { prisma } from "@/lib/db";
 import { normalizeEmail, emailProblem } from "@/lib/email";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, renovarSesion } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import bcrypt from "bcryptjs";
+import { hashearClave, problemaDeClave } from "@/lib/clave";
+import { esId, limpiar } from "@/lib/entrada";
+import { mismoNombre } from "@/lib/nombre-de-persona";
 import { ROLES, canManageUsers } from "@/lib/permissions";
 
 export type UserResult = { ok: boolean; error?: string; id?: string };
-
-
 
 async function requireAdmin() {
   const session = await getSessionUser();
@@ -28,21 +28,31 @@ export async function createUser(input: {
   const { session, error } = await requireAdmin();
   if (!session) return { ok: false, error: error! };
 
-  const name = input.name.trim();
-  const email = normalizeEmail(input.email);
-  const role = input.role;
-
+  // Lo que llega de la pantalla se comprueba acá: los tipos de arriba dicen lo
+  // que manda el formulario, no lo que puede mandar cualquiera con una sesión.
+  const name = limpiar(input?.name, 200);
+  const role = input?.role;
   if (!name) return { ok: false, error: "Poné el nombre." };
+  if (name.length > 40) return { ok: false, error: "El nombre es demasiado largo (máximo 40)." };
+  if (typeof input?.email !== "string" || input.email.length > 254) return { ok: false, error: "Poné un email válido, con arroba." };
+  const email = normalizeEmail(input.email);
   const problema = emailProblem(email);
   if (problema) return { ok: false, error: problema };
-  if (!(ROLES as readonly string[]).includes(role)) return { ok: false, error: "Elegí el rol." };
-  if (input.password.length < 6) return { ok: false, error: "La contraseña debe tener al menos 6 caracteres." };
+  if (typeof role !== "string" || !(ROLES as readonly string[]).includes(role)) return { ok: false, error: "Elegí el rol." };
+  const problemaClave = problemaDeClave(input?.password, { email, name });
+  if (problemaClave) return { ok: false, error: problemaClave };
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return { ok: false, error: "Ya existe un usuario con ese email." };
+  // Los avisos y el historial nombran a la gente por el nombre: dos cuentas
+  // con el mismo no se distinguirían.
+  const otros = await prisma.user.findMany({ select: { name: true } });
+  if (otros.some((o) => mismoNombre(o.name, name))) {
+    return { ok: false, error: "Ya hay otra persona con ese nombre. Agregale el apellido o una inicial." };
+  }
 
   const user = await prisma.user.create({
-    data: { name, email, role, passwordHash: await bcrypt.hash(input.password, 10) },
+    data: { name, email, role, passwordHash: await hashearClave(input.password) },
   });
   revalidatePath("/usuarios");
   return { ok: true, id: user.id };
@@ -52,15 +62,24 @@ export async function createUser(input: {
 export async function resetUserPassword(userId: string, newPassword: string): Promise<UserResult> {
   const { session, error } = await requireAdmin();
   if (!session) return { ok: false, error: error! };
-  if (newPassword.length < 6) return { ok: false, error: "La contraseña debe tener al menos 6 caracteres." };
+  if (!esId(userId)) return { ok: false, error: "No se encontró el usuario." };
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { ok: false, error: "No se encontró el usuario." };
+  const problemaClave = problemaDeClave(newPassword, user);
+  if (problemaClave) return { ok: false, error: problemaClave };
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { passwordHash: await bcrypt.hash(newPassword, 10) },
-  });
+  const passwordHash = await hashearClave(newPassword);
+  // La contraseña nueva cierra todas las sesiones de esa persona. Sus teléfonos
+  // se desanotan de los avisos en el mismo acto: el caso típico de un reseteo
+  // es un teléfono perdido, y ese no tiene que seguir recibiendo los nombres
+  // de los eventos. El que la persona sigue usando se anota solo al entrar.
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+    prisma.pushSubscription.deleteMany({ where: { userId } }),
+  ]);
+  // Si la administradora se la cambió a sí misma por acá, su sesión sigue.
+  if (userId === session.id) await renovarSesion({ ...session, passwordHash });
   revalidatePath("/usuarios");
   return { ok: true };
 }
@@ -69,7 +88,8 @@ export async function resetUserPassword(userId: string, newPassword: string): Pr
 export async function setUserRole(userId: string, role: string): Promise<UserResult> {
   const { session, error } = await requireAdmin();
   if (!session) return { ok: false, error: error! };
-  if (!(ROLES as readonly string[]).includes(role)) return { ok: false, error: "Rol inválido." };
+  if (!esId(userId)) return { ok: false, error: "No se encontró el usuario." };
+  if (typeof role !== "string" || !(ROLES as readonly string[]).includes(role)) return { ok: false, error: "Rol inválido." };
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { ok: false, error: "No se encontró el usuario." };
@@ -92,6 +112,7 @@ export async function deleteUser(userId: string): Promise<UserResult> {
   const { session, error } = await requireAdmin();
   if (!session) return { ok: false, error: error! };
 
+  if (!esId(userId)) return { ok: false, error: "No se encontró el usuario." };
   if (userId === session.id) return { ok: false, error: "No podés borrar tu propio usuario." };
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
