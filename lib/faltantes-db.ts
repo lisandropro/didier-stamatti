@@ -13,6 +13,7 @@ import { resumenDeFaltantes, textoDeFaltantes, type CausaDeFaltante, type Faltan
 import { sendPushToUser } from "@/lib/push";
 import { ROLES, canVerStock, sortByNotificationPriority } from "@/lib/permissions";
 import { QUIET_MINUTES } from "@/lib/notify";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 /** Cuánto como máximo se espera a que una persona termine de editar. Pasado
  *  esto, el período se barre aunque siga habiendo cambios recientes: si no, una
@@ -30,8 +31,6 @@ export const MAX_ESPERA_MIN = 60;
  *  cambio ya tenía hasta `QUIET_MINUTES` cuando se la notó) y otro tanto por el
  *  minuto que tarda el barrido en notarlo. */
 export const CAUSA_RECIENTE_MIN = MAX_ESPERA_MIN + 2 * QUIET_MINUTES;
-
-const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 // Un barrido a la vez, como el de los avisos de pedidos: si uno se demora (el
 // servicio de push lento), el siguiente no puede leer lo mismo y avisar dos veces.

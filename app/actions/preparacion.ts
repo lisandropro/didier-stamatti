@@ -7,6 +7,7 @@ import { canPreparar } from "@/lib/permissions";
 import { esCategoria } from "@/lib/categories";
 import { esClave, esVisto, sonVistosDeSector, type Visto, type VistoDeSector } from "@/lib/preparacion";
 import { destildar, tildar, tildarSector } from "@/lib/preparacion-db";
+import { esId } from "@/lib/entrada";
 
 /** `aviso`: salió bien, pero hay algo que mirar (no es un error, no bloquea). */
 export type PrepResult = { ok: boolean; error?: string; count?: number; aviso?: string };
@@ -16,9 +17,7 @@ async function requerirPreparar(eventId: string) {
   const user = await getSessionUser();
   if (!user) return { user: null, error: "Tenés que iniciar sesión." };
   if (!canPreparar(user.role)) return { user: null, error: "No tenés permiso para tildar la preparación." };
-  if (typeof eventId !== "string" || eventId.length === 0 || eventId.length > 64) {
-    return { user: null, error: "Evento inválido." };
-  }
+  if (!esId(eventId)) return { user: null, error: "Evento inválido." };
   const ev = await prisma.event.findFirst({
     where: { id: eventId, deletedAt: null, period: { deletedAt: null } },
     select: { id: true },

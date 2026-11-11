@@ -14,8 +14,7 @@ import { sendPushToUser } from "@/lib/push";
 import { ROLES, sortByNotificationPriority } from "@/lib/permissions";
 import { periodShortages } from "@/lib/shortages";
 import { esHoraDelResumen, textoDelResumen, type DatosDelResumen } from "@/lib/resumen-manana";
-
-const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+import { mensajeDe } from "@/lib/mensaje-de";
 
 // Una corrida a la vez, como los barridos de avisos y de faltantes: leer quién
 // ya lo recibió y crear su aviso son dos pasos, y con un servicio de push lento

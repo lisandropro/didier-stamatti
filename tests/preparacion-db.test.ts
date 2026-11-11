@@ -327,10 +327,13 @@ test("faltantes del período: lo pedido entre todos contra el stock", async () =
   }
 });
 
-test("restaurar una versión no deja en SACAR lo tildado de un suelto que sigue yendo", async () => {
-  // Restaurar borra los renglones y los crea de nuevo: cada suelto vuelve con
-  // otro id, y su clave es el id. Sin reasignar, lo tildado quedaba en SACAR
-  // ("Sacá 3 Mantel bordó") aunque el mantel siguiera yendo.
+test("restaurar una versión VIEJA no deja en SACAR lo tildado de un suelto que sigue yendo", async () => {
+  // Restaurar borra los renglones y los crea de nuevo. Con una versión guardada
+  // antes de noviembre de 2026 —que no trae el id de cada renglón— cada suelto
+  // vuelve con otro id, y su clave es el id. Sin reasignar, lo tildado quedaba
+  // en SACAR ("Sacá 3 Mantel bordó") aunque el mantel siguiera yendo.
+  // (Las versiones nuevas conservan el id y no necesitan esto: eso se prueba en
+  // snapshot-restaurar.test.ts.)
   // Un período propio: restaurar recrea los renglones de TODO el período.
   const snapshot = await import("../lib/snapshot");
   const periodo = await prisma.operationalPeriod.create({ data: { startDay: hoy(), endDay: hoy() } });
@@ -351,9 +354,14 @@ test("restaurar una versión no deja en SACAR lo tildado de un suelto que sigue 
 
     // La versión que se restaura no tiene el hielo de este evento: ese sí se va.
     const { data } = await snapshot.buildSnapshotData(periodo.id);
-    const sinHielo = (JSON.parse(data) as { eventId: string; customName: string | null }[]).filter(
-      (l) => !(l.eventId === ev.id && l.customName === "Hielo"),
-    );
+    // Y es una versión vieja: sin el id de los renglones.
+    const sinHielo = (JSON.parse(data) as { id?: string; eventId: string; customName: string | null }[])
+      .filter((l) => !(l.eventId === ev.id && l.customName === "Hielo"))
+      .map((l) => {
+        const sinId = { ...l };
+        delete sinId.id;
+        return sinId;
+      });
     await snapshot.applySnapshotData(periodo.id, JSON.stringify(sinHielo));
     assert.equal(
       (await db.estadoDelEvento(ev.id)).filter((i) => i.estado === "SACAR").length,

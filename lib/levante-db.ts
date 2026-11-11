@@ -4,6 +4,7 @@ import { claveDeLinea } from "@/lib/preparacion";
 import { canEditStock } from "@/lib/permissions";
 import { sendPushToUser } from "@/lib/push";
 import { moverStock } from "@/lib/stock";
+import { mensajeDe } from "@/lib/mensaje-de";
 import {
   DIAS_PARA_LEVANTAR,
   bajaDe,
@@ -422,5 +423,67 @@ export async function descontarFaltante(eventId: string, clave: string, motivo: 
   } catch (e) {
     if (e instanceof StockCambio) return "cambio";
     throw e;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Después de descartar o restaurar una versión VIEJA del pedido
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo mismo que `reasignarSueltos` (lib/preparacion-db.ts), para el levante.
+ *
+ * Restaurar una versión borra los renglones y los crea de nuevo. Desde
+ * noviembre de 2026 cada renglón vuelve con su mismo id (`applySnapshotData`),
+ * y entonces acá no hay nada que hacer. Pero las versiones guardadas ANTES no
+ * traen el id: un ítem suelto vuelve con otro, su clave (`custom:<id>`) cambia,
+ * y el "faltan 2" que se le marcó en el levante quedaba colgado de un renglón
+ * que ya no existe. El ítem volvía a "sin revisar" y el faltante desaparecía,
+ * justo en períodos terminados, que es donde se descarta y donde se levanta.
+ *
+ * Se reconoce el suelto por lo que se ve: en el mismo evento, un renglón sin
+ * producto con el mismo nombre, sector y unidad que todavía no tenga marca.
+ * Primero el de la misma cantidad (es el único en el que la marca sigue
+ * valiendo: ver `itemsDeLevante`), después el resto. Si no hay ninguno, el
+ * suelto se fue de verdad y la marca queda huérfana, que no se muestra.
+ *
+ * Devuelve cuántas marcas reasignó. Nunca lanza: corre con la restauración ya
+ * hecha, y un fallo acá no puede hacer creer que no se restauró.
+ */
+export async function reasignarSueltosDeLevante(periodId: string): Promise<number> {
+  try {
+    const eventos = await prisma.event.findMany({
+      where: { periodId, deletedAt: null, levantes: { some: { clave: { startsWith: "custom:" } } } },
+      select: { id: true },
+    });
+    let n = 0;
+    for (const { id: eventId } of eventos) {
+      n += await prisma.$transaction(async (tx) => {
+        const lineas = await lineasParaLevantar(tx, eventId);
+        const filas = await tx.levante.findMany({ where: { eventId }, orderBy: { at: "asc" } });
+        const enPedido = new Set(lineas.map((l) => l.clave));
+        const tomadas = new Set(filas.map((f) => f.clave));
+        const libres = lineas.filter((l) => l.clave.startsWith("custom:") && !tomadas.has(l.clave));
+        const huerfanas = filas.filter((f) => f.clave.startsWith("custom:") && !enPedido.has(f.clave));
+        const hechas = new Set<string>();
+        for (const exacta of [true, false]) {
+          for (const f of huerfanas) {
+            if (hechas.has(f.id)) continue;
+            const destino = libres.find(
+              (l) => l.itemName === f.itemName && l.category === f.category && l.unit === f.unit && (!exacta || l.qty === f.qty),
+            );
+            if (!destino) continue;
+            await tx.levante.update({ where: { id: f.id }, data: { clave: destino.clave } });
+            libres.splice(libres.indexOf(destino), 1);
+            hechas.add(f.id);
+          }
+        }
+        return hechas.size;
+      });
+    }
+    return n;
+  } catch (e) {
+    console.error("[levante] no se pudieron reasignar las marcas de los sueltos después de restaurar", periodId, mensajeDe(e));
+    return 0;
   }
 }

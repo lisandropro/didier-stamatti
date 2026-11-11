@@ -7,6 +7,7 @@ import { canEditStock, canPreparar } from "@/lib/permissions";
 import { esCategoria } from "@/lib/categories";
 import { esClave } from "@/lib/preparacion";
 import { validQuantity } from "@/lib/quantity";
+import { esId } from "@/lib/entrada";
 import { TEXTO_DE_BAJA, esFaltaValida, esMotivoBaja, sonVistosDeLevante, type MotivoBaja, type VistoDeLevante } from "@/lib/levante";
 import {
   desmarcar,
@@ -33,9 +34,7 @@ async function requerirEvento(eventId: string, puede: (role: string) => boolean,
   const user = await getSessionUser();
   if (!user) return { user: null, error: "Tenés que iniciar sesión." };
   if (!puede(user.role)) return { user: null, error: sinPermiso };
-  if (typeof eventId !== "string" || eventId.length === 0 || eventId.length > 64) {
-    return { user: null, error: "Evento inválido." };
-  }
+  if (!esId(eventId)) return { user: null, error: "Evento inválido." };
   const ev = await prisma.event.findFirst({
     where: { id: eventId, deletedAt: null, period: { deletedAt: null } },
     select: { id: true },

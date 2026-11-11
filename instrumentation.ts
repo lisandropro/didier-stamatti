@@ -5,6 +5,7 @@ export async function register() {
 
   const MINUTE = 60 * 1000;
   const DAY = 24 * 60 * MINUTE;
+  const texto = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
   // --- Avisos de pedidos ---------------------------------------------------
   // Corre siempre, aunque el respaldo no esté configurado: sin este barrido los
@@ -22,13 +23,18 @@ export async function register() {
   // --- Avisos de pedido vacío ----------------------------------------------
   // Va fuera de la condición del respaldo: que un evento se venga sin pedido no
   // tiene nada que ver con tener S3 configurado.
+  //
+  // Cada 10 minutos, como el resumen de la mañana, y no "al arrancar y cada 24
+  // horas": así quedaba atado a la hora del último despliegue, y un despliegue
+  // de madrugada hacía sonar los teléfonos de madrugada. La franja horaria (de 8
+  // a 20, hora argentina) y el no repetir se resuelven adentro.
   const { notificarPedidosVacios } = await import("@/lib/pedido-vacio");
   const avisarVacios = async () => {
     const { avisos, eventos } = await notificarPedidosVacios();
     if (avisos > 0) console.log(`[pedido-vacio] ${eventos} evento(s) sin pedido · ${avisos} aviso(s) enviados`);
   };
   void avisarVacios();
-  setInterval(() => void avisarVacios(), DAY);
+  setInterval(() => void avisarVacios(), 10 * MINUTE);
 
   // --- Resumen de la mañana ------------------------------------------------
   // Cada 10 minutos alcanza: se manda una sola vez por persona y por día, y la
@@ -72,7 +78,7 @@ export async function register() {
       }
     } catch (e) {
       // Que no se caiga el arranque por esto: la papelera se limpia al día siguiente.
-      console.error(`[papelera] error: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(`[papelera] error: ${texto(e)}`);
     }
     // El registro de envíos se guarda 60 días. Va acá porque es una limpieza
     // diaria por fecha, igual que la papelera, pero con su propio try: que falle
@@ -82,7 +88,7 @@ export async function register() {
       const podadas = await podarEntregas();
       if (podadas > 0) console.log(`[avisos] registro podado: ${podadas} envíos de más de 60 días`);
     } catch (e) {
-      console.error(`[avisos] error al podar el registro: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(`[avisos] error al podar el registro: ${texto(e)}`);
     }
   };
   void vaciar();
@@ -94,10 +100,17 @@ export async function register() {
   const { runBackup } = await import("@/lib/backup");
   const { runHealthCheck } = await import("@/lib/healthcheck");
 
-  const run = async () => {
-    const res = await runBackup();
-    if (res.ok) console.log(`[backup] ok: ${res.key} (podados: ${res.pruned})`);
-    else console.error(`[backup] error: ${res.error}`);
+  /** Un respaldo. Devuelve si salió bien; nunca lanza. */
+  const run = async (): Promise<boolean> => {
+    try {
+      const res = await runBackup();
+      if (res.ok) console.log(`[backup] ok: ${res.key} (podados: ${res.pruned})`);
+      else console.error(`[backup] error: ${res.error}`);
+      return res.ok;
+    } catch (e) {
+      console.error(`[backup] error: ${texto(e)}`);
+      return false;
+    }
   };
 
   // La revisión corre DESPUÉS del respaldo, así no reporta como viejo el
@@ -105,10 +118,28 @@ export async function register() {
   const check = async () => {
     const { problems, notified } = await runHealthCheck();
     if (problems.length === 0) console.log("[revision] todo en orden");
-    else console.log(`[revision] ${problems.map((p) => p.code).join(", ")}${notified ? " (avisado)" : " (ya avisado antes)"}`);
+    else console.log(`[revision] ${problems.map((p) => p.code).join(", ")}${notified ? " (avisado)" : " (ya avisado antes, o no interrumpe)"}`);
+  };
+
+  // Respaldo, y si falla, un segundo intento a los 10 minutos. Antes un respaldo
+  // que fallaba por algo pasajero (la base ocupada en ese instante, un corte de
+  // red) no se volvía a intentar hasta el día siguiente o el próximo arranque.
+  // Después, pase lo que pase con el respaldo, la revisión: es la que avisa si
+  // quedó sin hacerse.
+  const diario = async () => {
+    try {
+      if (!(await run())) {
+        await new Promise((r) => setTimeout(r, 10 * MINUTE));
+        console.log("[backup] segundo intento");
+        await run();
+      }
+      await check();
+    } catch (e) {
+      console.error(`[revision] error: ${texto(e)}`);
+    }
   };
 
   // Uno al arrancar (así no hay que esperar 24hs para el primero) y después uno por día.
-  void run().then(check);
-  setInterval(() => void run().then(check), DAY);
+  void diario();
+  setInterval(() => void diario(), DAY);
 }

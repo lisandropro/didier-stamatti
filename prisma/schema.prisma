@@ -79,8 +79,12 @@ model Notification {
 // se pide acá se aplica solo.
 model Suggestion {
   id         String  @id @default(cuid())
-  authorId   String
-  author     User    @relation("SuggestionAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  // Nulo = quien la escribió ya no tiene usuario. Al borrar a una persona la
+  // sugerencia QUEDA (`SetNull`), con su respuesta y su estado: hasta noviembre
+  // de 2026 esto era `Cascade`, y borrar un usuario se llevaba todo lo que
+  // había sugerido, que es justo lo que el comentario de abajo decía evitar.
+  authorId   String?
+  author     User?   @relation("SuggestionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   // Se guarda el nombre además del vínculo: si el usuario se borra, la
   // sugerencia tiene que seguir diciendo quién la escribió.
   authorName String
@@ -331,6 +335,10 @@ model PushDelivery {
   @@index([userId, createdAt])
   @@index([subscriptionId, createdAt])
   @@index([status, reintentable, retriedAt])
+  // El barrido de avisos pregunta "¿esta tanda ya le llegó a algún teléfono?"
+  // y "¿qué fue lo último que le llegó de este evento?" (lib/notify.ts): sin índice,
+  // cada pregunta recorría los 60 días de envíos.
+  @@index([notificationId])
   @@index([createdAt])
 }
 

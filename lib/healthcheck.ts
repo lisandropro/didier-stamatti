@@ -1,10 +1,11 @@
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
 // La misma lista que usa el respaldo. Vigilar y respaldar tienen que mirar los
 // mismos conjuntos, o se respalda algo que nadie controla.
 import { CONJUNTOS } from "@/lib/backup";
 import { verificarRespaldos } from "@/lib/verificar-respaldo";
+import { listarTodo, masNueva, respaldoConfigurado } from "@/lib/s3-respaldo";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 /** Cada cuántos días se puede repetir un aviso idéntico. Evita que el mismo
  *  problema moleste todos los días: si no cambió nada, se calla. */
@@ -21,7 +22,7 @@ const BACKUP_MAX_AGE_HOURS = 30;
  * La razon es concreta: la revision reportaba siete cosas por dia, seis de
  * ellas trabajo que hoy no hay tiempo de hacer. Un aviso que pide horas que no
  * existen se ignora igual que uno falso — y al ignorarse entrena a ignorar
- * TODOS, incluido el dia que falle el respaldo o se este por pagar dos veces.
+ * TODOS, incluido el dia que falle el respaldo.
  *
  * El campo no es nuevo: `checks.ts` ya lo asignaba hallazgo por hallazgo y solo
  * lo usaba para ordenar. Acá pasa a significar algo.
@@ -29,18 +30,6 @@ const BACKUP_MAX_AGE_HOURS = 30;
 export type HealthProblem = { code: string; message: string; gravedad: Gravedad; url?: string };
 
 export type Gravedad = "alta" | "media" | "baja";
-
-function s3() {
-  const endpoint = process.env.BACKUP_S3_ENDPOINT;
-  const accessKeyId = process.env.BACKUP_S3_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.BACKUP_S3_SECRET_ACCESS_KEY;
-  if (!endpoint || !accessKeyId || !secretAccessKey) return null;
-  return new S3Client({
-    endpoint,
-    region: process.env.BACKUP_S3_REGION || "auto",
-    credentials: { accessKeyId, secretAccessKey },
-  });
-}
 
 /**
  * ¿Se hizo un respaldo hace poco? Es la revisión más importante: sin respaldo
@@ -52,20 +41,16 @@ function s3() {
  * propia acá. Si mañana aparece otra base, se vigila sola.
  */
 async function checkBackup(): Promise<HealthProblem[]> {
-  const client = s3();
-  const bucket = process.env.BACKUP_S3_BUCKET;
-  if (!client || !bucket) return []; // sin configurar (desarrollo local): no es un problema
+  const s3 = respaldoConfigurado();
+  if (!s3) return []; // sin configurar (desarrollo local): no es un problema
 
   const problemas: HealthProblem[] = [];
 
   for (const conjunto of CONJUNTOS) {
     try {
-      const list = await client.send(
-        new ListObjectsV2Command({ Bucket: bucket, Prefix: conjunto.prefijo }),
-      );
-      const newest = (list.Contents ?? [])
-        .map((o) => o.LastModified?.getTime() ?? 0)
-        .reduce((a, b) => Math.max(a, b), 0);
+      // Todo el prefijo, no la primera página: con más de mil copias la primera
+      // página son las más viejas y la más nueva no estaría entre ellas.
+      const newest = masNueva(await listarTodo(s3.cliente, s3.bucket, conjunto.prefijo))?.modificado?.getTime() ?? 0;
 
       if (newest === 0) {
         problemas.push({
@@ -85,7 +70,8 @@ async function checkBackup(): Promise<HealthProblem[]> {
           message: `el último respaldo de ${conjunto.etiqueta} es de hace ${dias > 0 ? `${dias} día${dias === 1 ? "" : "s"}` : `${hours} horas`}`,
         });
       }
-    } catch {
+    } catch (e) {
+      console.error(`[revision] no se pudo listar el respaldo de ${conjunto.etiqueta}: ${mensajeDe(e)}`);
       problemas.push({
         code: `backup-unreachable-${conjunto.etiqueta}`,
         gravedad: "alta",
@@ -158,13 +144,27 @@ export async function collectProblems(
   // son dos preguntas distintas: una es "¿hay copia reciente?" y la otra
   // "¿esa copia sirve?". La segunda baja decenas de megas, así que si algún día
   // hay que espaciarla, conviene que esté separada.
+  //
+  // Cada control con su propia red: si uno lanza, los otros igual se informan y
+  // el que falló queda como un problema más (`revision-fallida`). Antes un
+  // fallo de cualquiera tumbaba el `Promise.all`, la revisión entera devolvía
+  // una lista vacía y el log decía "todo en orden".
+  const fallidos: HealthProblem[] = [];
+  const intentar = async <T>(que: string, control: () => Promise<T>, siFalla: T): Promise<T> => {
+    try {
+      return await control();
+    } catch (e) {
+      fallidos.push(problemaDeRevisionFallida(que, e));
+      return siFalla;
+    }
+  };
   const [respaldos, restaurables, stock] = await Promise.all([
-    checkBackup(),
+    intentar("la antigüedad del respaldo", checkBackup, []),
     // La verificación de restauración BAJA decenas de megas. Va en la revisión
     // diaria y no cuando alguien abre una pantalla: es la diferencia entre
     // costar una vez por día y costar una vez por visita.
-    opciones.verificarRestauracion === false ? Promise.resolve([]) : verificarRespaldos(),
-    checkStockLoaded(),
+    opciones.verificarRestauracion === false ? Promise.resolve([]) : intentar("la restauración del respaldo", verificarRespaldos, []),
+    intentar("el stock sin contar", checkStockLoaded, null),
   ]);
   // Todo lo del respaldo es ALTA: son minutos de trabajo y no hacerlos cuesta
   // la base entera. Es la unica familia de problemas que justifica interrumpir.
@@ -179,13 +179,36 @@ export async function collectProblems(
   // un aviso idéntico antes de una semana, y un fallo suyo nunca afecta a la app.
   // Se agrupan por código: si tres eventos tienen el mismo problema, es un solo
   // aviso — la revisión diaria no puede convertirse en algo que se ignora.
-  try {
-    const { revisarTodo } = await import("@/lib/checks");
-    base.push(...agruparHallazgos(await revisarTodo()));
-  } catch {
-    // Un control que falla no puede tumbar la revisión entera.
-  }
-  return base;
+  //
+  // Un control que falla no puede tumbar la revisión entera, pero tampoco pasar
+  // callado: queda anotado como un problema.
+  const hallazgos = await intentar(
+    "los controles de datos",
+    async () => {
+      const { revisarTodo } = await import("@/lib/checks");
+      return agruparHallazgos(await revisarTodo());
+    },
+    [],
+  );
+  base.push(...hallazgos);
+  return [...base, ...agruparHallazgos(fallidos)];
+}
+
+/**
+ * Un control de la revisión que no se pudo correr.
+ *
+ * Es un problema ALTO a propósito: una revisión que no pudo mirar no sabe si el
+ * respaldo está bien, y "no sé" contado como "todo en orden" es justo el
+ * silencio que la revisión existe para evitar. El código es uno solo
+ * (`revision-fallida`), así varios controles caídos son un único aviso y la
+ * firma no cambia —ni vuelve a avisar— según cuál falle cada día.
+ *
+ * Deja el error en el log: el mensaje para la administradora dice qué no se
+ * pudo revisar, no el texto técnico.
+ */
+export function problemaDeRevisionFallida(que: string, e: unknown): HealthProblem {
+  console.error(`[revision] no se pudo revisar ${que}: ${mensajeDe(e)}`);
+  return { code: "revision-fallida", gravedad: "alta", message: `no se pudo revisar ${que}`, url: "/notificaciones" };
 }
 
 /**
@@ -222,10 +245,23 @@ export function avisoDe(
 }
 
 /** Revisión diaria. Sólo avisa a los administradores si hay algo mal, y no
- *  repite un aviso idéntico antes de REPEAT_DAYS. Nunca lanza error. */
-export async function runHealthCheck(): Promise<{ problems: HealthProblem[]; notified: boolean }> {
+ *  repite un aviso idéntico antes de REPEAT_DAYS. Nunca lanza error.
+ *
+ *  Tampoco calla: si la revisión misma falla, eso es un problema
+ *  (`revision-fallida`) y se informa como cualquier otro. Antes un error acá
+ *  adentro devolvía una lista vacía, y quien llama anotaba "todo en orden".
+ *
+ *  `recolectar` se puede reemplazar para probar qué pasa cuando falla. */
+export async function runHealthCheck(
+  recolectar: () => Promise<HealthProblem[]> = collectProblems,
+): Promise<{ problems: HealthProblem[]; notified: boolean }> {
+  let problems: HealthProblem[];
   try {
-    const problems = await collectProblems();
+    problems = await recolectar();
+  } catch (e) {
+    problems = [problemaDeRevisionFallida("el sistema", e)];
+  }
+  try {
     if (problems.length === 0) return { problems: [], notified: false };
 
     const av = avisoDe(problems);
@@ -255,8 +291,11 @@ export async function runHealthCheck(): Promise<{ problems: HealthProblem[]; not
       notified = true;
     }
     return { problems, notified };
-  } catch {
-    // Una revisión fallida nunca debe afectar el funcionamiento de la app.
-    return { problems: [], notified: false };
+  } catch (e) {
+    // Una revisión fallida nunca debe afectar el funcionamiento de la app. Lo
+    // que falló acá es avisar (la base, casi seguro): los problemas se
+    // devuelven igual, para que el log del servidor los nombre.
+    console.error(`[revision] se encontraron problemas pero no se pudo avisar: ${mensajeDe(e)}`);
+    return { problems, notified: false };
   }
 }

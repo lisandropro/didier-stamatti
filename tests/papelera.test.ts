@@ -63,7 +63,7 @@ const HOY = "2026-08-18"; // martes; el lunes más reciente es el 17
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let prisma: any;
-let vaciarPapelera: (dia?: string) => Promise<{ periodos: number; eventos: number; avisos: number }>;
+let vaciarPapelera: (dia?: string, ahora?: Date) => Promise<{ periodos: number; eventos: number; avisos: number }>;
 let productoId: string;
 let usuarioId: string;
 
@@ -189,4 +189,53 @@ test("las copias guardadas de un período vivo sobreviven al barrido", async () 
 test("una papelera vacía no rompe nada", async () => {
   const r = await vaciarPapelera("2027-03-02");
   assert.equal(r.periodos + r.eventos + r.avisos, 0);
+});
+
+// ---------------------------------------------------------------------------
+// El margen de un día
+// ---------------------------------------------------------------------------
+
+test("lo tirado el domingo a la noche no se va en el primer barrido del lunes", async () => {
+  // Septiembre de 2026: el 6 es domingo y el 7 lunes. El domingo a la noche es
+  // cuando se ordena lo del fin de semana, y un borrado por error a las 23:30
+  // se iba para siempre a los 35 minutos, con el primer arranque del lunes.
+  const domingoNoche = instanteDe("2026-09-06", "23:30");
+  const p = await periodo({ label: "tirado el domingo a la noche", deletedAt: domingoNoche });
+  const e = await evento(p.id, { lugar: "La Rural" });
+  const suelto = await evento((await prisma.operationalPeriod.findFirst({ where: { label: "en uso" } })).id, {
+    lugar: "Suelto del domingo",
+    deletedAt: domingoNoche,
+  });
+
+  const lunesTemprano = await vaciarPapelera("2026-09-07", instanteDe("2026-09-07", "00:05"));
+  assert.deepEqual([lunesTemprano.periodos, lunesTemprano.eventos, lunesTemprano.avisos], [0, 0, 0], "se borró algo con 35 minutos en la papelera");
+  const lunesTarde = await vaciarPapelera("2026-09-07", instanteDe("2026-09-07", "23:00"));
+  assert.deepEqual([lunesTarde.periodos, lunesTarde.eventos], [0, 0], "todavía no pasó un día entero");
+  assert.ok(await prisma.event.findUnique({ where: { id: e.id } }));
+  assert.equal(await prisma.notification.count({ where: { eventId: { in: [e.id, suelto.id] } } }), 2, "se borraron avisos de eventos que siguen");
+
+  // Pasado el día, se va con el barrido que toque: no espera al lunes siguiente.
+  const martes = await vaciarPapelera("2026-09-08", instanteDe("2026-09-08", "00:05"));
+  assert.deepEqual([martes.periodos, martes.eventos, martes.avisos], [1, 1, 2]);
+  assert.equal(await prisma.event.findUnique({ where: { id: e.id } }), null);
+});
+
+test("lo tirado el viernes se va el lunes, como siempre: el margen no lo atrasa", async () => {
+  const p = await periodo({ label: "tirado el viernes", deletedAt: instanteDe("2026-09-11", "18:00") });
+  assert.equal((await vaciarPapelera("2026-09-13", instanteDe("2026-09-13", "22:00"))).periodos, 0, "el domingo todavía no");
+  assert.equal((await vaciarPapelera("2026-09-14", instanteDe("2026-09-14", "00:05"))).periodos, 1, "el lunes sí");
+  assert.equal(await prisma.operationalPeriod.findUnique({ where: { id: p.id } }), null);
+});
+
+test("un evento que alguien recuperó no pierde sus avisos aunque estuviera por borrarse", async () => {
+  // El barrido arma la lista de los que se van y después borra. Si en el medio
+  // alguien recupera uno, ese no se borra (el borrado mira `deletedAt`); sus
+  // avisos tampoco se tienen que ir. Acá se lo simula recuperado de antemano
+  // dentro de un período vivo: no está en la lista y nada suyo se toca.
+  const vivo = await prisma.operationalPeriod.findFirst({ where: { label: "en uso" } });
+  const e = await evento(vivo.id, { lugar: "Recuperado", deletedAt: instanteDe("2026-09-01", "10:00") });
+  await prisma.event.update({ where: { id: e.id }, data: { deletedAt: null } });
+  const r = await vaciarPapelera("2026-09-15", instanteDe("2026-09-15", "09:00"));
+  assert.equal(r.eventos, 0);
+  assert.equal(await prisma.notification.count({ where: { eventId: e.id } }), 1);
 });

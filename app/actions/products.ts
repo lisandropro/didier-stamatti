@@ -4,10 +4,12 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { stockAlPasarAReutilizable } from "@/lib/stock-al-cambiar-tipo";
+import { esCategoria } from "@/lib/categories";
+import { validQuantity } from "@/lib/quantity";
+import { TOPES, esId, textoOpcional } from "@/lib/entrada";
 
 export type ProductResult = { ok: boolean; error?: string; id?: string };
 
-import { esCategoria } from "@/lib/categories";
 const TYPES = ["REUTILIZABLE", "CONSUMIBLE"];
 
 /** Compara nombres sin acentos ni mayúsculas: el mismo producto cargado dos
@@ -21,6 +23,44 @@ async function requireAdmin() {
   if (!user) return { user: null, error: "Tenés que iniciar sesión." };
   if (user.role !== "ADMIN") return { user: null, error: "Solo la administradora puede administrar el catálogo." };
   return { user, error: null };
+}
+
+/** El catálogo se ve en el inventario, en la portada (faltantes), en el editor
+ *  de cada pedido y en Preparar: un producto renombrado o dado de baja cambia
+ *  las cuatro. Es todo el árbol, como hace el ajuste de stock. */
+function revalidarCatalogo() {
+  revalidatePath("/", "layout");
+}
+
+/** Los textos de un producto, comprobados como cualquier dato de afuera: que
+ *  sean texto y que no pasen su tope. Devuelve el primer problema, o los
+ *  valores ya limpios. La validación es la misma al crear y al editar. */
+function datosDeProducto(input: Record<string, unknown>):
+  | { ok: false; error: string }
+  | { ok: true; name: string | null; description: string | null; category: string; rubro: string | null; type: string; unit: string } {
+  const name = textoOpcional(input.name, TOPES.nombre);
+  if (!name.ok) return { ok: false, error: `El nombre es demasiado largo (máximo ${TOPES.nombre}).` };
+  const description = textoOpcional(input.description, TOPES.descripcion);
+  if (!description.ok) return { ok: false, error: `La descripción es demasiado larga (máximo ${TOPES.descripcion}).` };
+  if (typeof input.category !== "string" || !esCategoria(input.category)) return { ok: false, error: "Elegí la categoría." };
+  if (typeof input.type !== "string" || !TYPES.includes(input.type)) return { ok: false, error: "Elegí si lleva control de stock." };
+  const rubro = textoOpcional(input.rubro, TOPES.rubro);
+  if (!rubro.ok) return { ok: false, error: `El rubro es demasiado largo (máximo ${TOPES.rubro}).` };
+  const unit = textoOpcional(input.unit, TOPES.unidad);
+  if (!unit.ok) return { ok: false, error: `La unidad es demasiado larga (máximo ${TOPES.unidad}).` };
+  return {
+    ok: true,
+    name: name.valor,
+    description: description.valor,
+    category: input.category,
+    rubro: rubro.valor,
+    type: input.type,
+    unit: unit.valor ?? "Unidad",
+  };
+}
+
+function esObjeto(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
 }
 
 /** Rubros que ya se usan en cada categoría, para ofrecerlos en vez de que cada
@@ -64,59 +104,74 @@ export async function createProduct(input: {
 }): Promise<ProductResult> {
   const { user, error: permiso } = await requireAdmin();
   if (!user) return { ok: false, error: permiso! };
+  if (!esObjeto(input)) return { ok: false, error: "Poné el nombre del producto." };
 
-  const name = input.name.trim();
+  const datos = datosDeProducto(input);
+  if (!datos.ok) return { ok: false, error: datos.error };
+  const name = datos.name;
   if (!name) return { ok: false, error: "Poné el nombre del producto." };
-  if (!esCategoria(input.category)) return { ok: false, error: "Elegí la categoría." };
-  if (!TYPES.includes(input.type)) return { ok: false, error: "Elegí si lleva control de stock." };
-
-  const existentes = await prisma.product.findMany({ select: { id: true, name: true, active: true } });
-  const choque = existentes.find((p) => normal(p.name) === normal(name));
-  if (choque) {
-    return {
-      ok: false,
-      error: choque.active
-        ? `Ya existe un producto llamado "${choque.name}".`
-        : `Ya existe "${choque.name}", pero está desactivado. Volvé a activarlo en vez de crear otro.`,
-    };
-  }
 
   // Los consumibles no llevan stock: se compran para cada evento.
-  const esReutilizable = input.type === "REUTILIZABLE";
+  const esReutilizable = datos.type === "REUTILIZABLE";
   const sinContar = input.stock === null || input.stock === undefined;
-  const stock = !esReutilizable ? 0 : sinContar ? null : Math.max(0, Math.round(input.stock!));
-
-  const p = await prisma.product.create({
-    data: {
-      name,
-      description: input.description?.trim() || null,
-      category: input.category,
-      rubro: input.rubro?.trim() || null,
-      type: input.type,
-      unit: input.unit?.trim() || "Unidad",
-      stock,
-      active: true,
-    },
-  });
-
-  // La cantidad inicial queda explicada en el historial, igual que cualquier
-  // otro movimiento: si no, aparece un número sin origen. Un producto sin
-  // contar no genera movimiento: no hubo recuento que registrar.
-  if (stock !== null && stock > 0) {
-    await prisma.stockMovement.create({
-      data: {
-        productId: p.id,
-        delta: stock,
-        reason: "AJUSTE",
-        note: "Alta del producto — cantidad inicial",
-        userId: user.id,
-      },
-    });
+  let stock: number | null = 0;
+  if (esReutilizable && sinContar) stock = null;
+  if (esReutilizable && !sinContar) {
+    if (typeof input.stock !== "number" || !Number.isFinite(input.stock)) return { ok: false, error: "Ingresá una cantidad entera válida." };
+    stock = Math.max(0, Math.round(input.stock));
+    if (!validQuantity(stock)) return { ok: false, error: "Ingresá una cantidad entera válida." };
   }
 
-  revalidatePath("/inventario");
-  revalidatePath("/");
-  return { ok: true, id: p.id };
+  // El control de nombre repetido, el alta y su movimiento inicial van en una
+  // transacción. Antes eran tres pasos sueltos: dos toques a la vez pasaban los
+  // dos el control y creaban el producto dos veces (las transacciones van de a
+  // una: el segundo ya ve el del primero), y si el proceso se cortaba entre el
+  // alta y el movimiento, quedaba una cantidad sin origen en el historial.
+  const hecho = await prisma.$transaction(async (tx): Promise<ProductResult> => {
+    const existentes = await tx.product.findMany({ select: { id: true, name: true, active: true } });
+    const choque = existentes.find((p) => normal(p.name) === normal(name));
+    if (choque) {
+      return {
+        ok: false,
+        error: choque.active
+          ? `Ya existe un producto llamado "${choque.name}".`
+          : `Ya existe "${choque.name}", pero está desactivado. Volvé a activarlo en vez de crear otro.`,
+      };
+    }
+
+    const p = await tx.product.create({
+      data: {
+        name,
+        description: datos.description,
+        category: datos.category,
+        rubro: datos.rubro,
+        type: datos.type,
+        unit: datos.unit,
+        stock,
+        active: true,
+      },
+    });
+
+    // La cantidad inicial queda explicada en el historial, igual que cualquier
+    // otro movimiento: si no, aparece un número sin origen. Un producto sin
+    // contar no genera movimiento: no hubo recuento que registrar.
+    if (stock !== null && stock > 0) {
+      await tx.stockMovement.create({
+        data: {
+          productId: p.id,
+          delta: stock,
+          reason: "AJUSTE",
+          note: "Alta del producto — cantidad inicial",
+          userId: user.id,
+        },
+      });
+    }
+    return { ok: true, id: p.id };
+  });
+  if (!hecho.ok) return hecho;
+
+  revalidarCatalogo();
+  return hecho;
 }
 
 const LABEL: Record<string, string> = {
@@ -146,14 +201,15 @@ export async function updateProduct(input: {
 }): Promise<ProductResult> {
   const { user, error: permiso } = await requireAdmin();
   if (!user) return { ok: false, error: permiso! };
+  if (!esObjeto(input) || !esId(input.id)) return { ok: false, error: "No se encontró el producto." };
+
+  const datos = datosDeProducto(input);
+  if (!datos.ok) return { ok: false, error: datos.error };
+  const name = datos.name;
+  if (!name) return { ok: false, error: "El nombre no puede quedar vacío." };
 
   const p = await prisma.product.findUnique({ where: { id: input.id } });
   if (!p) return { ok: false, error: "No se encontró el producto." };
-
-  const name = input.name.trim();
-  if (!name) return { ok: false, error: "El nombre no puede quedar vacío." };
-  if (!esCategoria(input.category)) return { ok: false, error: "Elegí la categoría." };
-  if (!TYPES.includes(input.type)) return { ok: false, error: "Elegí si lleva control de stock." };
 
   if (normal(name) !== normal(p.name)) {
     const otros = await prisma.product.findMany({
@@ -173,11 +229,11 @@ export async function updateProduct(input: {
 
   const nuevos = {
     name,
-    description: input.description?.trim() || null,
-    category: input.category,
-    rubro: input.rubro?.trim() || null,
-    type: input.type,
-    unit: input.unit.trim() || "Unidad",
+    description: datos.description,
+    category: datos.category,
+    rubro: datos.rubro,
+    type: datos.type,
+    unit: datos.unit,
   };
 
   const campos = Object.keys(nuevos) as (keyof typeof nuevos)[];
@@ -219,13 +275,19 @@ export async function updateProduct(input: {
     if (stock === null && p.stock !== null) sinContar.stock = null;
   }
 
-  await prisma.$transaction([
-    prisma.product.update({ where: { id: p.id }, data: { ...nuevos, ...sinContar } }),
-    prisma.productChange.createMany({ data: cambios }),
-  ]);
+  // `updateMany` y mirar cuántas filas tocó: si el producto se eliminó entre la
+  // lectura y esta escritura, un `update` por id lanzaba una excepción cruda (y
+  // el historial no se puede crear sin producto). Así no se escribe nada y se
+  // contesta con un error normal.
+  const guardado = await prisma.$transaction(async (tx) => {
+    const r = await tx.product.updateMany({ where: { id: p.id }, data: { ...nuevos, ...sinContar } });
+    if (r.count !== 1) return false;
+    await tx.productChange.createMany({ data: cambios });
+    return true;
+  });
+  if (!guardado) return { ok: false, error: "No se encontró el producto." };
 
-  revalidatePath("/inventario");
-  revalidatePath("/");
+  revalidarCatalogo();
   return { ok: true, id: p.id };
 }
 
@@ -234,27 +296,30 @@ export async function updateProduct(input: {
 export async function setProductActive(id: string, active: boolean): Promise<ProductResult> {
   const { user, error: permiso } = await requireAdmin();
   if (!user) return { ok: false, error: permiso! };
+  if (!esId(id) || typeof active !== "boolean") return { ok: false, error: "No se encontró el producto." };
 
   const p = await prisma.product.findUnique({ where: { id }, select: { id: true, active: true } });
   if (!p) return { ok: false, error: "No se encontró el producto." };
   if (p.active === active) return { ok: true, id };
 
-  await prisma.$transaction([
-    prisma.product.update({ where: { id }, data: { active } }),
-    prisma.productChange.create({
+  // La escritura es la que decide: condicionada a que siga en el otro estado.
+  // Con dos toques a la vez cambiaba una sola vez pero el historial anotaba dos.
+  await prisma.$transaction(async (tx) => {
+    const r = await tx.product.updateMany({ where: { id, active: !active }, data: { active } });
+    if (r.count !== 1) return;
+    await tx.productChange.create({
       data: {
         productId: id,
         actorId: user.id,
         actorName: user.name,
         field: "active",
-        before: p.active ? "activo" : "desactivado",
+        before: active ? "desactivado" : "activo",
         after: active ? "activo" : "desactivado",
       },
-    }),
-  ]);
+    });
+  });
 
-  revalidatePath("/inventario");
-  revalidatePath("/");
+  revalidarCatalogo();
   return { ok: true, id };
 }
 
@@ -266,24 +331,27 @@ export type DeleteProductResult = ProductResult & {
 
 /** Elimina un producto. Si tiene pedidos o movimientos asociados NO se borra
  *  físicamente —eso rompería pedidos y el historial de stock— sino que se da de
- *  baja lógica. Solo se borra de verdad lo que nunca se usó. */
+ *  baja lógica. Solo se borra de verdad lo que nunca se usó.
+ *
+ *  Contar y decidir van en la misma transacción que el borrado: con los pasos
+ *  sueltos, un renglón que entraba al pedido entre la cuenta y el borrado
+ *  quedaba apuntando a un producto que ya no existía (un renglón sin nombre). */
 export async function deleteProduct(id: string): Promise<DeleteProductResult> {
   const { user, error: permiso } = await requireAdmin();
   if (!user) return { ok: false, error: permiso! };
+  if (!esId(id)) return { ok: false, error: "No se encontró el producto." };
 
-  const p = await prisma.product.findUnique({ where: { id }, select: { id: true, active: true } });
-  if (!p) return { ok: false, error: "No se encontró el producto." };
+  const hecho = await prisma.$transaction(async (tx): Promise<DeleteProductResult> => {
+    const p = await tx.product.findUnique({ where: { id }, select: { id: true, active: true } });
+    if (!p) return { ok: false, error: "No se encontró el producto." };
 
-  const [pedidos, movimientos] = await Promise.all([
-    prisma.orderLine.count({ where: { productId: id } }),
-    prisma.stockMovement.count({ where: { productId: id } }),
-  ]);
+    const pedidos = await tx.orderLine.count({ where: { productId: id } });
+    const movimientos = await tx.stockMovement.count({ where: { productId: id } });
 
-  if (pedidos > 0 || movimientos > 0) {
-    if (p.active) {
-      await prisma.$transaction([
-        prisma.product.update({ where: { id }, data: { active: false } }),
-        prisma.productChange.create({
+    if (pedidos > 0 || movimientos > 0) {
+      const r = await tx.product.updateMany({ where: { id, active: true }, data: { active: false } });
+      if (r.count === 1) {
+        await tx.productChange.create({
           data: {
             productId: id,
             actorId: user.id,
@@ -292,18 +360,17 @@ export async function deleteProduct(id: string): Promise<DeleteProductResult> {
             before: "activo",
             after: "desactivado",
           },
-        }),
-      ]);
+        });
+      }
+      return { ok: true, id, baja: "logica", pedidos, movimientos };
     }
-    revalidatePath("/inventario");
-    revalidatePath("/");
-    return { ok: true, id, baja: "logica", pedidos, movimientos };
-  }
 
-  await prisma.product.delete({ where: { id } });
-  revalidatePath("/inventario");
-  revalidatePath("/");
-  return { ok: true, id, baja: "fisica", pedidos: 0, movimientos: 0 };
+    await tx.product.deleteMany({ where: { id } });
+    return { ok: true, id, baja: "fisica", pedidos: 0, movimientos: 0 };
+  });
+
+  if (hecho.ok) revalidarCatalogo();
+  return hecho;
 }
 
 export type HistoryEntry = {
@@ -322,6 +389,7 @@ export type HistoryEntry = {
 export async function getProductHistory(id: string): Promise<HistoryEntry[]> {
   const { user } = await requireAdmin();
   if (!user) return [];
+  if (!esId(id)) return [];
 
   const [cambios, movimientos] = await Promise.all([
     prisma.productChange.findMany({ where: { productId: id }, orderBy: { createdAt: "desc" }, take: 100 }),

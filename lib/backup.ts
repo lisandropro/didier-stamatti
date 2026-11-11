@@ -1,8 +1,10 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prisma } from "@/lib/db";
+import { listarTodo, respaldoConfigurado } from "@/lib/s3-respaldo";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 const RETENTION_DAYS = 14;
 const PREFIX = "backups/";
@@ -30,19 +32,6 @@ const CONJUNTOS = [
 
 export { CONJUNTOS };
 
-function s3() {
-  const endpoint = process.env.BACKUP_S3_ENDPOINT;
-  const accessKeyId = process.env.BACKUP_S3_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.BACKUP_S3_SECRET_ACCESS_KEY;
-  if (!endpoint || !accessKeyId || !secretAccessKey) return null;
-  return new S3Client({
-    endpoint,
-    region: process.env.BACKUP_S3_REGION || "auto",
-    credentials: { accessKeyId, secretAccessKey },
-    forcePathStyle: false,
-  });
-}
-
 /** Copia segura de la base SQLite (mientras la app sigue escribiendo), la sube
  *  al almacenamiento de respaldo, y borra las copias más viejas que RETENTION_DAYS. */
 /** Respalda UNA base. `retencionDias: null` = no se poda nunca. */
@@ -54,23 +43,32 @@ async function respaldarUna(
   retencionDias: number | null,
 ): Promise<{ ok: boolean; key?: string; error?: string; pruned?: number }> {
   const tmpPath = join(tmpdir(), `backup-${prefijo.replace(/[^a-z]/g, "")}-${Date.now()}.db`).replace(/\\/g, "/");
+  let key: string;
   try {
     // VACUUM INTO es la forma segura de SQLite de copiar la base mientras
     // sigue recibiendo lecturas/escrituras (a diferencia de copiar el archivo a mano).
-    await base.$executeRawUnsafe(`VACUUM INTO '${tmpPath}'`);
+    await base.$executeRawUnsafe(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}'`);
 
     const data = await readFile(tmpPath);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const key = `${prefijo}dev-${stamp}.db`;
+    key = `${prefijo}dev-${stamp}.db`;
 
     await cliente.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: data }));
-
-    const pruned = retencionDias == null ? 0 : await pruneOld(cliente, bucket, prefijo, retencionDias);
-    return { ok: true, key, pruned };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: mensajeDe(e) };
   } finally {
     await unlink(tmpPath).catch(() => {});
+  }
+
+  // La poda va aparte: la copia de hoy YA está arriba. Antes, un fallo al
+  // listar o al borrar las viejas hacía que el respaldo entero figurara como
+  // fallido, y la revisión avisaba de un respaldo que sí se había hecho.
+  if (retencionDias == null) return { ok: true, key, pruned: 0 };
+  try {
+    return { ok: true, key, pruned: await pruneOld(cliente, bucket, prefijo, retencionDias) };
+  } catch (e) {
+    console.error(`[backup] la copia ${key} se subió, pero no se pudieron podar las viejas: ${mensajeDe(e)}`);
+    return { ok: true, key, pruned: 0 };
   }
 }
 
@@ -80,16 +78,16 @@ async function respaldarUna(
  * que falla entero.
  */
 export async function runBackup(): Promise<{ ok: boolean; key?: string; error?: string; pruned?: number }> {
-  const client = s3();
-  const bucket = process.env.BACKUP_S3_BUCKET;
-  if (!client || !bucket) return { ok: false, error: "Respaldo no configurado (faltan variables BACKUP_S3_*)." };
+  const s3 = respaldoConfigurado();
+  if (!s3) return { ok: false, error: "Respaldo no configurado (faltan variables BACKUP_S3_*)." };
+  const { cliente, bucket } = s3;
 
   const bases = [prisma] as unknown as {
     $executeRawUnsafe(sql: string): Promise<unknown>;
   }[];
 
   const resultados = await Promise.all(
-    CONJUNTOS.map((c, i) => respaldarUna(client, bucket, bases[i], c.prefijo, c.retencionDias)),
+    CONJUNTOS.map((c, i) => respaldarUna(cliente, bucket, bases[i], c.prefijo, c.retencionDias)),
   );
 
   const fallados = resultados
@@ -104,19 +102,21 @@ export async function runBackup(): Promise<{ ok: boolean; key?: string; error?: 
   };
 }
 
+/** Borra las copias de más de `retencionDias` días. Lista TODO el prefijo
+ *  (`listarTodo` pagina): con un solo llamado se veían como mucho 1000. */
 async function pruneOld(
   client: S3Client,
   bucket: string,
   prefijo: string,
   retencionDias: number,
 ): Promise<number> {
-  const list = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefijo }));
+  const objetos = await listarTodo(client, bucket, prefijo);
   const cutoff = Date.now() - retencionDias * 24 * 60 * 60 * 1000;
   let pruned = 0;
-  for (const obj of list.Contents ?? []) {
-    if (!obj.Key || !obj.LastModified) continue;
-    if (obj.LastModified.getTime() < cutoff) {
-      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.Key }));
+  for (const obj of objetos) {
+    if (!obj.modificado) continue;
+    if (obj.modificado.getTime() < cutoff) {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.key }));
       pruned++;
     }
   }

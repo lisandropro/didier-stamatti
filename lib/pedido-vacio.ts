@@ -10,8 +10,9 @@
 // habla al equipo sobre el próximo evento.
 
 import { prisma } from "@/lib/db";
-import { diaDe, diasEntre, fmtDia, hoy } from "@/lib/dates";
+import { diaDe, diasEntre, fmtDia, partesDe } from "@/lib/dates";
 import { sendPushToUser } from "@/lib/push";
+import { mensajeDe } from "@/lib/mensaje-de";
 import { canEditOrders, sortByNotificationPriority } from "@/lib/permissions";
 
 /**
@@ -72,13 +73,46 @@ export function textoDelAviso(a: AvisoDePedido): string {
   return `"${a.lugar}" ${cuando} y su pedido está vacío`;
 }
 
+/** Desde las 8:00, hora argentina. */
+export const HORA_DESDE = 8;
+/** Hasta las 20:00: después ya nadie va a sentarse a armar un pedido. */
+export const HORA_HASTA = 20;
+
+/**
+ * ¿Es hora de avisar? `hora` es la hora argentina, de 0 a 23.
+ *
+ * Este aviso salía cuando arrancaba el servidor y después cada 24 horas desde
+ * ese arranque. El servidor arranca con cada despliegue, a cualquier hora: un
+ * despliegue a la 1 de la mañana hacía sonar "Falta armar un pedido" a la 1 de
+ * la mañana, y lo seguía haciendo a esa hora todos los días hasta el próximo.
+ * Un aviso que despierta a alguien por algo que no puede resolver hasta la
+ * mañana enseña a silenciar la app.
+ */
+export function esHoraDeAvisar(hora: number): boolean {
+  return hora >= HORA_DESDE && hora < HORA_HASTA;
+}
+
+// Una corrida a la vez, como los demás barridos: ahora corre cada 10 minutos, y
+// con el servicio de push lento una podía seguir mandando cuando arrancaba la
+// siguiente, que leía "todavía no avisado" y mandaba lo mismo.
+let avisando = false;
+
 /**
  * Avisa, a quien puede armar pedidos, de los eventos que se vienen sin nada
  * cargado. Devuelve cuántos avisos se crearon.
  *
+ * Fuera de la franja de 8 a 20 (hora argentina) no hace nada: lo que toque
+ * avisar de noche sale a las 8. Corre seguido (cada 10 minutos) y no repite: lo
+ * que ya se avisó queda anotado en la base (`Notification` con la etiqueta del
+ * evento y el umbral), no en la memoria del proceso.
+ *
  * Nunca lanza: es una tarea de fondo y un fallo acá no puede afectar a la app.
  */
-export async function notificarPedidosVacios(diaDeHoy = hoy()): Promise<{ avisos: number; eventos: number }> {
+export async function notificarPedidosVacios(ahora: Date = new Date()): Promise<{ avisos: number; eventos: number }> {
+  if (!esHoraDeAvisar(partesDe(ahora).hour)) return { avisos: 0, eventos: 0 };
+  if (avisando) return { avisos: 0, eventos: 0 };
+  avisando = true;
+  const diaDeHoy = diaDe(ahora);
   try {
     const vacios = await prisma.event.findMany({
       where: { deletedAt: null, period: { deletedAt: null }, lines: { none: {} } },
@@ -134,7 +168,12 @@ export async function notificarPedidosVacios(diaDeHoy = hoy()): Promise<{ avisos
       }
     }
     return { avisos: creados, eventos: avisos.length };
-  } catch {
+  } catch (e) {
+    // No puede afectar a la app, pero tampoco pasar callado: sin esto, un fallo
+    // de todos los días se veía igual que "no había nada que avisar".
+    console.error("[pedido-vacio] falló el aviso de pedidos vacíos:", mensajeDe(e));
     return { avisos: 0, eventos: 0 };
+  } finally {
+    avisando = false;
   }
 }

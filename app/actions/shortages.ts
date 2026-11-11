@@ -2,6 +2,7 @@
 
 import { getSessionUser } from "@/lib/auth";
 import { eventShortages, type ShortageRow } from "@/lib/shortages";
+import { esId } from "@/lib/entrada";
 
 export type ShortagesResult = {
   ok: boolean;
@@ -23,6 +24,7 @@ export type ShortagesResult = {
 export async function getEventShortages(eventId: string): Promise<ShortagesResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
+  if (!esId(eventId)) return { ok: false, error: "No se encontró el evento." };
 
   const data = await eventShortages(eventId);
   if (!data) return { ok: false, error: "No se encontró el evento." };

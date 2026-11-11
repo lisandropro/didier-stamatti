@@ -11,8 +11,7 @@ import { avisoDe, agruparHallazgos, type HealthProblem } from "../lib/healthchec
  * existen.
  *
  * Un aviso que pide tiempo que no hay se ignora igual que uno falso — y al
- * ignorarse entrena a ignorar TODOS, incluido el día que falle el respaldo o se
- * esté por pagar dos veces la misma factura.
+ * ignorarse entrena a ignorar TODOS, incluido el día que falle el respaldo.
  *
  * Así que lo que se prueba acá no es un formato de mensaje: es que **el trabajo
  * pendiente no pueda ni disparar el aviso ni tapar al urgente**.
@@ -32,7 +31,9 @@ const LOS_SIETE: HealthProblem[] = [
   p("listo-sin-responsable", "media"),
   p("producto-sin-contar", "media"),
   p("usuarios-sin-push", "media"),
-  p("comprobante-sin-vencimiento", "media"),
+  // El séptimo era un control del módulo financiero, retirado el 19/10/2026. Se
+  // conserva el lugar, con otro nombre, para que la cuenta sea la de ese día.
+  p("pendiente-de-un-modulo-retirado", "media"),
 ];
 
 test("el trabajo pendiente NO interrumpe", () => {

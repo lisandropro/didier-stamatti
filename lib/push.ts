@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import webpush from "web-push";
 import { prisma } from "@/lib/db";
 import { validPushEndpoint } from "./push-subscription";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 export type PushPayload = { title: string; body: string; url?: string; tag?: string };
 
@@ -49,8 +50,6 @@ const vidaDelPush = (kind: TipoDeAviso): number => VIDA_POR_TIPO[kind] ?? VIDA_D
  *  prueba de un teléfono, la pantalla de dispositivos) dependa de un literal. */
 export const SIN_CLAVES = "sin claves";
 export const CLAVES_INVALIDAS = "claves inválidas";
-
-const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 let configurado: boolean | null = null;
 

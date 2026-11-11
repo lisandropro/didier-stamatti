@@ -6,8 +6,7 @@ import { revalidatePath } from "next/cache";
 import { canManagePeriods, canSetResponsable } from "@/lib/permissions";
 import { notifyOrderChange } from "@/lib/notify";
 import { avisarEventosDelPeriodo } from "@/lib/avisos-del-periodo";
-import { planEventEdit } from "@/lib/event-edit";
-import { diaDe, esDia, fmtRangoDias, instanteDeLocal } from "@/lib/dates";
+import { diaDe, esDia, fmtRangoDias, instanteDe, partirLocal } from "@/lib/dates";
 import {
   cubreDia,
   duplicadoDe,
@@ -15,11 +14,39 @@ import {
   nombreDe,
   problemaDeRango,
   rangoQueLosContiene,
-  ubicarDia,
   type Periodo,
 } from "@/lib/period-fit";
+import { TOPES, esId, textoOpcional } from "@/lib/entrada";
+import { revalidarPedido, revalidarPeriodo } from "@/lib/revalidar";
+import { corregirEvento, crearEventoUbicado, periodoNuevo } from "@/lib/evento-db";
 
 export type ActionResult = { ok: boolean; error?: string; id?: string };
+
+/** Un evento que se puede tocar: ni él ni su período están en la papelera. */
+const EVENTO_VIVO = { deletedAt: null, period: { deletedAt: null } } as const;
+
+const LABEL_LARGO = `El nombre del período es demasiado largo (máximo ${TOPES.label}).`;
+const LUGAR_LARGO = `El lugar es demasiado largo (máximo ${TOPES.lugar}).`;
+const RESPONSABLE_LARGO = `El nombre del responsable es demasiado largo (máximo ${TOPES.responsable}).`;
+const INVITADOS_MAL = `La cantidad de invitados no es válida (máximo ${TOPES.invitados}).`;
+
+/** Lo que llega es un objeto: una acción es un endpoint, y `null` o un texto en
+ *  lugar del objeto no pueden terminar en un error crudo al leer un campo. */
+function esObjeto(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+/** Un día (`AAAA-MM-DD`) o una fecha y hora de formulario: texto corto, o nada. */
+const textoCorto = (v: unknown): string => (typeof v === "string" && v.length <= 40 ? v.trim() : "");
+
+/** Los invitados que llegan: `undefined`, `null` o algo que no es un número
+ *  (un campo vacío llega así) no es un error, es "no vino". Un número se
+ *  redondea y no baja de 0; pasado el tope, se rechaza. */
+function invitadosDe(v: unknown): { ok: true; valor: number | null } | { ok: false } {
+  if (typeof v !== "number" || !Number.isFinite(v)) return { ok: true, valor: null };
+  const n = Math.max(0, Math.round(v));
+  return n > TOPES.invitados ? { ok: false } : { ok: true, valor: n };
+}
 
 /** Crear, borrar, recuperar y editar períodos y eventos. El encargado de
  *  logística mira pero no toca: lo único que puede escribir es el responsable. */
@@ -70,11 +97,14 @@ export async function createPeriod(input: {
 }): Promise<PeriodResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
+  if (!esObjeto(input)) return { ok: false, error: "Elegí las fechas del período." };
 
-  const startDay = (input.startDay ?? "").trim();
-  const endDay = (input.endDay ?? "").trim();
+  const startDay = textoCorto(input.startDay);
+  const endDay = textoCorto(input.endDay);
   const problema = problemaDeRango(startDay, endDay);
   if (problema) return { ok: false, error: problema };
+  const nombre = textoOpcional(input.label, TOPES.label);
+  if (!nombre.ok) return { ok: false, error: LABEL_LARGO };
 
   // Para detectar duplicados alcanza con buscar el rango, sin cargar el historial.
   const igual = await prisma.operationalPeriod.findFirst({
@@ -86,12 +116,10 @@ export async function createPeriod(input: {
     return { ok: false, duplicado: { id: igual.id, nombre: nombreDe(igual) } };
   }
 
-  const label = input.label?.trim() || null;
-  // Nace marcado para el barrido de faltantes: no tiene faltantes viejos, así
-  // que no le toca el primer barrido que registra sin avisar (ese es para los
-  // períodos que ya existían al desplegar). Sin esto, los faltantes de su primer
-  // pedido (copiar uno es un toque) se registrarían en silencio.
-  const p = await prisma.operationalPeriod.create({ data: { label, startDay, endDay, faltantesDesde: new Date() } });
+  // `periodoNuevo` lo hace nacer marcado para el barrido de faltantes (ver
+  // lib/evento-db.ts): es la misma función con la que `createEvent` y
+  // `updateEvent` crean el período que falta.
+  const p = await prisma.operationalPeriod.create({ data: periodoNuevo(startDay, endDay, nombre.valor) });
   revalidatePath("/");
   return { ok: true, id: p.id };
 }
@@ -113,11 +141,14 @@ export async function updatePeriod(input: {
 }): Promise<PeriodResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
+  if (!esObjeto(input) || !esId(input.periodId)) return { ok: false, error: "No se encontró el período." };
 
-  const startDay = (input.startDay ?? "").trim();
-  const endDay = (input.endDay ?? "").trim();
+  const startDay = textoCorto(input.startDay);
+  const endDay = textoCorto(input.endDay);
   const problema = problemaDeRango(startDay, endDay);
   if (problema) return { ok: false, error: problema };
+  const nombre = textoOpcional(input.label, TOPES.label);
+  if (!nombre.ok) return { ok: false, error: LABEL_LARGO };
 
   const p = await prisma.operationalPeriod.findUnique({
     where: { id: input.periodId },
@@ -148,12 +179,15 @@ export async function updatePeriod(input: {
     };
   }
 
-  await prisma.operationalPeriod.update({
-    where: { id: p.id },
-    data: { startDay, endDay, label: input.label?.trim() || null },
+  // Condicionada a que siga vivo: si otro aparato lo mandó a la papelera entre la
+  // lectura y esta escritura, no se le cambian las fechas a algo borrado (y si
+  // ya no existe, no hay excepción cruda).
+  const r = await prisma.operationalPeriod.updateMany({
+    where: { id: p.id, deletedAt: null },
+    data: { startDay, endDay, label: nombre.valor },
   });
-  revalidatePath("/");
-  revalidatePath(`/periodo/${p.id}`);
+  if (r.count !== 1) return { ok: false, error: "Ese período está en la papelera." };
+  revalidarPeriodo(p.id);
   return { ok: true, id: p.id };
 }
 
@@ -162,6 +196,7 @@ export async function updatePeriod(input: {
 export async function deletePeriod(periodId: string): Promise<ActionResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
+  if (!esId(periodId)) return { ok: false, error: "No se encontró el período." };
   const p = await prisma.operationalPeriod.findUnique({ where: { id: periodId }, select: { deletedAt: true } });
   if (!p) return { ok: false, error: "No se encontró el período." };
   if (p.deletedAt) return { ok: true };
@@ -177,12 +212,16 @@ export async function deletePeriod(periodId: string): Promise<ActionResult> {
     await avisarEventosDelPeriodo(user, periodId, "VIVO", "BORRADO");
   }
   revalidatePath("/");
+  // Además de la portada: su pantalla, la papelera del historial y Preparar,
+  // donde sus eventos dejan de estar.
+  revalidarPeriodo(periodId);
   return { ok: true };
 }
 
 export async function restorePeriod(periodId: string): Promise<ActionResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
+  if (!esId(periodId)) return { ok: false, error: "No se encontró el período." };
   const p = await prisma.operationalPeriod.findUnique({ where: { id: periodId }, select: { deletedAt: true } });
   if (!p) return { ok: false, error: "No se encontró el período." };
   if (!p.deletedAt) {
@@ -199,6 +238,7 @@ export async function restorePeriod(periodId: string): Promise<ActionResult> {
     await avisarEventosDelPeriodo(user, periodId, "BORRADO", "VIVO");
   }
   revalidatePath("/");
+  revalidarPeriodo(periodId);
   return { ok: true, id: periodId };
 }
 
@@ -215,12 +255,27 @@ export type EventPlacementResult = ActionResult & {
   periodo?: string;
 };
 
+/** La fecha y hora de un formulario (`datetime-local`), como instante argentino.
+ *  `null` si no es una fecha de verdad: "2026-02-31T10:00" tiene la forma
+ *  correcta y antes se guardaba corrida al 3 de marzo sin avisar. */
+function fechaDe(valor: unknown): Date | null {
+  const p = partirLocal(textoCorto(valor));
+  if (!p || !esDia(p.dia)) return null;
+  const [hh, mm] = p.hora.split(":").map(Number);
+  if (hh > 23 || mm > 59) return null;
+  return instanteDe(p.dia, p.hora);
+}
+
 /**
  * Crea un evento y lo ubica en el período que le corresponde por su fecha.
  *
  * No se pide el período: se deduce de la fecha, que es el dato que la persona
  * tiene. Si hay varios que la cubren, se le pregunta cuál — adivinar significa
  * contar la vajilla contra el grupo equivocado.
+ *
+ * Acá se comprueba el permiso y lo que llega; ubicar, crear el período que
+ * falta y crear el evento van juntos en `crearEventoUbicado` (lib/evento-db.ts),
+ * en una sola transacción.
  */
 export async function createEvent(input: {
   lugar: string;
@@ -234,58 +289,34 @@ export async function createEvent(input: {
 }): Promise<EventPlacementResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
-  if (!input.lugar?.trim()) return { ok: false, error: "Poné el lugar del evento." };
+  if (!esObjeto(input)) return { ok: false, error: "Poné el lugar del evento." };
 
-  const fecha = instanteDeLocal(input.date ?? "");
+  const lugar = textoOpcional(input.lugar, TOPES.lugar);
+  if (!lugar.ok) return { ok: false, error: LUGAR_LARGO };
+  if (!lugar.valor) return { ok: false, error: "Poné el lugar del evento." };
+  const responsable = textoOpcional(input.responsable, TOPES.responsable);
+  if (!responsable.ok) return { ok: false, error: RESPONSABLE_LARGO };
+  const invitados = invitadosDe(input.guests);
+  if (!invitados.ok) return { ok: false, error: INVITADOS_MAL };
+  const elegidoId = input.periodoElegidoId ?? null;
+  if (elegidoId !== null && !esId(elegidoId)) return { ok: false, error: "No se encontró el período elegido." };
+  const fecha = fechaDe(input.date);
   if (!fecha) return { ok: false, error: "Elegí la fecha y hora." };
-  const dia = diaDe(fecha);
 
-  let destinoId = input.periodoElegidoId ?? null;
-  const periodos = await periodosVivos();
-
-  if (destinoId) {
-    const elegido = periodos.find((p) => p.id === destinoId);
-    if (!elegido) return { ok: false, error: "No se encontró el período elegido." };
-    if (!cubreDia(elegido, dia)) {
-      return { ok: false, error: `El período "${nombreDe(elegido)}" no incluye el ${dia}.` };
-    }
-  } else {
-    const ubicacion = ubicarDia(periodos, dia);
-    if (ubicacion.tipo === "ninguno") {
-      const s = ubicacion.sugerido;
-      if (!input.crearPeriodo) {
-        return { ok: false, faltaPeriodo: { ...s, label: fmtRangoDias(s.startDay, s.endDay) } };
-      }
-      const creado = await createPeriod({ startDay: s.startDay, endDay: s.endDay, permitirDuplicado: true });
-      if (!creado.ok || !creado.id) return { ok: false, error: creado.error ?? "No se pudo crear el período." };
-      destinoId = creado.id;
-    } else if (ubicacion.tipo === "varios") {
-      return {
-        ok: false,
-        elegirPeriodo: ubicacion.candidatos.map((p) => ({
-          id: p.id,
-          nombre: nombreDe(p),
-          rango: fmtRangoDias(p.startDay, p.endDay),
-        })),
-      };
-    } else {
-      destinoId = ubicacion.periodo.id;
-    }
-  }
-
-  const ev = await prisma.event.create({
-    data: {
-      periodId: destinoId!,
-      lugar: input.lugar.trim(),
-      date: fecha,
-      guests: Number.isFinite(input.guests) ? Math.max(0, Math.round(input.guests as number)) : 0,
-      responsable: input.responsable?.trim() || null,
-      status: "NO_LISTO",
-    },
+  const hecho = await crearEventoUbicado({
+    lugar: lugar.valor,
+    fecha,
+    invitados: invitados.valor ?? 0,
+    responsable: responsable.valor,
+    periodoElegidoId: elegidoId,
+    crearPeriodo: input.crearPeriodo === true,
   });
+  if (!hecho.ok) return hecho;
+
   revalidatePath("/");
-  revalidatePath(`/periodo/${destinoId}`);
-  return { ok: true, id: ev.id };
+  revalidatePath(`/periodo/${hecho.periodId}`);
+  revalidatePath("/preparar");
+  return { ok: true, id: hecho.id };
 }
 
 export type UpdateEventResult = EventPlacementResult & { movidoA?: string };
@@ -303,6 +334,10 @@ export type UpdateEventResult = EventPlacementResult & { movidoA?: string };
  * mismas líneas—, y con eso los faltantes de los dos períodos se recalculan
  * solos: no están guardados, se calculan al mirarlos sumando lo que piden los
  * eventos de cada período.
+ *
+ * Acá se comprueba el permiso y lo que llega; leer, decidir y escribir van
+ * juntos en `corregirEvento` (lib/evento-db.ts), en una sola transacción y con
+ * la escritura condicionada a que el evento siga vivo.
  */
 export async function updateEvent(input: {
   eventId: string;
@@ -314,82 +349,48 @@ export async function updateEvent(input: {
 }): Promise<UpdateEventResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
+  if (!esObjeto(input) || !esId(input.eventId)) return { ok: false, error: "No se encontró el evento." };
+  const eventId = input.eventId;
 
-  const fecha = instanteDeLocal(input.date ?? "");
+  const lugar = textoOpcional(input.lugar, TOPES.lugar);
+  if (!lugar.ok) return { ok: false, error: LUGAR_LARGO };
+  const invitados = invitadosDe(input.guests);
+  if (!invitados.ok) return { ok: false, error: INVITADOS_MAL };
+  const elegidoId = input.periodoElegidoId ?? null;
+  if (elegidoId !== null && !esId(elegidoId)) return { ok: false, error: "No se encontró el período elegido." };
+  const fecha = fechaDe(input.date);
   if (!fecha) return { ok: false, error: "Elegí la fecha y hora." };
 
-  const ev = await prisma.event.findUnique({
-    where: { id: input.eventId },
-    include: { period: { select: { id: true, label: true, startDay: true, endDay: true } } },
+  const hecho = await corregirEvento({
+    eventId,
+    // Vacío llega a `planEventEdit`, que es quien dice "Poné el lugar del evento."
+    lugar: lugar.valor ?? "",
+    fecha,
+    invitados: invitados.valor,
+    periodoElegidoId: elegidoId,
+    crearPeriodo: input.crearPeriodo === true,
   });
-  if (!ev) return { ok: false, error: "No se encontró el evento." };
-  if (ev.deletedAt) return { ok: false, error: "Ese evento está en la papelera." };
-
-  const pedido = {
-    lugar: input.lugar ?? "",
-    date: fecha,
-    guests: Number.isFinite(input.guests) ? (input.guests as number) : ev.guests,
-    periodoElegidoId: input.periodoElegidoId ?? null,
-  };
-  const actual = {
-    lugar: ev.lugar,
-    date: ev.date,
-    guests: ev.guests,
-    periodId: ev.periodId,
-    periodLabel: nombreDe(ev.period),
-  };
-
-  let periodos = await periodosVivos();
-  let plan = planEventEdit(actual, pedido, periodos);
-
-  if (plan.tipo === "falta-periodo") {
-    if (!input.crearPeriodo) {
-      return { ok: false, faltaPeriodo: plan.sugerido };
-    }
-    const creado = await createPeriod({
-      startDay: plan.sugerido.startDay,
-      endDay: plan.sugerido.endDay,
-      permitirDuplicado: true,
-    });
-    if (!creado.ok || !creado.id) return { ok: false, error: creado.error ?? "No se pudo crear el período." };
-    periodos = await periodosVivos();
-    plan = planEventEdit(actual, { ...pedido, periodoElegidoId: creado.id }, periodos);
-  }
-
-  if (plan.tipo === "elegir-periodo") return { ok: false, elegirPeriodo: plan.candidatos };
-  if (plan.tipo === "error") return { ok: false, error: plan.error };
-  // Guardar sin cambiar nada no avisa, igual que en el resto del pedido.
-  if (plan.tipo === "sin-cambios") return { ok: true, id: ev.id };
-  if (plan.tipo !== "guardar") return { ok: false, error: "No se pudo guardar el cambio." };
-
-  const { destinoId, destinoNombre, semudó, cambios } = plan;
-  const periodoAnterior = ev.periodId;
-  await prisma.event.update({
-    where: { id: ev.id },
-    data: {
-      lugar: pedido.lugar.trim(),
-      date: fecha,
-      guests: Math.max(0, Math.round(pedido.guests)),
-      periodId: destinoId,
-    },
-  });
+  if (!hecho.ok) return hecho;
+  if (hecho.sinCambios) return { ok: true, id: eventId };
+  const { cambios, destinoId, destinoNombre, semudó, periodoAnterior } = hecho;
 
   // Se avisa DESPUÉS de guardar, así el texto del aviso ya nombra al evento
   // corregido y no al que estaba mal.
-  await notifyOrderChange(user, ev.id, cambios);
+  await notifyOrderChange(user, eventId, cambios);
 
-  revalidatePath("/");
-  revalidatePath(`/evento/${ev.id}`);
-  revalidatePath(`/evento/${ev.id}/pdf`);
-  revalidatePath(`/periodo/${periodoAnterior}`);
+  revalidarPedido(eventId, periodoAnterior);
   if (semudó) revalidatePath(`/periodo/${destinoId}`);
 
-  return { ok: true, id: ev.id, movidoA: semudó ? destinoNombre : undefined, periodo: destinoNombre };
+  return { ok: true, id: eventId, movidoA: semudó ? destinoNombre : undefined, periodo: destinoNombre };
 }
 
 export async function setEventStatus(eventId: string, status: "LISTO" | "NO_LISTO"): Promise<ActionResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
+  // El tipo dice "LISTO" | "NO_LISTO", pero eso es lo que manda la pantalla: una
+  // acción es un endpoint y sin esto se guardaba cualquier texto como estado.
+  if (!esId(eventId)) return { ok: false, error: "El evento ya no está disponible." };
+  if (status !== "LISTO" && status !== "NO_LISTO") return { ok: false, error: "Ese estado no existe." };
   // Solo un evento vivo: antes se podía marcar LISTO uno que estaba en la papelera.
   const vivo = { id: eventId, deletedAt: null, period: { deletedAt: null } };
   // La lectura solo distingue "no existe" de "ya estaba así" (y da el estado de
@@ -419,6 +420,8 @@ export async function setEventStatus(eventId: string, status: "LISTO" | "NO_LIST
     await notifyOrderChange(user, eventId, { itemName: "Estado", kind: "ESTADO", before: antes.status, after: status });
   }
   revalidatePath("/");
+  // El estado también se ve en el editor del evento, en su período y en Preparar.
+  revalidarPedido(eventId);
   return { ok: true };
 }
 
@@ -434,19 +437,39 @@ export async function setEventResponsable(eventId: string, responsable: string):
     return { ok: false, error: "No tenés permiso para cambiar el responsable." };
   }
 
+  if (!esId(eventId)) return { ok: false, error: "No se encontró el evento." };
+  const texto = textoOpcional(responsable, TOPES.responsable);
+  if (!texto.ok) return { ok: false, error: RESPONSABLE_LARGO };
+  const nuevo = texto.valor;
+
   const ev = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { responsable: true, deletedAt: true },
+    select: { responsable: true, deletedAt: true, periodId: true, period: { select: { deletedAt: true } } },
   });
   if (!ev) return { ok: false, error: "No se encontró el evento." };
   if (ev.deletedAt) return { ok: false, error: "Ese evento está en la papelera." };
+  if (ev.period.deletedAt) return { ok: false, error: "El período de ese evento está en la papelera: recuperalo primero." };
 
-  const nuevo = responsable.trim() || null;
   const anterior = ev.responsable ?? null;
   // Guardar sin cambiar nada no avisa, igual que en el resto del pedido.
   if (anterior === nuevo) return { ok: true, id: eventId };
 
-  await prisma.event.update({ where: { id: eventId }, data: { responsable: nuevo } });
+  // Condicionada a que el evento siga vivo y a que el responsable siga siendo el
+  // que se leyó. Con un `update` sin condición, dos teléfonos a la vez avisaban
+  // los dos con el mismo "antes" y quedaba el del último; y se le cambiaba el
+  // responsable a un evento que otro aparato acababa de mandar a la papelera.
+  const r = await prisma.event.updateMany({
+    where: { id: eventId, ...EVENTO_VIVO, responsable: ev.responsable },
+    data: { responsable: nuevo },
+  });
+  if (r.count !== 1) {
+    const ahora = await prisma.event.findFirst({ where: { id: eventId, ...EVENTO_VIVO }, select: { responsable: true } });
+    if (!ahora) return { ok: false, error: "El evento ya no está disponible." };
+    revalidarPedido(eventId, ev.periodId);
+    // Otro aparato ya lo dejó como se quería: avisó él.
+    if ((ahora.responsable ?? null) === nuevo) return { ok: true, id: eventId };
+    return { ok: false, error: "Otra persona cambió el responsable recién. Fijate cómo quedó y volvé a intentar." };
+  }
   await notifyOrderChange(user, eventId, {
     itemName: "Responsable de la fiesta",
     kind: "RESPONSABLE",
@@ -454,8 +477,7 @@ export async function setEventResponsable(eventId: string, responsable: string):
     after: nuevo,
   });
 
-  revalidatePath("/");
-  revalidatePath(`/evento/${eventId}`);
+  revalidarPedido(eventId, ev.periodId);
   return { ok: true, id: eventId };
 }
 
@@ -463,7 +485,8 @@ export async function setEventResponsable(eventId: string, responsable: string):
 export async function deleteEvent(eventId: string): Promise<ActionResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
-  const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { deletedAt: true } });
+  if (!esId(eventId)) return { ok: false, error: "No se encontró el evento." };
+  const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { deletedAt: true, periodId: true } });
   if (!ev) return { ok: false, error: "No se encontró el evento." };
   if (ev.deletedAt) return { ok: true }; // ya estaba borrado
   // La lectura solo distingue "no existe" de "ya estaba borrado". Quien decide si
@@ -477,6 +500,9 @@ export async function deleteEvent(eventId: string): Promise<ActionResult> {
     await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "VIVO", after: "BORRADO" });
   }
   revalidatePath("/");
+  // Además de la portada: su período, Preparar y la papelera del historial.
+  revalidarPedido(eventId, ev.periodId);
+  revalidatePath("/historial");
   return { ok: true };
 }
 
@@ -485,6 +511,7 @@ export async function deleteEvent(eventId: string): Promise<ActionResult> {
 export async function restoreEvent(eventId: string): Promise<ActionResult> {
   const { user, error: permiso } = await requireManage();
   if (!user) return { ok: false, error: permiso! };
+  if (!esId(eventId)) return { ok: false, error: "No se encontró el evento." };
   const ev = await prisma.event.findUnique({
     where: { id: eventId },
     select: { periodId: true, deletedAt: true, period: { select: { deletedAt: true } } },
@@ -523,6 +550,8 @@ export async function restoreEvent(eventId: string): Promise<ActionResult> {
     await notifyOrderChange(user, eventId, { itemName: "Evento", kind: "PAPELERA", before: "BORRADO", after: "VIVO" });
   }
   revalidatePath("/");
+  revalidarPedido(eventId, ev.periodId);
+  revalidatePath("/historial");
   return { ok: true, id: ev.periodId };
 }
 
@@ -530,7 +559,7 @@ export async function restoreEvent(eventId: string): Promise<ActionResult> {
 export async function listPeriodsForDay(dia: string): Promise<{ id: string; nombre: string; rango: string }[]> {
   const user = await getSessionUser();
   if (!user) return [];
-  if (!esDia(dia)) return [];
+  if (typeof dia !== "string" || !esDia(dia)) return [];
   const periodos = await periodosVivos();
   return periodos
     .filter((p) => cubreDia(p, dia))

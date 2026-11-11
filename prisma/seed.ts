@@ -4,6 +4,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import bcrypt from "bcryptjs";
+import { puedeSembrar } from "../lib/seed-guarda";
 
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
 const prisma = new PrismaClient({ adapter });
@@ -31,6 +32,17 @@ function parseCatalog() {
 async function main() {
   const products = parseCatalog();
 
+  // Lo de abajo BORRA los renglones de todos los pedidos, todos los movimientos
+  // de stock y el catalogo entero. Antes de tocar nada se mira contra que base
+  // se esta por correr: en produccion, o sobre una base con trabajo cargado,
+  // no corre sin --force (ver lib/seed-guarda.ts).
+  const permiso = puedeSembrar(process.argv.slice(2), process.env, {
+    eventos: await prisma.event.count(),
+    renglones: await prisma.orderLine.count(),
+    movimientos: await prisma.stockMovement.count(),
+  });
+  if (!permiso.ok) throw new Error(permiso.motivo);
+
   // Reseteo idempotente del catálogo (dev)
   await prisma.orderLine.deleteMany();
   await prisma.stockMovement.deleteMany();
@@ -45,9 +57,13 @@ async function main() {
     // La contrasena sale del entorno, no del repositorio.
     //
     // Habia una contrasena escrita aca, y el repositorio se clona, se respalda y
-    // se lee. Peor: el seed corre en cada despliegue, asi que la contrasena del
-    // unico ADMIN quedaba fijada por el codigo fuente y no se podia cambiar sin
-    // publicar una version.
+    // se lee. En ese momento el seed corria en cada despliegue, asi que la
+    // contrasena del unico ADMIN quedaba fijada por el codigo fuente y no se
+    // podia cambiar sin publicar una version.
+    //
+    // Hoy el seed NO corre al desplegar (`start:prod` solo aplica migraciones y
+    // arranca): es un comando de desarrollo, `npm run db:seed`, para armar una
+    // base local desde cero.
     //
     // Falla ruidoso a proposito: si no esta la variable, no se crea el usuario.
     // Un ADMIN con contrasena conocida es peor que no tener ADMIN — el segundo

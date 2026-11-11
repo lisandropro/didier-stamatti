@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { fmtEventDate } from "@/lib/format";
+import { fmtEvento } from "@/lib/dates";
 import { renderOrderPdf, type PdfSection, type PdfLine } from "@/lib/pdf/OrderPdf";
 import { CATEGORIES, CATEGORY_LABEL, esCategoria } from "@/lib/categories";
 import { nombreDeArchivo, sePuedeDespachar } from "@/lib/order-sections";
+import { canVerStock } from "@/lib/permissions";
+import { esId } from "@/lib/entrada";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +16,16 @@ const SECTORS = CATEGORIES.map((key) => ({ key, label: CATEGORY_LABEL[key] }));
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSessionUser();
   if (!session) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  // El mismo permiso que la pantalla de la que se baja (la hoja del pedido):
+  // con la sesión sola, el depósito —que no ve el editor ni la hoja— podía
+  // bajarse el PDF de cualquier evento sabiendo la dirección.
+  if (!canVerStock(session.role)) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
 
   const { id } = await params;
-  const ev = await prisma.event.findUnique({ where: { id } });
-  if (!ev || ev.deletedAt) return NextResponse.json({ error: "Evento no encontrado." }, { status: 404 });
+  if (!esId(id)) return NextResponse.json({ error: "Evento no encontrado." }, { status: 404 });
+  // Vivo él y su período: un evento de un período en la papelera no se imprime.
+  const ev = await prisma.event.findFirst({ where: { id, deletedAt: null, period: { deletedAt: null } } });
+  if (!ev) return NextResponse.json({ error: "Evento no encontrado." }, { status: 404 });
 
   const lines = await prisma.orderLine.findMany({ where: { eventId: id }, include: { product: true } });
 
@@ -49,13 +57,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const buffer = await renderOrderPdf({
     lugar: ev.lugar,
-    dateLabel: fmtEventDate(ev.date),
+    dateLabel: fmtEvento(ev.date),
     guests: ev.guests,
     responsable: ev.responsable,
     sections,
   });
 
-  const base = nombreDeArchivo(ev.lugar, fmtEventDate(ev.date), sector);
+  const base = nombreDeArchivo(ev.lugar, fmtEvento(ev.date), sector);
   // Cabecera HTTP = solo ASCII. Se manda un nombre "plano" como respaldo y el
   // nombre real (con acentos) codificado según RFC 5987 (filename*).
   // NFD separa el acento de la letra; luego se descarta todo lo no-ASCII.

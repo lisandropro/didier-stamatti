@@ -16,6 +16,7 @@ import {
   type Visto,
   type VistoDeSector,
 } from "@/lib/preparacion";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 // La preparación contra la base: leer el pedido y lo tildado, tildar y
 // destildar. El cálculo del estado vive en lib/preparacion.ts, que es puro.
@@ -184,8 +185,6 @@ export async function tildarSector(
     return { tildados: hay - yaEstaban, salteados };
   });
 }
-
-const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /**
  * Restaurar una versión o descartar cambios borra los renglones y los crea de

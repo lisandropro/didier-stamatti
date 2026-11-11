@@ -15,24 +15,11 @@ import {
   deviceSummary,
   eventIdFromScreen,
 } from "@/lib/suggestions";
+// `limpiar` y `limpiarTexto` vivían acá; ahora los comparten todas las acciones.
+import { esId, limpiar, limpiarTexto } from "@/lib/entrada";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 export type SuggestionResult = { ok: boolean; error?: string; id?: string; duplicada?: boolean };
-
-/** Recorta y normaliza. Devuelve null si quedó vacío. */
-function limpiar(v: unknown, max: number): string | null {
-  if (typeof v !== "string") return null;
-  const s = v.trim().replace(/\s+/g, " ");
-  if (!s) return null;
-  return s.slice(0, max);
-}
-
-/** Igual, pero conserva los saltos de línea: una descripción larga los usa. */
-function limpiarTexto(v: unknown, max: number): string | null {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  if (!s) return null;
-  return s.slice(0, max);
-}
 
 export type NewSuggestion = {
   kind: string;
@@ -77,6 +64,7 @@ export async function createSuggestion(input: NewSuggestion): Promise<Suggestion
   // Si estaba parada en el pedido de un evento, queda anotado cuál.
   let eventId: string | null = eventIdFromScreen(screen);
   let eventLugar: string | null = null;
+  if (eventId && !esId(eventId)) eventId = null;
   if (eventId) {
     const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { lugar: true } });
     if (ev) eventLugar = ev.lugar;
@@ -108,11 +96,13 @@ export async function createSuggestion(input: NewSuggestion): Promise<Suggestion
         clientKey,
       },
     });
-  } catch {
+  } catch (e) {
     // Dos envíos a la vez: el índice único frena al segundo. Se devuelve el que
     // sí entró, así quien la mandó ve un solo resultado y no un error.
     const gemela = await prisma.suggestion.findUnique({ where: { clientKey }, select: { id: true } });
     if (gemela) return { ok: true, id: gemela.id, duplicada: true };
+    // No era un doble envío: es un fallo de verdad, y tiene que quedar anotado.
+    console.error("[sugerencias] no se pudo guardar la sugerencia:", mensajeDe(e));
     return { ok: false, error: "No se pudo guardar la sugerencia." };
   }
 
@@ -158,12 +148,15 @@ async function avisarALaAdministradora(
           { title: "Didier Stamatti", body: message, url, tag: `sugerencia-${suggestionId}` },
           { kind: "SUGERENCIA", notificationId: aviso.id },
         );
-      } catch {
+      } catch (e) {
         // Si falla con una administradora, se sigue con las demás.
+        console.error("[sugerencias] no se pudo avisar a una administradora de la sugerencia", suggestionId, mensajeDe(e));
       }
     }
-  } catch {
-    // La sugerencia ya quedó guardada; eso es lo que importa.
+  } catch (e) {
+    // La sugerencia ya quedó guardada; eso es lo que importa. Pero que no se
+    // haya podido avisar se anota: si no, nadie se entera de que existe.
+    console.error("[sugerencias] no se pudo avisar de la sugerencia", suggestionId, mensajeDe(e));
   }
 }
 
@@ -185,6 +178,7 @@ async function requireManage(): Promise<Guard> {
 export async function setSuggestionStatus(id: string, status: string): Promise<SuggestionResult> {
   const guard = await requireManage();
   if (!guard.ok) return { ok: false, error: guard.error };
+  if (!esId(id)) return { ok: false, error: "No se encontró la sugerencia." };
 
   const nuevo = typeof status === "string" ? status.toUpperCase() : "";
   if (!isStatus(nuevo)) return { ok: false, error: "Ese estado no existe." };
@@ -193,10 +187,13 @@ export async function setSuggestionStatus(id: string, status: string): Promise<S
   if (!actual) return { ok: false, error: "No se encontró la sugerencia." };
   if (actual.status === nuevo) return { ok: true, id };
 
-  await prisma.suggestion.update({
+  // `updateMany` y no `update`: si la sugerencia se borró entre la lectura y
+  // esta escritura, no hay excepción cruda.
+  const r = await prisma.suggestion.updateMany({
     where: { id },
     data: { status: nuevo, statusAt: new Date() },
   });
+  if (r.count !== 1) return { ok: false, error: "No se encontró la sugerencia." };
 
   revalidatePath("/sugerencias");
   revalidatePath(`/sugerencias/${id}`);
@@ -206,6 +203,7 @@ export async function setSuggestionStatus(id: string, status: string): Promise<S
 export async function replyToSuggestion(id: string, reply: string): Promise<SuggestionResult> {
   const guard = await requireManage();
   if (!guard.ok) return { ok: false, error: guard.error };
+  if (!esId(id)) return { ok: false, error: "No se encontró la sugerencia." };
 
   const texto = limpiarTexto(reply, LIMITS.reply);
   if (!texto) return { ok: false, error: "La respuesta no puede quedar vacía." };
@@ -216,34 +214,40 @@ export async function replyToSuggestion(id: string, reply: string): Promise<Sugg
   });
   if (!sug) return { ok: false, error: "No se encontró la sugerencia." };
 
-  await prisma.suggestion.update({
+  const r = await prisma.suggestion.updateMany({
     where: { id },
     data: { reply: texto, repliedAt: new Date(), repliedByName: guard.user.name },
   });
+  if (r.count !== 1) return { ok: false, error: "No se encontró la sugerencia." };
 
-  // Quien la mandó se entera de que le contestaron.
-  try {
-    const aviso = await prisma.notification.create({
-      data: {
-        recipientId: sug.authorId,
-        actorName: guard.user.name,
-        type: "SUGERENCIA",
-        message: `${guard.user.name} respondió tu sugerencia: ${sug.title}`,
-        linkUrl: `/sugerencias/${id}`,
-        pushedAt: new Date(),
-      },
-    });
-    await sendPushToUser(
-      sug.authorId,
-      { title: "Didier Stamatti", body: `Te respondieron la sugerencia: ${sug.title}`, url: `/sugerencias/${id}`, tag: `sugerencia-${id}` },
-      { kind: "SUGERENCIA", notificationId: aviso.id },
-    );
-  } catch {
-    // La respuesta ya quedó guardada y se ve al abrir la sugerencia.
+  // Quien la mandó se entera de que le contestaron. Si su usuario ya no existe
+  // (`authorId` nulo: la sugerencia sobrevive a quien la escribió), no hay a
+  // quién avisarle; la respuesta queda guardada igual.
+  const autorId = sug.authorId;
+  if (autorId) {
+    try {
+      const aviso = await prisma.notification.create({
+        data: {
+          recipientId: autorId,
+          actorName: guard.user.name,
+          type: "SUGERENCIA",
+          message: `${guard.user.name} respondió tu sugerencia: ${sug.title}`,
+          linkUrl: `/sugerencias/${id}`,
+          pushedAt: new Date(),
+        },
+      });
+      await sendPushToUser(
+        autorId,
+        { title: "Didier Stamatti", body: `Te respondieron la sugerencia: ${sug.title}`, url: `/sugerencias/${id}`, tag: `sugerencia-${id}` },
+        { kind: "SUGERENCIA", notificationId: aviso.id },
+      );
+    } catch (e) {
+      // La respuesta ya quedó guardada y se ve al abrir la sugerencia.
+      console.error("[sugerencias] se guardó la respuesta pero no se pudo avisar a quien la escribió", id, mensajeDe(e));
+    }
   }
 
   revalidatePath("/sugerencias");
   revalidatePath(`/sugerencias/${id}`);
   return { ok: true, id };
 }
-

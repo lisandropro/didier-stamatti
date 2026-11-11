@@ -345,12 +345,25 @@ test("el aviso a la administradora es de tipo SUGERENCIA y no se mezcla con los 
   assert.equal(dePedidos, 0);
 });
 
-test("borrar al autor no deja sugerencias huérfanas", async () => {
+test("borrar al autor NO borra sus sugerencias: quedan, sin vínculo y con su nombre", async () => {
+  // Hasta noviembre de 2026 la clave foránea era ON DELETE CASCADE y esta
+  // prueba comprobaba que se fueran. Pero `authorName` se guarda justamente
+  // para que la sugerencia siga diciendo quién la escribió cuando su usuario ya
+  // no está: dar de baja a alguien se llevaba todo lo que había sugerido, con
+  // las respuestas de la administradora incluidas.
   const suelto = await prisma.user.create({
     data: { name: "Temporal", email: "temp@test.local", role: "ARMADOR", passwordHash: "x" },
   });
-  await crear({ authorId: suelto.id, authorName: "Temporal", clientKey: "huerfana-1" });
+  const s = await crear({ authorId: suelto.id, authorName: "Temporal", clientKey: "huerfana-1" });
+  await prisma.suggestion.update({ where: { id: s.id }, data: { reply: "Lo vemos", repliedByName: "Ana" } });
   await prisma.user.delete({ where: { id: suelto.id } });
+
+  const queda = await prisma.suggestion.findUnique({ where: { id: s.id } });
+  assert.ok(queda, "la sugerencia se fue con su autor");
+  assert.equal(queda.authorId, null, "quedó apuntando a un usuario que no existe");
+  assert.equal(queda.authorName, "Temporal");
+  assert.equal(queda.reply, "Lo vemos");
+  // Nadie más la ve como propia.
   assert.equal(await prisma.suggestion.count({ where: { authorId: suelto.id } }), 0);
 });
 

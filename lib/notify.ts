@@ -6,6 +6,7 @@ import { estadoDelEvento } from "@/lib/preparacion-db";
 import { cambiosParaAplicar, textoDeAccion } from "@/lib/preparacion";
 import { diaDe, hoy } from "@/lib/dates";
 import { ROLES, isPriorityRecipient, sortByNotificationPriority } from "@/lib/permissions";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 // Mientras la persona sigue editando, los cambios se van sumando a un mismo
 // aviso. El push al celular NO sale con cada cambio: sale uno solo cuando pasa
@@ -45,8 +46,6 @@ export type OrderChangeInput = {
   /** El ítem ya estaba tildado como preparado: el depósito tiene que rehacer algo. */
   tardio?: boolean;
 };
-
-const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Qué pasó, cuando el único cambio de la tanda es de estado o de papelera.
  *  `null` para cualquier otro cambio (o un valor que no se reconoce): ahí
@@ -251,8 +250,11 @@ export async function notifyOrderChange(
       if (tardios > 0) await sumarATanda("CAMBIO_TARDIO", r.id, actor, eventId, ev.lugar, tardios, null, ahora, batchCutoff);
       if (comunes > 0) await sumarATanda("ORDER_EDIT", r.id, actor, eventId, ev.lugar, comunes, unico, ahora, batchCutoff);
     }
-  } catch {
-    // Un fallo de notificación no debe romper el guardado del pedido.
+  } catch (e) {
+    // Un fallo de notificación no debe romper el guardado del pedido. Pero queda
+    // anotado: sin esto, un aviso que no salió y un cambio que no quedó en el
+    // historial se perdían sin dejar ningún rastro.
+    console.error("[avisos] no se pudo registrar o avisar el cambio del pedido", eventId, mensajeDe(e));
   }
 }
 

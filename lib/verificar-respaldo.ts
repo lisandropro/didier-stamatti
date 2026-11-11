@@ -1,9 +1,11 @@
 import Database from "better-sqlite3";
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CONJUNTOS } from "@/lib/backup";
+import { listarTodo, masNueva, respaldoConfigurado } from "@/lib/s3-respaldo";
+import { mensajeDe } from "@/lib/mensaje-de";
 
 // Comprobar que el respaldo se puede restaurar.
 //
@@ -80,18 +82,6 @@ export function revisarArchivo(ruta: string, tablaTestigo: string): Problema | n
   }
 }
 
-function s3(): S3Client | null {
-  const endpoint = process.env.BACKUP_S3_ENDPOINT;
-  const accessKeyId = process.env.BACKUP_S3_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.BACKUP_S3_SECRET_ACCESS_KEY;
-  if (!endpoint || !accessKeyId || !secretAccessKey) return null;
-  return new S3Client({
-    endpoint,
-    region: process.env.BACKUP_S3_REGION || "auto",
-    credentials: { accessKeyId, secretAccessKey },
-  });
-}
-
 /**
  * Baja la copia más nueva de cada conjunto y comprueba que se pueda restaurar.
  *
@@ -100,28 +90,26 @@ function s3(): S3Client | null {
  * día que haga falta.
  */
 export async function verificarRespaldos(): Promise<Problema[]> {
-  const client = s3();
-  const bucket = process.env.BACKUP_S3_BUCKET;
-  if (!client || !bucket) return []; // sin configurar (desarrollo local): no es un problema
+  const s3 = respaldoConfigurado();
+  if (!s3) return []; // sin configurar (desarrollo local): no es un problema
+  const { cliente: client, bucket } = s3;
 
   const problemas: Problema[] = [];
 
   for (const conjunto of CONJUNTOS) {
     const tmp = join(tmpdir(), `verificar-${conjunto.etiqueta}-${Date.now()}.db`).replace(/\\/g, "/");
     try {
-      const lista = await client.send(
-        new ListObjectsV2Command({ Bucket: bucket, Prefix: conjunto.prefijo }),
-      );
-      const masNueva = (lista.Contents ?? [])
-        .filter((o) => o.Key)
-        .sort((a, b) => (b.LastModified?.getTime() ?? 0) - (a.LastModified?.getTime() ?? 0))[0];
+      // Todo el prefijo (`listarTodo` pagina): con un solo llamado, pasadas las
+      // mil copias "la más nueva" salía de la primera página, que son las más
+      // viejas, y esta prueba habría aprobado una copia que nadie restauraría.
+      const ultima = masNueva(await listarTodo(client, bucket, conjunto.prefijo));
 
       // Que no haya ninguna ya lo reporta el control de antigüedad. Acá se calla
       // para no decir dos veces lo mismo con palabras distintas.
-      if (!masNueva?.Key) continue;
+      if (!ultima) continue;
 
       const obj = await client.send(
-        new GetObjectCommand({ Bucket: bucket, Key: masNueva.Key }),
+        new GetObjectCommand({ Bucket: bucket, Key: ultima.key }),
         { abortSignal: AbortSignal.timeout(TIMEOUT_MS) },
       );
       const bytes = await obj.Body?.transformToByteArray();
@@ -144,7 +132,7 @@ export async function verificarRespaldos(): Promise<Problema[]> {
     } catch (e) {
       problemas.push({
         code: `restauracion-sin-probar-${conjunto.etiqueta}`,
-        message: `no se pudo probar el respaldo de ${conjunto.etiqueta}: ${e instanceof Error ? e.message : String(e)}`,
+        message: `no se pudo probar el respaldo de ${conjunto.etiqueta}: ${mensajeDe(e)}`,
       });
     } finally {
       // El archivo temporal se borra pase lo que pase: son decenas de megas y

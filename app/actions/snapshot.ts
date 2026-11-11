@@ -3,12 +3,15 @@
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { applySnapshotData, buildSnapshotData, saveRecoverableVersion } from "@/lib/snapshot";
+import { VERSION_ILEGIBLE, applySnapshotData, buildSnapshotData, leerSnapshot, saveRecoverableVersion } from "@/lib/snapshot";
 import { canManagePeriods } from "@/lib/permissions";
 import { notifyOrderChange } from "@/lib/notify";
 import { estadoDelEvento, reasignarSueltos } from "@/lib/preparacion-db";
+import { reasignarSueltosDeLevante } from "@/lib/levante-db";
 import { firmaDePendientes } from "@/lib/preparacion";
 import { hoy, instanteDe } from "@/lib/dates";
+import { mensajeDe } from "@/lib/mensaje-de";
+import { esId } from "@/lib/entrada";
 
 export type SnapshotResult = {
   ok: boolean;
@@ -16,15 +19,20 @@ export type SnapshotResult = {
   takenAt?: string;
   guardadas?: number;
   restauradas?: number;
+  /** Renglones de la versión que no volvieron porque su producto se eliminó
+   *  del catálogo. 0 en el caso normal; si es más, la pantalla lo tiene que
+   *  decir: el pedido restaurado no es igual a la versión. */
+  omitidas?: number;
 };
 
+/** Restaurar cambia los pedidos de todo el período: la portada, el período, el
+ *  historial y lo que el depósito ve en Preparar. */
 function revalidar(periodId: string) {
   revalidatePath("/");
   revalidatePath(`/periodo/${periodId}`);
   revalidatePath("/historial");
+  revalidatePath("/preparar");
 }
-
-const mensajeDe = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /**
  * Descartar o restaurar reemplaza los pedidos de todo el período. El depósito
@@ -99,6 +107,13 @@ export async function savePeriodSnapshot(periodId: string): Promise<SnapshotResu
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
   if (!canManagePeriods(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
+  if (!esId(periodId)) return { ok: false, error: "Período inválido." };
+
+  // El período tiene que existir y estar vivo. Sin esto, un id cualquiera
+  // llegaba al `upsert` y la clave foránea contestaba con una excepción cruda;
+  // y uno en la papelera quedaba con una "versión segura" que nadie podía ver.
+  const vivo = await prisma.operationalPeriod.findFirst({ where: { id: periodId, deletedAt: null }, select: { id: true } });
+  if (!vivo) return { ok: false, error: "El período ya no está disponible." };
 
   const { data } = await buildSnapshotData(periodId);
   const snap = await prisma.periodSnapshot.upsert({
@@ -111,6 +126,18 @@ export async function savePeriodSnapshot(periodId: string): Promise<SnapshotResu
   return { ok: true, takenAt: snap.takenAt.toISOString() };
 }
 
+/** ¿Se puede leer esta versión? Se pregunta ANTES de guardar el resguardo y de
+ *  tocar nada: una versión rota no puede dejar una copia de más ni un error
+ *  crudo en la pantalla. */
+function esLegible(json: string): boolean {
+  try {
+    leerSnapshot(json);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Descarta los cambios hechos a los pedidos desde la última versión guardada.
  *  Antes de pisar nada guarda una copia recuperable del estado actual, así el
  *  descarte deja de ser un camino de ida. Solo afecta cantidades/notas de los
@@ -119,24 +146,29 @@ export async function discardPeriodChanges(periodId: string): Promise<SnapshotRe
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
   if (!canManagePeriods(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
+  if (!esId(periodId)) return { ok: false, error: "Período inválido." };
 
   const vivo = await prisma.operationalPeriod.findFirst({ where: { id: periodId, deletedAt: null }, select: { id: true } });
   if (!vivo) return { ok: false, error: "El período está en la papelera: recuperalo primero." };
   const snap = await prisma.periodSnapshot.findUnique({ where: { periodId } });
   if (!snap) return { ok: false, error: "Todavía no hay una versión guardada para este período." };
+  if (!esLegible(snap.data)) return { ok: false, error: VERSION_ILEGIBLE };
 
   // Primero el resguardo, después el descarte. Si el resguardo fallara, no se
   // pisa nada: es preferible no descartar a descartar sin poder volver.
   const resguardo = await saveRecoverableVersion(periodId, "PRE_DESCARTE", user);
   const antes = await pendientesPorEvento(periodId);
-  const restauradas = await applySnapshotData(periodId, snap.data);
-  // Los sueltos volvieron con otro id: lo tildado se pasa a su renglón nuevo
-  // ANTES de comparar lo pendiente, o el aviso diría "Sacá 3" de algo que sigue yendo.
+  const { restauradas, omitidas } = await applySnapshotData(periodId, snap.data);
+  // Una versión vieja no trae el id de cada renglón y sus sueltos vuelven con
+  // otro: lo tildado (y lo marcado en el levante) se pasa a su renglón nuevo
+  // ANTES de comparar lo pendiente, o el aviso diría "Sacá 3" de algo que sigue
+  // yendo. Con una versión nueva los ids se conservan y esto no encuentra nada.
   await reasignarSueltos(periodId);
+  await reasignarSueltosDeLevante(periodId);
   await avisarATildados(periodId, antes, user, "Se descartaron los cambios del pedido");
 
   revalidar(periodId);
-  return { ok: true, takenAt: snap.takenAt.toISOString(), guardadas: resguardo.lineCount, restauradas };
+  return { ok: true, takenAt: snap.takenAt.toISOString(), guardadas: resguardo.lineCount, restauradas, omitidas };
 }
 
 /** Vuelve a un estado guardado en el historial de versiones. Antes de aplicarlo
@@ -145,20 +177,25 @@ export async function restorePeriodVersion(versionId: string): Promise<SnapshotR
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Tenés que iniciar sesión." };
   if (!canManagePeriods(user.role)) return { ok: false, error: "No tenés permiso para cambiar las versiones guardadas." };
+  if (!esId(versionId)) return { ok: false, error: "Versión inválida." };
 
   const version = await prisma.periodVersion.findFirst({ where: { id: versionId, period: { deletedAt: null } } });
   if (!version) return { ok: false, error: "No se encontró esa versión, o su período está en la papelera." };
+  if (!esLegible(version.data)) return { ok: false, error: VERSION_ILEGIBLE };
 
   const resguardo = await saveRecoverableVersion(version.periodId, "PRE_RESTAURACION", user);
   const antes = await pendientesPorEvento(version.periodId);
-  const restauradas = await applySnapshotData(version.periodId, version.data);
-  // Como al descartar: los sueltos vuelven con otro id. Nunca lanza, así que
-  // no puede frenar la marca de "restaurada".
+  const { restauradas, omitidas } = await applySnapshotData(version.periodId, version.data);
+  // Como al descartar. Ninguna de las dos lanza, así que no pueden frenar la
+  // marca de "restaurada".
   await reasignarSueltos(version.periodId);
-  await prisma.periodVersion.update({ where: { id: versionId }, data: { restoredAt: new Date() } });
+  await reasignarSueltosDeLevante(version.periodId);
+  // Condicionada, por si la versión se borró con su período justo ahora: un
+  // `update` por id lanzaría con la restauración ya hecha.
+  await prisma.periodVersion.updateMany({ where: { id: versionId }, data: { restoredAt: new Date() } });
   // Al final: el aviso no puede frenar la marca de "restaurada" ni el revalidar.
   await avisarATildados(version.periodId, antes, user, "Se restauró una versión anterior del pedido");
 
   revalidar(version.periodId);
-  return { ok: true, guardadas: resguardo.lineCount, restauradas };
+  return { ok: true, guardadas: resguardo.lineCount, restauradas, omitidas };
 }
