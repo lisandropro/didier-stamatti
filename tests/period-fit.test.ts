@@ -344,3 +344,34 @@ test("un solo evento da un rango de un día; sin eventos no hay rango que ofrece
   });
   assert.equal(rangoQueLosContiene([]), null);
 });
+
+// ---------------------------------------------------------------------------
+// Qué período se abre cuando nadie eligió uno
+// ---------------------------------------------------------------------------
+
+test("al abrir, se muestra el período que cubre hoy y no el último creado", async () => {
+  const { periodoPorDefecto } = await import("../lib/period-fit");
+  const p = (id: string, startDay: string, endDay: string) => ({ id, startDay, endDay });
+  const hoy = "2026-11-10";
+  const pasado = p("pasado", "2026-11-01", "2026-11-03");
+  const actual = p("actual", "2026-11-09", "2026-11-12");
+  const proximo = p("proximo", "2026-11-14", "2026-11-16");
+  const lejano = p("lejano", "2026-12-20", "2026-12-25");
+
+  assert.equal(periodoPorDefecto([lejano, proximo, actual, pasado], hoy)?.id, "actual");
+  // Ninguno cubre hoy: el próximo en empezar, no el más lejano.
+  assert.equal(periodoPorDefecto([lejano, proximo, pasado], hoy)?.id, "proximo");
+  // No queda nada por delante: el último que terminó.
+  assert.equal(periodoPorDefecto([pasado, p("viejo", "2026-10-01", "2026-10-02")], hoy)?.id, "pasado");
+  assert.equal(periodoPorDefecto([], hoy), null);
+});
+
+test("si dos períodos cubren hoy, se abre el que termina antes", async () => {
+  const { periodoPorDefecto } = await import("../lib/period-fit");
+  const largo = { id: "largo", startDay: "2026-11-01", endDay: "2026-11-30" };
+  const corto = { id: "corto", startDay: "2026-11-09", endDay: "2026-11-11" };
+  assert.equal(periodoPorDefecto([largo, corto], "2026-11-10")?.id, "corto");
+  // El primer y el último día del período cuentan como "hoy".
+  assert.equal(periodoPorDefecto([corto], "2026-11-09")?.id, "corto");
+  assert.equal(periodoPorDefecto([corto], "2026-11-11")?.id, "corto");
+});

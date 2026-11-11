@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+/certificates/
 
 # debug
 npm-debug.log*
@@ -32,6 +33,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # base de datos local (datos reales del negocio — nunca al repo)
 *.db
@@ -47,7 +49,6 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
-/app/generated/comprobantes
 
 # configuración local del servidor de desarrollo
 /.claude

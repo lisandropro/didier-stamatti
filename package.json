@@ -12,6 +12,8 @@
     "start:prod": "prisma migrate deploy && next start",
     "postinstall": "prisma generate",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm test",
     "db:seed": "tsx prisma/seed.ts",
     "set-password": "tsx scripts/set-password.ts",
     "test": "node --import tsx --test tests/*.test.ts",

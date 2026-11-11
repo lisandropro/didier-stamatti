@@ -1,0 +1,33 @@
+# Lo mismo que `npm run check`, en cada push y en cada pull request.
+# Si algo de esto falla, no se despliega: Railway publica solo lo que llega a main.
+name: Controles
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: controles-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Las pruebas crean sus propias bases descartables; esta solo existe para
+      # que Prisma pueda generar el cliente al instalar.
+      DATABASE_URL: "file:./ci.db"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Pruebas
+        run: npm test

@@ -149,3 +149,32 @@ export function separarPorFecha<T extends { date: Date }>(
 }
 
 export { sumarDias };
+
+/**
+ * Qué período se muestra al abrir la app, cuando nadie eligió uno.
+ *
+ * El que se está trabajando, no el último que se creó: antes abría siempre el
+ * de fecha más lejana, y con el finde que viene ya cargado la portada mostraba
+ * ese (casi siempre vacío) en vez del de esta semana.
+ *
+ * 1. Uno que cubre hoy. Si hay varios, el que termina antes: es el más urgente.
+ * 2. Si ninguno cubre hoy, el próximo en empezar.
+ * 3. Si no queda ninguno por delante, el último que terminó.
+ */
+export function periodoPorDefecto<P extends { startDay: string; endDay: string }>(
+  periodos: P[],
+  hoy: string,
+): P | null {
+  const deHoy = periodos
+    .filter((p) => cubreDia(p, hoy))
+    .sort((a, b) => a.endDay.localeCompare(b.endDay) || b.startDay.localeCompare(a.startDay));
+  if (deHoy.length > 0) return deHoy[0];
+
+  const proximos = periodos
+    .filter((p) => p.startDay > hoy)
+    .sort((a, b) => a.startDay.localeCompare(b.startDay) || a.endDay.localeCompare(b.endDay));
+  if (proximos.length > 0) return proximos[0];
+
+  const pasados = [...periodos].sort((a, b) => b.endDay.localeCompare(a.endDay));
+  return pasados[0] ?? null;
+}
