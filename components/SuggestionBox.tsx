@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { llaveDeCliente } from "@/lib/llave-cliente";
 import { createSuggestion } from "@/app/actions/suggestions";
 import { SUGGESTION_KINDS, KIND_LABEL, LIMITS, screenLabel } from "@/lib/suggestions";
 import { intentar } from "@/lib/actualizacion";
+import { Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError } from "@/components/Formulario";
 
 /**
  * El formulario de sugerencias, en un modal.
@@ -55,18 +57,6 @@ function Formulario({ pathname, onClose }: { pathname: string; onClose: () => vo
   // escribe, el contexto tiene que seguir siendo desde dónde la abrió.
   const [pantalla] = useState(pathname);
 
-  const cerrar = useCallback(() => {
-    if (!enviando) onClose();
-  }, [enviando, onClose]);
-
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") cerrar();
-    };
-    window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
-  }, [cerrar]);
-
   async function enviar() {
     if (enviando) return; // el doble toque no llega ni a salir
     setError(null);
@@ -89,112 +79,106 @@ function Formulario({ pathname, onClose }: { pathname: string; onClose: () => vo
 
   if (listo) {
     return (
-      <div className="overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <h2>Gracias</h2>
-          <div className="msub">
-            Tu sugerencia le llegó a la administradora. Cuando la conteste te va a llegar un aviso con la
-            respuesta.
-          </div>
-          <div className="modal-actions">
-            <button className="btn primary" onClick={onClose} autoFocus>
-              Listo
-            </button>
-          </div>
+      <Dialogo titulo="Gracias" onCerrar={onClose}>
+        <div className="msub">
+          Tu sugerencia le llegó a la administradora. Cuando la conteste te va a llegar un aviso con la
+          respuesta.
         </div>
-      </div>
+        <div className="modal-actions">
+          <button type="button" className="btn primary" onClick={onClose} autoFocus>
+            Listo
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   const desde = screenLabel(pantalla);
 
   return (
-    <div className="overlay" onClick={cerrar}>
-      <div className="modal modal-sheet sug-modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-head">
-          <h2>Enviar sugerencia</h2>
-          <div className="modal-sub">
-            Contá qué te falta o qué no anda. Lo lee la administradora — nada se cambia solo.
-          </div>
-        </div>
-
-        <div className="sheet-body">
-          <div className="field">
-            <label htmlFor="sug-tipo">Tipo</label>
-            <select id="sug-tipo" value={kind} onChange={(e) => setKind(e.target.value)}>
-              {SUGGESTION_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {KIND_LABEL[k]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="sug-titulo">Título</label>
-            <input
-              id="sug-titulo"
-              type="text"
-              value={title}
-              maxLength={LIMITS.title}
-              autoFocus
-              placeholder="Ej: falta poner cantidad por bandeja"
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="sug-desc">
-              Descripción <span className="req">obligatoria</span>
-            </label>
-            <textarea
-              id="sug-desc"
-              value={body}
-              rows={5}
-              maxLength={LIMITS.body}
-              placeholder="Contá con tus palabras qué pasó o qué te gustaría que hiciera la app."
-              onChange={(e) => setBody(e.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="sug-ctx">
-              Sobre qué pedido, evento o producto <span className="opt">opcional</span>
-            </label>
-            <input
-              id="sug-ctx"
-              type="text"
-              value={contextNote}
-              maxLength={LIMITS.context}
-              placeholder="Ej: el pedido de El Carmen Center, las copas de agua"
-              onChange={(e) => setContextNote(e.target.value)}
-            />
-          </div>
-
-          <p className="sug-nota">
-            Se envía junto con la pantalla desde la que escribís (<b>{desde}</b>), la fecha, tu nombre y la
-            versión de la app. Nada de tu contraseña.
-          </p>
-
-          {error && <div className="login-error">{error}</div>}
-        </div>
-
-        <div className="sheet-foot">
-          <button className="btn ghost" onClick={cerrar} disabled={enviando}>
-            Cancelar
-          </button>
-          <button className="btn primary" onClick={enviar} disabled={enviando}>
-            {enviando ? "Enviando…" : "Enviar"}
-          </button>
+    // `cambiado`: tocar afuera con una descripción a medio escribir la tiraba
+    // sin preguntar. Escape y "mientras envía no se cierra" los pone la base.
+    <Dialogo
+      etiqueta="Enviar sugerencia"
+      onCerrar={onClose}
+      ocupado={enviando}
+      cambiado={Boolean(title.trim() || body.trim() || contextNote.trim())}
+      sinDeslizar
+      className="modal-sheet sug-modal"
+      alEnviar={enviar}
+    >
+      <div className="sheet-head">
+        <h2>Enviar sugerencia</h2>
+        <div className="modal-sub">
+          Contá qué te falta o qué no anda. Lo lee la administradora — nada se cambia solo.
         </div>
       </div>
-    </div>
+
+      <div className="sheet-body">
+        <Campo label="Tipo">
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            {SUGGESTION_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {KIND_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </Campo>
+
+        <Campo label="Título">
+          <input
+            type="text"
+            value={title}
+            maxLength={LIMITS.title}
+            autoFocus
+            placeholder="Ej: falta poner cantidad por bandeja"
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </Campo>
+
+        <Campo label={<>Descripción <span className="req">obligatoria</span></>}>
+          <textarea
+            value={body}
+            rows={5}
+            maxLength={LIMITS.body}
+            placeholder="Contá con tus palabras qué pasó o qué te gustaría que hiciera la app."
+            onChange={(e) => setBody(e.target.value)}
+          />
+        </Campo>
+
+        <Campo label={<>Sobre qué pedido, evento o producto <span className="opt">opcional</span></>}>
+          <input
+            type="text"
+            value={contextNote}
+            maxLength={LIMITS.context}
+            placeholder="Ej: el pedido de El Carmen Center, las copas de agua"
+            onChange={(e) => setContextNote(e.target.value)}
+          />
+        </Campo>
+
+        <p className="sug-nota">
+          Se envía junto con la pantalla desde la que escribís (<b>{desde}</b>), la fecha, tu nombre y la
+          versión de la app. Nada de tu contraseña.
+        </p>
+
+        {error && <MensajeDeError>{error}</MensajeDeError>}
+      </div>
+
+      <div className="sheet-foot">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={enviando}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn primary" disabled={enviando}>
+          {enviando ? "Enviando…" : "Enviar"}
+        </button>
+      </div>
+    </Dialogo>
   );
 }
 
 /** Ícono MessageSquarePlus: un globo de diálogo con un más adentro. */
 export const IconSuggest = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
     <path d="M12 8v6M9 11h6" />
   </svg>

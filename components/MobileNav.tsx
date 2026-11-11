@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NotifBadge } from "@/components/NotifBadge";
 import { NavPending } from "@/components/NavPending";
 import { canPreparar, canSendSuggestions, canVerStock } from "@/lib/permissions";
@@ -15,7 +15,7 @@ const ITEMS = [
     label: "Período",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M3 10.5 12 4l9 6.5" /><path d="M5 9.5V20h14V9.5" />
+        <path d="M3 10.5 12 4l9 6.5" /><path d="M5 9.5V20h14V9.5" /><path d="M9.5 20v-5h5v5" />
       </svg>
     ),
   },
@@ -75,6 +75,15 @@ export function MobileNav({ role }: { role: string }) {
   // lo que haya debajo y en un pedido largo tapa justamente lo que se mira.
   const puedeSugerir = canSendSuggestions(role);
   const [abierta, setAbierta] = useState(false);
+  // Escape cierra la hoja de "Más", como cualquier otra ventana.
+  useEffect(() => {
+    if (!abierta) return;
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAbierta(false);
+    };
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [abierta]);
   const SUGERIR = { href: "", label: "Sugerir", icon: IconSuggest, accion: abrirSugerencia };
 
   const items = [
@@ -100,12 +109,12 @@ export function MobileNav({ role }: { role: string }) {
     <>
       {abierta && (
         <div className="mobmas-fondo" onClick={() => setAbierta(false)}>
-          <div className="mobmas" onClick={(e) => e.stopPropagation()}>
+          <div className="mobmas" role="group" aria-label="Más secciones" onClick={(e) => e.stopPropagation()}>
             {sobrantes.map((item) => renderEntrada(item, pathname, () => setAbierta(false), true))}
           </div>
         </div>
       )}
-      <nav className={`mobnav${todos.length > 5 ? " mobnav-6" : ""}`}>
+      <nav aria-label="Secciones" className={`mobnav${todos.length > 5 ? " mobnav-6" : ""}`}>
         {visibles.map((item) => renderEntrada(item, pathname, undefined, false))}
         {hayDesborde && (
           <button
@@ -155,6 +164,7 @@ function renderEntrada(item: Entrada, pathname: string, alTocar: (() => void) | 
       href={item.href}
       onClick={alTocar}
       className={esActiva(pathname, item.href) ? "active" : ""}
+      aria-current={esActiva(pathname, item.href) ? "page" : undefined}
     >
       <span className="mobnav-ico">
         {item.icon}

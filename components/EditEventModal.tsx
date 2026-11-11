@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateEvent } from "@/app/actions/period";
 import { intentar } from "@/lib/actualizacion";
+import { Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError } from "@/components/Formulario";
+import { sinRueda } from "@/components/util";
 
 /**
  * Corregir el nombre, la fecha y los invitados de un evento que ya tiene el
@@ -16,6 +19,10 @@ import { intentar } from "@/lib/actualizacion";
  *
  * El pedido no se toca. Las líneas cuelgan del evento, no de su nombre ni de su
  * fecha, así que corregir el encabezado no las mueve.
+ *
+ * Todos los pasos son la misma ventana (`Dialogo`) con otro contenido: tocar
+ * afuera con algo cambiado pregunta antes de descartarlo, y mientras guarda no
+ * se cierra.
  */
 export function EditEventModal({
   evento,
@@ -33,7 +40,7 @@ export function EditEventModal({
   const [confirmando, setConfirmando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Cuando la fecha nueva no cae en ningún finde existente.
+  // Cuando la fecha nueva no cae en ningún período existente.
   const [faltaPeriodo, setFaltaPeriodo] = useState<{ label: string } | null>(null);
   const [elegir, setElegir] = useState<{ id: string; nombre: string; rango: string }[] | null>(null);
 
@@ -48,6 +55,9 @@ export function EditEventModal({
   if (invitados !== evento.guests) {
     cambios.push({ campo: "Invitados", antes: String(evento.guests), ahora: String(invitados) });
   }
+  const sePuedeRevisar = cambios.length > 0 && Boolean(lugar.trim()) && Boolean(date);
+  // Lo que comparten todos los pasos: el mismo cierre y las mismas guardas.
+  const ventana = { onCerrar: onClose, ocupado: guardando, cambiado: cambios.length > 0, sinDeslizar: true } as const;
 
   async function guardar(opciones: { crearPeriodo?: boolean; periodoElegidoId?: string } = {}) {
     if (guardando) return;
@@ -70,157 +80,137 @@ export function EditEventModal({
   // --- Falta el período: se pide permiso para crearlo -------------------
   if (faltaPeriodo) {
     return (
-      <div className="overlay" onClick={onClose}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>Falta el período de esa fecha</h2>
-          <div className="msub">
-            Ningún período incluye la fecha nueva. Se puede crear <b>{faltaPeriodo.label}</b> y mover el evento
-            ahí, con su pedido entero.
-          </div>
-          {error && <div className="login-error">{error}</div>}
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setFaltaPeriodo(null)} disabled={guardando}>
-              Volver
-            </button>
-            <button className="btn primary" onClick={() => guardar({ crearPeriodo: true })} disabled={guardando}>
-              {guardando ? "Guardando…" : "Crear y mover"}
-            </button>
-          </div>
+      <Dialogo titulo="Falta el período de esa fecha" {...ventana} alEnviar={() => guardar({ crearPeriodo: true })}>
+        <div className="msub">
+          Ningún período incluye la fecha nueva. Se puede crear <b>{faltaPeriodo.label}</b> y mover el evento
+          ahí, con su pedido entero.
         </div>
-      </div>
+        {error && <MensajeDeError>{error}</MensajeDeError>}
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={() => setFaltaPeriodo(null)} disabled={guardando}>
+            Volver
+          </button>
+          <button type="submit" className="btn primary" disabled={guardando}>
+            {guardando ? "Guardando…" : "Crear y mover"}
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   // --- Varios períodos cubren la fecha: elige la persona ----------------------
   if (elegir) {
     return (
-      <div className="overlay" onClick={onClose}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>¿A qué período va?</h2>
-          <div className="msub">
-            Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
-            se cuenta el pedido.
-          </div>
-          <div className="sug-list">
-            {elegir.map((p) => (
-              <button
-                key={p.id}
-                className="sug-row"
-                disabled={guardando}
-                onClick={() => guardar({ periodoElegidoId: p.id })}
-              >
-                <span className="sug-row-title">{p.nombre}</span>
-                <span className="sug-row-meta">{p.rango}</span>
-              </button>
-            ))}
-          </div>
-          {error && <div className="login-error">{error}</div>}
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setElegir(null)} disabled={guardando}>
-              Volver
-            </button>
-          </div>
+      <Dialogo titulo="¿A qué período va?" {...ventana}>
+        <div className="msub">
+          Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
+          se cuenta el pedido.
         </div>
-      </div>
+        <div className="sug-list">
+          {elegir.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="sug-row"
+              disabled={guardando}
+              onClick={() => guardar({ periodoElegidoId: p.id })}
+            >
+              <span className="sug-row-title">{p.nombre}</span>
+              <span className="sug-row-meta">{p.rango}</span>
+            </button>
+          ))}
+        </div>
+        {error && <MensajeDeError>{error}</MensajeDeError>}
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={() => setElegir(null)} disabled={guardando}>
+            Volver
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   // --- Paso 2: qué va a cambiar ----------------------------------------------
   if (confirmando) {
     return (
-      <div className="overlay" onClick={onClose}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>¿Guardamos estos cambios?</h2>
-          <div className="msub">El pedido no se toca: las cantidades y las notas quedan como están.</div>
-          <div className="tablewrap">
-            <table className="tabla-lista">
-              <thead>
-                <tr>
-                  <th>Qué</th>
-                  <th>Antes</th>
-                  <th>Ahora</th>
+      <Dialogo titulo="¿Guardamos estos cambios?" {...ventana} alEnviar={() => guardar()}>
+        <div className="msub">El pedido no se toca: las cantidades y las notas quedan como están.</div>
+        <div className="tablewrap">
+          <table className="tabla-lista">
+            <thead>
+              <tr>
+                <th>Qué</th>
+                <th>Antes</th>
+                <th>Ahora</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cambios.map((c) => (
+                <tr key={c.campo}>
+                  <td className="prod">{c.campo}</td>
+                  <td className="dim" data-label="Antes">{c.antes}</td>
+                  <td data-label="Ahora">
+                    <span className="stocknum">{c.ahora}</span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {cambios.map((c) => (
-                  <tr key={c.campo}>
-                    <td className="prod">{c.campo}</td>
-                    <td className="dim" data-label="Antes">{c.antes}</td>
-                    <td data-label="Ahora">
-                      <span className="stocknum">{c.ahora}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {error && <div className="login-error">{error}</div>}
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setConfirmando(false)} disabled={guardando}>
-              Volver a editar
-            </button>
-            <button className="btn primary" onClick={() => guardar()} disabled={guardando}>
-              {guardando ? "Guardando…" : "Guardar"}
-            </button>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+        {error && <MensajeDeError>{error}</MensajeDeError>}
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={() => setConfirmando(false)} disabled={guardando}>
+            Volver a editar
+          </button>
+          <button type="submit" className="btn primary" disabled={guardando}>
+            {guardando ? "Guardando…" : "Guardar"}
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   // --- Paso 1: editar ---------------------------------------------------------
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <h2>Editar evento</h2>
-        <div className="msub">
-          Corregí los datos del evento. Está en <b>{evento.periodoLabel}</b>; si la fecha nueva cae en otro
-          período, se muda con todo su pedido.
-        </div>
-        <div className="field">
-          <label htmlFor="ev-lugar">Lugar</label>
-          <input
-            id="ev-lugar"
-            type="text"
-            value={lugar}
-            maxLength={80}
-            autoFocus
-            onChange={(e) => setLugar(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="ev-fecha">Fecha y hora</label>
-          <input id="ev-fecha" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="ev-invitados">Invitados</label>
-          <input
-            id="ev-invitados"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={guests}
-            onChange={(e) => setGuests(e.target.value)}
-          />
-        </div>
-        {error && <div className="login-error">{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose}>
-            Cancelar
-          </button>
-          <button
-            className="btn primary"
-            disabled={cambios.length === 0 || !lugar.trim() || !date}
-            onClick={() => {
-              setError(null);
-              setConfirmando(true);
-            }}
-          >
-            {cambios.length === 0 ? "Sin cambios" : "Revisar cambios"}
-          </button>
-        </div>
+    <Dialogo
+      titulo="Editar evento"
+      {...ventana}
+      alEnviar={() => {
+        if (!sePuedeRevisar) return;
+        setError(null);
+        setConfirmando(true);
+      }}
+    >
+      <div className="msub">
+        Corregí los datos del evento. Está en <b>{evento.periodoLabel}</b>; si la fecha nueva cae en otro
+        período, se muda con todo su pedido.
       </div>
-    </div>
+      <Campo label="Lugar">
+        <input type="text" value={lugar} maxLength={80} autoFocus onChange={(e) => setLugar(e.target.value)} />
+      </Campo>
+      <Campo label="Fecha y hora">
+        <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
+      </Campo>
+      <Campo label="Invitados">
+        <input
+          type="number"
+          onWheel={sinRueda}
+          inputMode="numeric"
+          min={0}
+          value={guests}
+          onChange={(e) => setGuests(e.target.value)}
+        />
+      </Campo>
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn primary" disabled={!sePuedeRevisar}>
+          {cambios.length === 0 ? "Sin cambios" : "Revisar cambios"}
+        </button>
+      </div>
+    </Dialogo>
   );
 }
 

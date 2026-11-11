@@ -5,9 +5,9 @@ import { createProduct, listRubros } from "@/app/actions/products";
 
 import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
 import { intentar } from "@/lib/actualizacion";
-
-// Unidades que ya se usan en el catálogo, para no inventar variantes nuevas.
-const UNITS = ["Unidad", "Juego", "Módulo", "Caja", "Cajón", "Pack", "Paquete", "Bolsa", "Botella", "Lata", "Litro", "Kg"];
+import { Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError } from "@/components/Formulario";
+import { sinRueda, UNIDADES } from "@/components/util";
 
 export function NewProductModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
@@ -22,22 +22,16 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
-
-  useEffect(() => {
     let vivo = true;
-    listRubros().then((r) => vivo && setRubros(r));
+    // Los rubros son solo sugerencias del campo: si no llegan, se escribe a mano.
+    listRubros().then((r) => vivo && setRubros(r)).catch(() => {});
     return () => {
       vivo = false;
     };
   }, []);
 
-  /** Cambiar de categoría reacomoda el resto: la bebida no lleva stock (se
-   *  compra para cada evento) y los rubros son distintos en cada una. */
+  /** Cambiar de sector reacomoda el resto: la bebida no lleva stock (se
+   *  compra para cada evento) y los rubros son distintos en cada uno. */
   function cambiarCategoria(nueva: string) {
     setCategory(nueva);
     setType(nueva === "BEBIDA" ? "CONSUMIBLE" : "REUTILIZABLE");
@@ -52,7 +46,7 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
   const valido = name.trim().length > 0 && (!llevaStock || stockValido);
 
   async function save() {
-    if (!valido) return;
+    if (!valido || saving) return;
     setSaving(true);
     setError(null);
     const res = await intentar(() => createProduct({
@@ -70,114 +64,118 @@ export function NewProductModal({ onClose, onCreated }: { onClose: () => void; o
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal modal-wide" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <h2>Nuevo producto</h2>
-        <p className="modal-sub">Se agrega al catálogo y queda disponible para todos los pedidos.</p>
+    <Dialogo
+      titulo="Nuevo producto"
+      onCerrar={onClose}
+      ocupado={saving}
+      cambiado={Boolean(name || description || rubro || stock)}
+      sinDeslizar
+      ancho="wide"
+      alEnviar={save}
+    >
+      <p className="modal-sub">Se agrega al catálogo y queda disponible para todos los pedidos.</p>
 
-        <div className="form-grid">
-          <div className="field field-full">
-            <label>Nombre</label>
-            <input
-              type="text"
-              value={name}
-              autoFocus
-              placeholder="Ej: Copa de vino"
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
+      <div className="form-grid">
+        <Campo label="Nombre" className="field-full">
+          <input
+            type="text"
+            value={name}
+            autoFocus
+            placeholder="Ej: Copa de vino"
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Campo>
 
-          <div className="field field-full">
-            <label>Descripción <em className="opt">(opcional)</em></label>
-            <input
-              type="text"
-              value={description}
-              placeholder="Para distinguirlo de otro parecido. Ej: la de pie alto, borde dorado"
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
+        <Campo label={<>Descripción <em className="opt">(opcional)</em></>} className="field-full">
+          <input
+            type="text"
+            value={description}
+            placeholder="Para distinguirlo de otro parecido. Ej: la de pie alto, borde dorado"
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </Campo>
 
-          <div className="field">
-            <label>Categoría</label>
-            <select value={category} onChange={(e) => cambiarCategoria(e.target.value)}>
-              {CATS.map((c) => (
-                <option key={c.v} value={c.v}>{c.l}</option>
-              ))}
-            </select>
-          </div>
+        <Campo label="Sector">
+          <select value={category} onChange={(e) => cambiarCategoria(e.target.value)}>
+            {CATS.map((c) => (
+              <option key={c.v} value={c.v}>{c.l}</option>
+            ))}
+          </select>
+        </Campo>
 
-          <div className="field">
-            <label>Rubro <em className="opt">(dónde se guarda)</em></label>
-            <input
-              type="text"
-              list="rubros-existentes"
-              value={rubro}
-              placeholder="Ej: Copas y vasos"
-              onChange={(e) => setRubro(e.target.value)}
-            />
-            <datalist id="rubros-existentes">
-              {(rubros[category] ?? []).map((r) => (
-                <option key={r} value={r} />
-              ))}
-            </datalist>
-          </div>
-
-          <div className="field">
-            <label>Unidad</label>
-            <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-              {UNITS.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label>Control de stock</label>
-            <select value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="REUTILIZABLE">Sí, se cuenta y se devuelve</option>
-              <option value="CONSUMIBLE">No, se compra para cada evento</option>
-            </select>
-          </div>
-
-          {llevaStock && (
-            <div className="field">
-            <label>Cantidad disponible</label>
+        <Campo label={<>Rubro <em className="opt">(dónde se guarda)</em></>}>
+          {(id) => (
+            <>
               <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                placeholder="dejalo vacío si todavía no se contó"
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
+                id={id}
+                type="text"
+                list="rubros-existentes"
+                value={rubro}
+                placeholder="Ej: Copas y vasos"
+                onChange={(e) => setRubro(e.target.value)}
               />
-          </div>
+              <datalist id="rubros-existentes">
+                {(rubros[category] ?? []).map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
+            </>
           )}
-        </div>
+        </Campo>
 
-        {llevaStock && sinContar && (
-          <p className="modal-sub">
-            Va a quedar como <b>sin contar</b>. No es lo mismo que cero: hasta que alguien lo
-            cuente no va a avisar que falta, y va a aparecer en la lista de lo que hay que contar.
-          </p>
-        )}
-        {llevaStock && parsed !== null && parsed > 0 && (
-          <p className="modal-sub">
-            Se va a registrar un movimiento de <b>+{parsed}</b> en el historial, para que la cantidad inicial quede explicada.
-          </p>
-        )}
-        {!llevaStock && (
-          <p className="modal-sub">Los consumibles no llevan stock: aparecen en el pedido pero no se cuentan.</p>
-        )}
+        <Campo label="Unidad">
+          <select value={unit} onChange={(e) => setUnit(e.target.value)}>
+            {UNIDADES.map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
+        </Campo>
 
-        {error && <div className="form-error">{error}</div>}
+        <Campo label="Control de stock">
+          <select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="REUTILIZABLE">Sí, se cuenta y se devuelve</option>
+            <option value="CONSUMIBLE">No, se compra para cada evento</option>
+          </select>
+        </Campo>
 
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn primary" onClick={save} disabled={saving || !valido}>
-            {saving ? "Creando…" : "Crear producto"}
-          </button>
-        </div>
+        {llevaStock && (
+          <Campo label="Cantidad disponible">
+            <input
+              type="number"
+              onWheel={sinRueda}
+              inputMode="numeric"
+              min={0}
+              placeholder="dejalo vacío si todavía no se contó"
+              value={stock}
+              onChange={(e) => setStock(e.target.value)}
+            />
+          </Campo>
+        )}
       </div>
-    </div>
+
+      {llevaStock && sinContar && (
+        <p className="modal-sub">
+          Va a quedar como <b>sin contar</b>. No es lo mismo que cero: hasta que alguien lo
+          cuente no va a avisar que falta, y va a aparecer en la lista de lo que hay que contar.
+        </p>
+      )}
+      {llevaStock && parsed !== null && parsed > 0 && (
+        <p className="modal-sub">
+          Se va a registrar un movimiento de <b>+{parsed}</b> en el historial, para que la cantidad inicial quede explicada.
+        </p>
+      )}
+      {!llevaStock && (
+        <p className="modal-sub">Los consumibles no llevan stock: aparecen en el pedido pero no se cuentan.</p>
+      )}
+
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+        <button type="submit" className="btn primary" disabled={saving || !valido}>
+          {saving ? "Creando…" : "Crear producto"}
+        </button>
+      </div>
+    </Dialogo>
   );
 }

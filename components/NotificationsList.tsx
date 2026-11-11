@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { markAllRead } from "@/app/actions/notifications";
+import { IconBell } from "@/components/iconos";
 
 type Item = { id: string; message: string; eventId: string | null; read: boolean; at: string; changeCount: number; linkUrl: string | null };
 
@@ -19,19 +20,14 @@ function relative(iso: string): string {
   return new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short" });
 }
 
-const IconBell = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" /><path d="M10 20a2 2 0 0 0 4 0" />
-  </svg>
-);
-
 export function NotificationsList({ items }: { items: Item[] }) {
   const router = useRouter();
 
   // Al abrir la pantalla, se marcan como leídos y se avisa a la campana.
   useEffect(() => {
     if (items.some((i) => !i.read)) {
-      markAllRead().then(() => window.dispatchEvent(new Event("notif-read")));
+      // Si falla (sin señal), no pasa nada: quedan sin leer y se marcan la próxima vez.
+      markAllRead().then(() => window.dispatchEvent(new Event("notif-read"))).catch(() => {});
     } else {
       window.dispatchEvent(new Event("notif-read"));
     }
@@ -52,6 +48,7 @@ export function NotificationsList({ items }: { items: Item[] }) {
       {items.map((n) => (
         <button
           key={n.id}
+          type="button"
           className={`notif-item${n.read ? "" : " unread"}`}
           // Los avisos de pedidos llevan al resumen de qué cambió, no directo al
           // pedido: sin el detalle hay que buscar a ojo qué se tocó. Los demás
@@ -66,7 +63,9 @@ export function NotificationsList({ items }: { items: Item[] }) {
               {n.changeCount > 1 ? ` · ${n.changeCount} cambios` : ""}
             </span>
           </span>
-          {!n.read && <span className="notif-dot" aria-label="Sin leer" />}
+          {/* El punto es decoración; lo que se lee es "Sin leer". */}
+          {!n.read && <span className="notif-dot" aria-hidden="true" />}
+          {!n.read && <span className="sr-only">Sin leer</span>}
         </button>
       ))}
     </div>

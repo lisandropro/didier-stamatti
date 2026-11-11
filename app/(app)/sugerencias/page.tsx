@@ -2,11 +2,12 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { canManageSuggestions } from "@/lib/permissions";
-import { fmtDateTime } from "@/lib/format";
+import { fmtMomento } from "@/lib/dates";
 import { isKind, isStatus } from "@/lib/suggestions";
 import { SuggestionsList } from "@/components/SuggestionsList";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Sugerencias" };
 
 export default async function SugerenciasPage({
   searchParams,
@@ -41,7 +42,7 @@ export default async function SugerenciasPage({
     authorName: s.authorName,
     eventLugar: s.eventLugar,
     tieneRespuesta: Boolean(s.reply),
-    at: fmtDateTime(s.createdAt),
+    at: fmtMomento(s.createdAt),
   }));
 
   return (

@@ -4,15 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { setEventResponsable } from "@/app/actions/period";
 import { intentar } from "@/lib/actualizacion";
+import { MensajeDeError } from "@/components/Formulario";
+import { IconPerson } from "@/components/iconos";
 
-const IconPerson = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 20a8 8 0 0 1 16 0" />
-  </svg>
-);
-
-/** Cambiar el responsable de la fiesta. Es lo único que puede escribir el
+/** Cambiar el responsable del evento. Es lo único que puede escribir el
  *  encargado de logística, así que va como su propio control y no metido entre
  *  los del pedido. */
 export function ResponsableEditor({
@@ -57,7 +52,7 @@ export function ResponsableEditor({
 
   if (!editando) {
     return (
-      <button className="resp-chip resp-chip-btn" onClick={() => setEditando(true)} title="Cambiar el responsable de la fiesta">
+      <button className="resp-chip resp-chip-btn" onClick={() => setEditando(true)} type="button" title="Cambiar el responsable del evento">
         {IconPerson}
         <span>{responsable || "Sin responsable"}</span>
         <span className="resp-cta">Cambiar</span>
@@ -72,18 +67,26 @@ export function ResponsableEditor({
         value={valor}
         autoFocus
         placeholder="Nombre del responsable"
-        aria-label="Responsable de la fiesta"
+        aria-label="Responsable del evento"
         onChange={(e) => setValor(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") guardar();
-          if (e.key === "Escape") cancelar();
+          // preventDefault: adentro de una ventana, Enter no manda otro
+          // formulario y Escape cancela esta edición sin cerrar la ventana.
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void guardar();
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancelar();
+          }
         }}
       />
-      <button className="btn primary" onClick={guardar} disabled={guardando}>
+      <button type="button" className="btn primary" onClick={guardar} disabled={guardando}>
         {guardando ? "Guardando…" : "Guardar"}
       </button>
-      <button className="btn ghost" onClick={cancelar} disabled={guardando}>Cancelar</button>
-      {error && <div className="form-error">{error}</div>}
+      <button type="button" className="btn ghost" onClick={cancelar} disabled={guardando}>Cancelar</button>
+      {error && <MensajeDeError>{error}</MensajeDeError>}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { setSuggestionStatus, replyToSuggestion } from "@/app/actions/suggestions";
 import { SUGGESTION_STATUSES, STATUS_LABEL, LIMITS } from "@/lib/suggestions";
 import { intentar } from "@/lib/actualizacion";
+import { MensajeDeError, MensajeDeExito } from "@/components/Formulario";
 
 /** Los controles de la administradora: estado y respuesta. Solo se renderiza
  *  para quien puede gestionar — y aun así el servidor lo vuelve a comprobar. */
@@ -49,7 +50,7 @@ export function SuggestionAdmin({
 
   return (
     <section className="sug-block sug-admin">
-      <div className="section-title">Gestionar</div>
+      <h2 className="section-title">Gestionar</h2>
 
       <div className="field">
         <label htmlFor="sug-estado">Estado</label>
@@ -80,13 +81,13 @@ export function SuggestionAdmin({
       </div>
 
       <div className="modal-actions">
-        <button className="btn primary" onClick={responder} disabled={guardando}>
+        <button type="button" className="btn primary" onClick={responder} disabled={guardando}>
           {guardando ? "Guardando…" : reply ? "Guardar respuesta" : "Enviar respuesta"}
         </button>
       </div>
 
-      {error && <div className="login-error">{error}</div>}
-      {ok && <div className="settings-ok">✓ {ok}</div>}
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+      <MensajeDeExito>{ok && <>✓ {ok}</>}</MensajeDeExito>
     </section>
   );
 }

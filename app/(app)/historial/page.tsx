@@ -7,6 +7,7 @@ import { fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
 import { nombreDe } from "@/lib/period-fit";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Historial" };
 
 const MAX_MOVIMIENTOS = 500;
 

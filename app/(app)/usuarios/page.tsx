@@ -5,6 +5,7 @@ import { UsersManager } from "@/components/UsersManager";
 import { canManageUsers } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Usuarios" };
 
 export default async function UsuariosPage() {
   const session = await getSessionUser();

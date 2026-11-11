@@ -37,6 +37,7 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const lista = useRef<HTMLDivElement>(null);
+  const abiertoConTeclado = useRef(false);
 
   function abrir() {
     if (pos) return setPos(null);
@@ -68,7 +69,28 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
       if (e.target instanceof Node && lista.current?.contains(e.target)) return;
       setPos(null);
     };
-    const escape = (e: KeyboardEvent) => e.key === "Escape" && setPos(null);
+    // Con teclado: Escape cierra y devuelve el foco al botón; las flechas
+    // recorren los ítems (Tab se iría al final de la página, porque la lista
+    // se dibuja en el body).
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // Marcado como usado: si hay una ventana debajo, no se cierra también.
+        e.preventDefault();
+        setPos(null);
+        btn.current?.focus();
+        return;
+      }
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Tab") return;
+      const opciones = [...(lista.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+      if (opciones.length === 0) return;
+      e.preventDefault();
+      const i = opciones.indexOf(document.activeElement as HTMLButtonElement);
+      const paso = e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey) ? -1 : 1;
+      opciones[(i + paso + opciones.length) % opciones.length].focus();
+    };
+    // Abierto con el teclado (Enter o espacio sobre el ⋯), el foco entra al
+    // primer ítem. Con el dedo o el mouse no hace falta y no se mueve nada.
+    if (abiertoConTeclado.current) lista.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
     // Cambiar el tamaño de la ventana (o girar el teléfono) deja el menú mal
     // parado y lo cierra. Pero en el celular el teclado también dispara
     // `resize` —la pantalla se achica de alto, `resizes-content`—: tocar el ⋯
@@ -95,7 +117,12 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
       <button
         ref={btn}
         className={`rowmenu-btn${grande ? " grande" : ""}`}
-        onClick={abrir}
+        type="button"
+        // `detail` es 0 cuando el clic vino del teclado.
+        onClick={(e) => {
+          abiertoConTeclado.current = e.detail === 0;
+          abrir();
+        }}
         aria-haspopup="menu"
         aria-expanded={pos !== null}
         aria-label={label}
@@ -109,11 +136,15 @@ export function RowMenu({ items, label, grande = false }: { items: RowMenuItem[]
             {items.map((it) => (
               <button
                 key={it.label}
+                type="button"
                 role="menuitem"
                 disabled={it.disabled}
                 className={it.peligro ? "peligro" : undefined}
                 onClick={() => {
                   setPos(null);
+                  // El foco vuelve al ⋯ antes de actuar: si la acción abre una
+                  // ventana, al cerrarla el foco tiene a dónde volver.
+                  btn.current?.focus({ preventScroll: true });
                   it.onSelect();
                 }}
               >

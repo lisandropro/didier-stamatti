@@ -2,13 +2,14 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PeriodHub } from "@/components/PeriodHub";
 import { fmtEvento, fmtRangoDias, fmtMomento, hoy } from "@/lib/dates";
-import { nombreDe, separarPorFecha } from "@/lib/period-fit";
+import { nombreDe, periodoPorDefecto, separarPorFecha } from "@/lib/period-fit";
 import { ensurePeriodSnapshot } from "@/lib/snapshot";
 import { shortageCountByEvent } from "@/lib/shortages";
 import { getSessionUser } from "@/lib/auth";
 import { canManagePeriods, canEditOrders, canVerStock, canVerPreparacion } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Período" };
 
 export default async function Home({
   searchParams,
@@ -42,7 +43,9 @@ export default async function Home({
     },
   });
 
-  const elegido = periodos.find((w) => w.id === sp.w) ?? periodos[0] ?? null;
+  const today = hoy();
+  // Sin elección, el que se está trabajando: el que cubre hoy o el próximo.
+  const elegido = periodos.find((w) => w.id === sp.w) ?? periodoPorDefecto(periodos, today);
   const selected = elegido
     ? {
         ...elegido,
@@ -54,7 +57,6 @@ export default async function Home({
       }
     : null;
 
-  const today = hoy();
   // El selector de "Período" solo muestra los actuales/próximos —
   // los que ya pasaron viven en Historial (salvo el que estás mirando ahora).
   const periodosDelSelector = periodos.filter((w) => w.endDay >= today || w.id === selected?.id);

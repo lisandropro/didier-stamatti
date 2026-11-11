@@ -8,6 +8,7 @@ import { AccountForm } from "@/components/AccountForm";
 import { CerrarSesion } from "@/components/CerrarSesion";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Mi cuenta" };
 
 export default async function CuentaPage() {
   const session = await getSessionUser();

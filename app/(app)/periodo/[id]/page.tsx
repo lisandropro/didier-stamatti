@@ -6,8 +6,11 @@ import Link from "next/link";
 import { fmtEvento, fmtRangoDias } from "@/lib/dates";
 import { PrintPlainButton } from "@/components/PrintButton";
 import { nombreDeCategoria, ordenDeCategoria } from "@/lib/categories";
+import { nombreDe } from "@/lib/period-fit";
+import { IconWarn } from "@/components/iconos";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Resumen del depósito" };
 
 
 
@@ -154,7 +157,10 @@ export default async function ResumenPage({
         <div>
           <h1>Resumen del depósito</h1>
           <div className="sub">
-            {period.label} · {fmtRangoDias(period.startDay, period.endDay)} ·{" "}
+            {/* Sin nombre propio, el período se llama por su rango: no se repite
+                ni queda un " · " suelto al principio. */}
+            {nombreDe(period)}
+            {period.label?.trim() ? ` · ${fmtRangoDias(period.startDay, period.endDay)}` : ""} ·{" "}
             {period.events.map((e) => `${e.lugar} (${fmtEvento(e.date)})`).join(" · ") || "sin eventos"}
           </div>
         </div>
@@ -176,7 +182,7 @@ export default async function ResumenPage({
               Total a preparar sumando {period.events.length} evento{period.events.length === 1 ? "" : "s"} ·{" "}
               {rows.length} producto{rows.length === 1 ? "" : "s"}
               {extras.length > 0 ? ` · ${extras.length} extra${extras.length === 1 ? "" : "s"}` : ""}
-              {overCount > 0 ? <span className="over"> · ⚠ {overCount} sin stock suficiente</span> : sinContar === 0 ? " · ✓ todo alcanza" : ""}
+              {overCount > 0 ? <span className="over"> · <span className="icono-linea">{IconWarn}</span> {overCount} sin stock suficiente</span> : sinContar === 0 ? " · ✓ todo alcanza" : ""}
               {sinContar > 0 ? ` · ${sinContar} sin contar` : ""}
             </div>
 
@@ -199,7 +205,7 @@ export default async function ResumenPage({
 
             {extras.length > 0 && (
               <>
-                <div className="section-title">Extras (fuera de catálogo)</div>
+                <h2 className="section-title">Extras (fuera de catálogo)</h2>
                 <div className="tablewrap">
                   <table className="summary-table tabla-lista">
                     <thead>

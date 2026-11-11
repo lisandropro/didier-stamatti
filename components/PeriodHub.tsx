@@ -17,6 +17,10 @@ import { savePeriodSnapshot, discardPeriodChanges, restorePeriodVersion } from "
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { EditPeriodModal } from "@/components/EditPeriodModal";
 import { RowMenu } from "@/components/RowMenu";
+import { Confirmar, Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError } from "@/components/Formulario";
+import { IconCal, IconCheck, IconEdit, IconHistory, IconList, IconPeople, IconPerson, IconPlus, IconTrash, IconUndo, IconWarn } from "@/components/iconos";
+import { sinRueda } from "@/components/util";
 
 type EventItem = {
   id: string;
@@ -50,6 +54,8 @@ type HubData = {
     overProducts: { name: string; total: number; stock: number }[];
     okCount: number;
     totalReut: number;
+    /** Reutilizables que nunca se contaron: de esos no se sabe si alcanzan. */
+    sinRecuento: number;
   };
   canManage: boolean;
   /** Puede modificar los pedidos. Cambia el texto de las tarjetas: a quien solo
@@ -61,42 +67,6 @@ type HubData = {
     versions: { id: string; periodLabel: string; kind: string; lineCount: number; actorName: string; atLabel: string; preparados: number }[];
   };
 };
-
-const IconCal = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 2.5v4M16 2.5v4" /></svg>
-);
-const IconPeople = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /></svg>
-);
-const IconPerson = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="4" /><path d="M4 20a8 8 0 0 1 16 0" /></svg>
-);
-const IconPlus = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-);
-const IconWarn = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
-);
-const IconCheck = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M20 6 9 17l-5-5" /></svg>
-);
-const IconTrash = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" /></svg>
-);
-const IconList = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" strokeWidth="2.6" strokeLinecap="round" /></svg>
-);
-const IconHistory = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /><path d="M12 8v4l3 2" /></svg>
-);
-const IconEdit = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-  </svg>
-);
-const IconUndo = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-1" /></svg>
-);
 
 export function PeriodHub({ data }: { data: HubData }) {
   const router = useRouter();
@@ -117,6 +87,7 @@ export function PeriodHub({ data }: { data: HubData }) {
   const [showEditPeriodo, setShowEditPeriodo] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
   const [faltantesDe, setFaltantesDe] = useState<EventItem | null>(null);
 
@@ -138,7 +109,7 @@ export function PeriodHub({ data }: { data: HubData }) {
         {e.status === "LISTO" ? (
           <span className="chip ok">{IconCheck}Listo</span>
         ) : (
-          <span className="chip neutral">No listo</span>
+          <span className="chip neutral">Borrador</span>
         )}
       </div>
       <div className="meta">
@@ -151,6 +122,7 @@ export function PeriodHub({ data }: { data: HubData }) {
           botón repitiendo lo mismo. */}
       {e.shortageCount > 0 && (
         <button
+          type="button"
           className="event-falta"
           onClick={() => setFaltantesDe(e)}
           title={`Ver los faltantes de ${e.lugar}`}
@@ -177,8 +149,11 @@ export function PeriodHub({ data }: { data: HubData }) {
   async function updateSnapshot() {
     if (!selected) return;
     setSavingSnapshot(true);
-    await intentar(() => savePeriodSnapshot(selected.id));
+    setSnapshotError(null);
+    const res = await intentar(() => savePeriodSnapshot(selected.id));
     setSavingSnapshot(false);
+    // Si no se guardó, se dice: antes el botón volvía a su lugar como si hubiera andado.
+    if (!res.ok) return setSnapshotError(res.error ?? "No se pudo actualizar la versión guardada.");
     router.refresh();
   }
 
@@ -270,6 +245,7 @@ export function PeriodHub({ data }: { data: HubData }) {
                 </button>
               </>
             )}
+            {snapshotError && <MensajeDeError>{snapshotError}</MensajeDeError>}
           </div>
         )}
         {!selected ? (
@@ -323,16 +299,31 @@ export function PeriodHub({ data }: { data: HubData }) {
             ) : (
               <div className="banner ok hub-banner">
                 {IconCheck}
-                <div>
-                  <b>Todo alcanza para este período</b>
-                  <p>Ningún producto se pasa del stock disponible.</p>
-                </div>
+                {/* Lo que nunca se contó no entra en la cuenta: decir "todo
+                    alcanza" con productos sin contar sería afirmar algo que
+                    nadie sabe. */}
+                {alert.sinRecuento > 0 ? (
+                  <div>
+                    <b>Nada de lo contado se pasa del stock</b>
+                    <p>
+                      {alert.sinRecuento === 1
+                        ? "Hay 1 producto sin contar: de ese no se sabe si alcanza."
+                        : `Hay ${alert.sinRecuento} productos sin contar: de esos no se sabe si alcanzan.`}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <b>Todo alcanza para este período</b>
+                    <p>Ningún producto se pasa del stock disponible.</p>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="hub-eventos">
               <div className="section-title">
-                Por hacer <span className="count-pill">{selected.events.length}</span>
+                {/* El título es solo "Por hacer": el contador y el botón van al lado, no adentro. */}
+                <h2>Por hacer</h2> <span className="count-pill">{selected.events.length}</span>
                 <span className="spacer" style={{ flex: 1 }} />
                 {totalEventos > 0 && (
                   <Link className="btn ghost" href={`/periodo/${selected.id}`}>
@@ -473,8 +464,8 @@ function TrashModal({
   async function recuperar(kind: "period" | "event" | "version", id: string) {
     setBusy(id);
     setErr(null);
-    // Recuperar un finde o un evento lleva al finde recuperado; restaurar una
-    // versión de pedidos deja donde estás, porque el finde no se movió.
+    // Recuperar un período o un evento lleva al período recuperado; restaurar una
+    // versión de pedidos deja donde estás, porque el período no se movió.
     if (kind === "version") {
       const res = await intentar(() => restorePeriodVersion(id));
       setBusy(null);
@@ -488,70 +479,67 @@ function TrashModal({
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(ev) => ev.stopPropagation()}>
-        <h2>Papelera</h2>
-        <p className="modal-sub">
-          Recuperá lo que necesites y vuelve con sus pedidos como estaban. Esto
-          se vacía solo los lunes: lo que tires esta semana se borra para siempre
-          el lunes que viene.
-        </p>
-        {err && <div className="form-error">{err}</div>}
+    <Dialogo titulo="Papelera" onCerrar={onClose} ocupado={busy !== null} ancho="wide">
+      <p className="modal-sub">
+        Recuperá lo que necesites y vuelve con sus pedidos como estaban. Esto
+        se vacía solo los lunes: lo que tires esta semana se borra para siempre
+        el lunes que viene.
+      </p>
+      {err && <MensajeDeError>{err}</MensajeDeError>}
 
-        <div className="trash-list">
-          {trash.periodos.map((w) => (
-            <div className="trash-item" key={w.id}>
-              <div>
-                <b>{w.label}</b>
-                <div className="trash-meta">
-                  Período · {w.rangeLabel} · {w.eventCount} {w.eventCount === 1 ? "evento" : "eventos"} · borrado el {w.deletedLabel}
-                </div>
+      <div className="trash-list">
+        {trash.periodos.map((w) => (
+          <div className="trash-item" key={w.id}>
+            <div>
+              <b>{w.label}</b>
+              <div className="trash-meta">
+                Período · {w.rangeLabel} · {w.eventCount} {w.eventCount === 1 ? "evento" : "eventos"} · borrado el {w.deletedLabel}
               </div>
-              <button className="btn ghost" onClick={() => recuperar("period", w.id)} disabled={busy === w.id}>
-                {IconUndo} {busy === w.id ? "Recuperando…" : "Recuperar"}
-              </button>
             </div>
-          ))}
-          {trash.events.map((e) => (
-            <div className="trash-item" key={e.id}>
-              <div>
-                <b>{e.lugar}</b>
-                <div className="trash-meta">
-                  Evento de {e.periodLabel} · {e.dateLabel} ·{" "}
-                  {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""}` : "sin pedido"} · borrado el {e.deletedLabel}
-                </div>
+            <button type="button" className="btn ghost" onClick={() => recuperar("period", w.id)} disabled={busy !== null}>
+              {IconUndo} {busy === w.id ? "Recuperando…" : "Recuperar"}
+            </button>
+          </div>
+        ))}
+        {trash.events.map((e) => (
+          <div className="trash-item" key={e.id}>
+            <div>
+              <b>{e.lugar}</b>
+              <div className="trash-meta">
+                Evento de {e.periodLabel} · {e.dateLabel} ·{" "}
+                {e.lineCount > 0 ? `${e.lineCount} producto${e.lineCount > 1 ? "s" : ""}` : "sin pedido"} · borrado el {e.deletedLabel}
               </div>
-              <button className="btn ghost" onClick={() => recuperar("event", e.id)} disabled={busy === e.id}>
-                {IconUndo} {busy === e.id ? "Recuperando…" : "Recuperar"}
-              </button>
             </div>
-          ))}
-          {trash.versions.map((v) => (
-            <div className="trash-item" key={v.id}>
-              <div>
-                <b>Pedidos de {v.periodLabel}</b>
-                <div className="trash-meta">
-                  {v.kind === "PRE_DESCARTE" ? "Antes de descartar cambios" : v.kind === "PRE_COPIA" ? "Antes de copiar un pedido encima" : "Antes de restaurar otra versión"} ·{" "}
-                  {v.lineCount} {v.lineCount === 1 ? "producto" : "productos"} · {v.actorName} · {v.atLabel}
-                </div>
-                {v.preparados > 0 && (
-                  <div className="trash-meta prep-ojo">
-                    {v.preparados} {v.preparados === 1 ? "ítem ya está preparado y va a cambiar" : "ítems ya están preparados y van a cambiar"}
-                  </div>
-                )}
+            <button type="button" className="btn ghost" onClick={() => recuperar("event", e.id)} disabled={busy !== null}>
+              {IconUndo} {busy === e.id ? "Recuperando…" : "Recuperar"}
+            </button>
+          </div>
+        ))}
+        {trash.versions.map((v) => (
+          <div className="trash-item" key={v.id}>
+            <div>
+              <b>Pedidos de {v.periodLabel}</b>
+              <div className="trash-meta">
+                {v.kind === "PRE_DESCARTE" ? "Antes de descartar cambios" : v.kind === "PRE_COPIA" ? "Antes de copiar un pedido encima" : "Antes de restaurar otra versión"} ·{" "}
+                {v.lineCount} {v.lineCount === 1 ? "producto" : "productos"} · {v.actorName} · {v.atLabel}
               </div>
-              <button className="btn ghost" onClick={() => recuperar("version", v.id)} disabled={busy === v.id}>
-                {IconUndo} {busy === v.id ? "Restaurando…" : "Restaurar"}
-              </button>
+              {v.preparados > 0 && (
+                <div className="trash-meta prep-ojo">
+                  {v.preparados} {v.preparados === 1 ? "ítem ya está preparado y va a cambiar" : "ítems ya están preparados y van a cambiar"}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose}>Cerrar</button>
-        </div>
+            <button type="button" className="btn ghost" onClick={() => recuperar("version", v.id)} disabled={busy !== null}>
+              {IconUndo} {busy === v.id ? "Restaurando…" : "Restaurar"}
+            </button>
+          </div>
+        ))}
       </div>
-    </div>
+
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={busy !== null}>Cerrar</button>
+      </div>
+    </Dialogo>
   );
 }
 
@@ -572,51 +560,37 @@ function ConfirmDiscardChanges({
   onClose: () => void;
   onDiscarded: () => void;
 }) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function confirm() {
-    setSaving(true);
-    setError(null);
-    const res = await intentar(() => discardPeriodChanges(id));
-    setSaving(false);
-    if (res.ok) onDiscarded();
-    else setError(res.error ?? "No se pudo descartar los cambios.");
-  }
-
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>¿Descartar cambios?</h2>
-        <div className="msub">
-          <p>
-            Los pedidos de <b>{label}</b> vuelven a como estaban en la versión guardada
-            {takenAt ? <> del <b>{takenAt}</b></> : ""}.
-          </p>
-          <p>
-            <b>Qué se reemplaza:</b> los {currentLines} {currentLines === 1 ? "producto cargado" : "productos cargados"} hoy
-            en {eventCount === 1 ? "el evento" : `los ${eventCount} eventos`} de este período, con sus cantidades y
-            sus notas.
-          </p>
-          <p>
-            <b>Qué NO se toca:</b> el período, los eventos, el stock del depósito ni el historial de movimientos.
-          </p>
-        </div>
+    <Confirmar
+      titulo="¿Descartar cambios?"
+      textoConfirmar="Sí, descartar cambios"
+      textoEnCurso="Descartando…"
+      peligro
+      accion={() => discardPeriodChanges(id)}
+      alListo={onDiscarded}
+      onCerrar={onClose}
+      pie={
         <div className="banner ok" style={{ marginBottom: "var(--sp-4)" }}>
           <div>
             <b>Se guarda una copia antes de descartar</b>
             <p>Si te arrepentís, la recuperás entera desde la Papelera.</p>
           </div>
         </div>
-        {error && <div className="form-error">{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn danger" onClick={confirm} disabled={saving}>
-            {saving ? "Descartando…" : "Sí, descartar cambios"}
-          </button>
-        </div>
-      </div>
-    </div>
+      }
+    >
+      <p>
+        Los pedidos de <b>{label}</b> vuelven a como estaban en la versión guardada
+        {takenAt ? <> del <b>{takenAt}</b></> : ""}.
+      </p>
+      <p>
+        <b>Qué se reemplaza:</b> los {currentLines} {currentLines === 1 ? "producto cargado" : "productos cargados"} hoy
+        en {eventCount === 1 ? "el evento" : `los ${eventCount} eventos`} de este período, con sus cantidades y
+        sus notas.
+      </p>
+      <p>
+        <b>Qué NO se toca:</b> el período, los eventos, el stock del depósito ni el historial de movimientos.
+      </p>
+    </Confirmar>
   );
 }
 
@@ -633,38 +607,22 @@ function ConfirmDeletePeriod({
   onClose: () => void;
   onDeleted: () => void;
 }) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function confirm() {
-    setSaving(true);
-    setError(null);
-    const res = await intentar(() => deletePeriod(id));
-    setSaving(false);
-    if (res.ok) onDeleted();
-    else setError(res.error ?? "No se pudo borrar.");
-  }
-
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>¿Borrar este período?</h2>
-        <div className="msub">
-          Se va a borrar <b>{label}</b>
-          {eventCount > 0
-            ? ` junto con sus ${eventCount} evento${eventCount > 1 ? "s" : ""} y todos sus pedidos`
-            : ""}
-          . Va a la papelera: lo podés recuperar hasta que se vacíe, el lunes.
-        </div>
-        {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn danger" onClick={confirm} disabled={saving}>
-            {saving ? "Borrando…" : "Sí, borrar"}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Confirmar
+      titulo="¿Borrar este período?"
+      textoConfirmar="Sí, borrar"
+      textoEnCurso="Borrando…"
+      peligro
+      accion={() => deletePeriod(id)}
+      alListo={onDeleted}
+      onCerrar={onClose}
+    >
+      Se va a borrar <b>{label}</b>
+      {eventCount > 0
+        ? ` junto con sus ${eventCount} evento${eventCount > 1 ? "s" : ""} y todos sus pedidos`
+        : ""}
+      . Va a la papelera: lo podés recuperar hasta que se vacíe, el lunes.
+    </Confirmar>
   );
 }
 
@@ -681,6 +639,10 @@ function NewPeriodModal({ draftKey, onClose, onCreated }: { draftKey: string; on
   const [duplicado, setDuplicado] = useState<{ nombre: string } | null>(null);
 
   const hasta = unSoloDia ? startDay : endDay;
+  const sePuedeCrear = Boolean(startDay) && Boolean(hasta);
+  // Cerrar tira el borrador (lo borra quien abrió la ventana): por el fondo o
+  // con Escape, primero se pregunta.
+  const ventana = { onCerrar: onClose, ocupado: saving, cambiado: Boolean(label || startDay || endDay), sinDeslizar: true } as const;
 
   async function save(permitirDuplicado = false) {
     if (inFlight.current) return;
@@ -700,67 +662,64 @@ function NewPeriodModal({ draftKey, onClose, onCreated }: { draftKey: string; on
 
   if (duplicado) {
     return (
-      <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>Ya existe uno igual</h2>
-          {error && <div role="alert" className="login-error">{error}</div>}
-          <div className="msub">
-            <b>{duplicado.nombre}</b> ya cubre exactamente esas fechas. Podés usar ese, o crear otro igual si de
-            verdad son dos grupos distintos de vajilla.
-          </div>
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={onClose} disabled={saving}>Usar el que existe</button>
-            <button className="btn primary" onClick={() => save(true)} disabled={saving}>
-              {saving ? "Creando…" : "Crear otro igual"}
-            </button>
-          </div>
+      <Dialogo titulo="Ya existe uno igual" {...ventana}>
+        {error && <MensajeDeError>{error}</MensajeDeError>}
+        <div className="msub">
+          <b>{duplicado.nombre}</b> ya cubre exactamente esas fechas. Podés usar ese, o crear otro igual si de
+          verdad son dos grupos distintos de vajilla.
         </div>
-      </div>
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Usar el que existe</button>
+          <button type="button" className="btn primary" onClick={() => save(true)} disabled={saving}>
+            {saving ? "Creando…" : "Crear otro igual"}
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   return (
-    <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <h2>Nuevo período operativo</h2>
-        <div className="msub">
-          Los eventos de un período comparten la misma vajilla. Puede ser una sola jornada o los días que hagan
-          falta, cualquier día de la semana.
-        </div>
-        <div className="field">
-          <label>Nombre (opcional)</label>
-          <input
-            disabled={saving} type="text"
-            placeholder="Si lo dejás vacío, se muestran las fechas"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <div className="field" style={{ flex: 1 }}>
-            <label>Desde</label>
-            <input disabled={saving} type="date" value={startDay} onChange={(e) => setStart(e.target.value)} autoFocus />
-          </div>
-          {!unSoloDia && (
-            <div className="field" style={{ flex: 1 }}>
-              <label>Hasta</label>
-              <input disabled={saving} type="date" value={endDay} onChange={(e) => setEnd(e.target.value)} />
-            </div>
-          )}
-        </div>
-        <label className="check-line">
-          <input disabled={saving} type="checkbox" checked={unSoloDia} onChange={(e) => setUnSoloDia(e.target.checked)} />
-          Es un solo día
-        </label>
-        {error && <div className="login-error">{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn primary" onClick={() => save()} disabled={saving || !startDay || !hasta}>
-            {saving ? "Creando…" : "Crear"}
-          </button>
-        </div>
+    <Dialogo
+      titulo="Nuevo período operativo"
+      {...ventana}
+      alEnviar={() => {
+        if (sePuedeCrear) void save();
+      }}
+    >
+      <div className="msub">
+        Los eventos de un período comparten la misma vajilla. Puede ser una sola jornada o los días que hagan
+        falta, cualquier día de la semana.
       </div>
-    </div>
+      <Campo label="Nombre (opcional)">
+        <input
+          disabled={saving} type="text"
+          placeholder="Si lo dejás vacío, se muestran las fechas"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+        />
+      </Campo>
+      <div style={{ display: "flex", gap: 12 }}>
+        <Campo label="Desde" style={{ flex: 1 }}>
+          <input disabled={saving} type="date" value={startDay} onChange={(e) => setStart(e.target.value)} autoFocus />
+        </Campo>
+        {!unSoloDia && (
+          <Campo label="Hasta" style={{ flex: 1 }}>
+            <input disabled={saving} type="date" value={endDay} onChange={(e) => setEnd(e.target.value)} />
+          </Campo>
+        )}
+      </div>
+      <label className="check-line">
+        <input disabled={saving} type="checkbox" checked={unSoloDia} onChange={(e) => setUnSoloDia(e.target.checked)} />
+        Es un solo día
+      </label>
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+        <button type="submit" className="btn primary" disabled={saving || !sePuedeCrear}>
+          {saving ? "Creando…" : "Crear"}
+        </button>
+      </div>
+    </Dialogo>
   );
 }
 
@@ -779,6 +738,10 @@ function NewEventModal({ draftKey, onClose, onCreated }: { draftKey: string; onC
   // tiene. Solo se pregunta cuando hay más de uno que la cubre, o ninguno.
   const [elegir, setElegir] = useState<{ id: string; nombre: string; rango: string }[] | null>(null);
   const [falta, setFalta] = useState<{ label: string } | null>(null);
+
+  const sePuedeCrear = Boolean(lugar.trim()) && Boolean(date);
+  // Como en "Nuevo período": cerrar tira el borrador, así que antes se pregunta.
+  const ventana = { onCerrar: onClose, ocupado: saving, cambiado: Boolean(lugar || date || guests || responsable), sinDeslizar: true } as const;
 
   async function save(opciones: { periodoElegidoId?: string; crearPeriodo?: boolean } = {}) {
     if (inFlight.current) return;
@@ -799,82 +762,75 @@ function NewEventModal({ draftKey, onClose, onCreated }: { draftKey: string; onC
 
   if (elegir) {
     return (
-      <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>¿A qué período va?</h2>
-          {error && <div role="alert" className="login-error">{error}</div>}
-          <div className="msub">
-            Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
-            se cuenta el pedido.
-          </div>
-          <div className="sug-list">
-            {elegir.map((p) => (
-              <button key={p.id} className="sug-row" onClick={() => save({ periodoElegidoId: p.id })} disabled={saving}>
-                <span className="sug-row-title">{p.nombre}</span>
-                <span className="sug-row-meta">{p.rango}</span>
-              </button>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setElegir(null)} disabled={saving}>Volver</button>
-          </div>
+      <Dialogo titulo="¿A qué período va?" {...ventana}>
+        {error && <MensajeDeError>{error}</MensajeDeError>}
+        <div className="msub">
+          Hay más de un período que incluye esa fecha. Elegí cuál corresponde: de eso depende contra qué stock
+          se cuenta el pedido.
         </div>
-      </div>
+        <div className="sug-list">
+          {elegir.map((p) => (
+            <button key={p.id} type="button" className="sug-row" onClick={() => save({ periodoElegidoId: p.id })} disabled={saving}>
+              <span className="sug-row-title">{p.nombre}</span>
+              <span className="sug-row-meta">{p.rango}</span>
+            </button>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={() => setElegir(null)} disabled={saving}>Volver</button>
+        </div>
+      </Dialogo>
     );
   }
 
   if (falta) {
     return (
-      <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>Falta el período de esa fecha</h2>
-          {error && <div role="alert" className="login-error">{error}</div>}
-          <div className="msub">
-            Ningún período incluye ese día. Se puede crear <b>{falta.label}</b> y poner el evento ahí; después
-            podés estirarlo si el trabajo abarca más días.
-          </div>
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setFalta(null)} disabled={saving}>Volver</button>
-            <button className="btn primary" onClick={() => save({ crearPeriodo: true })} disabled={saving}>
-              {saving ? "Creando…" : "Crear y agregar"}
-            </button>
-          </div>
+      <Dialogo titulo="Falta el período de esa fecha" {...ventana} alEnviar={() => void save({ crearPeriodo: true })}>
+        {error && <MensajeDeError>{error}</MensajeDeError>}
+        <div className="msub">
+          Ningún período incluye ese día. Se puede crear <b>{falta.label}</b> y poner el evento ahí; después
+          podés estirarlo si el trabajo abarca más días.
         </div>
-      </div>
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={() => setFalta(null)} disabled={saving}>Volver</button>
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving ? "Creando…" : "Crear y agregar"}
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   return (
-    <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <h2>Nuevo evento</h2>
-        <div className="msub">Cargá los datos del evento. El período sale de la fecha.</div>
-        <div className="field">
-          <label>Lugar</label>
-          <input disabled={saving} type="text" placeholder="Ej: Puerto, Salón Roble…" value={lugar} onChange={(e) => setLugar(e.target.value)} autoFocus />
-        </div>
-        <div className="field">
-          <label>Fecha y hora</label>
-          <input disabled={saving} type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <div className="field" style={{ flex: 1 }}>
-            <label>Invitados</label>
-            <input disabled={saving} type="number" inputMode="numeric" min={0} placeholder="0" value={guests} onChange={(e) => setGuests(e.target.value)} />
-          </div>
-          <div className="field" style={{ flex: 1.4 }}>
-            <label>Responsable</label>
-            <input disabled={saving} type="text" placeholder="Nombre" value={responsable} onChange={(e) => setResponsable(e.target.value)} />
-          </div>
-        </div>
-        {error && <div className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn primary" onClick={() => save()} disabled={saving || !lugar.trim() || !date}>
-            {saving ? "Creando…" : "Crear evento"}
-          </button>
-        </div>
+    <Dialogo
+      titulo="Nuevo evento"
+      {...ventana}
+      alEnviar={() => {
+        if (sePuedeCrear) void save();
+      }}
+    >
+      <div className="msub">Cargá los datos del evento. El período sale de la fecha.</div>
+      <Campo label="Lugar">
+        <input disabled={saving} type="text" placeholder="Ej: Puerto, Salón Roble…" value={lugar} onChange={(e) => setLugar(e.target.value)} autoFocus />
+      </Campo>
+      <Campo label="Fecha y hora">
+        <input disabled={saving} type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
+      </Campo>
+      <div style={{ display: "flex", gap: 12 }}>
+        <Campo label="Invitados" style={{ flex: 1 }}>
+          <input disabled={saving} type="number" onWheel={sinRueda} inputMode="numeric" min={0} placeholder="0" value={guests} onChange={(e) => setGuests(e.target.value)} />
+        </Campo>
+        <Campo label="Responsable" style={{ flex: 1.4 }}>
+          <input disabled={saving} type="text" placeholder="Nombre" value={responsable} onChange={(e) => setResponsable(e.target.value)} />
+        </Campo>
       </div>
-    </div>
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+        <button type="submit" className="btn primary" disabled={saving || !sePuedeCrear}>
+          {saving ? "Creando…" : "Crear evento"}
+        </button>
+      </div>
+    </Dialogo>
   );
 }

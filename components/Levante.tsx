@@ -28,6 +28,10 @@ import {
 import { esCategoria } from "@/lib/categories";
 import { vibrar, PATRON } from "@/lib/vibrar";
 import { RefrescoPeriodico } from "@/components/RefrescoPeriodico";
+import { Confirmar, Dialogo } from "@/components/Dialogo";
+import { MensajeDeError } from "@/components/Formulario";
+import { IconBack } from "@/components/iconos";
+import { sinRueda, unidad } from "@/components/util";
 
 type Item = {
   clave: string;
@@ -55,8 +59,6 @@ type Data = {
   puedeMarcar: boolean;
   puedeAjustarStock: boolean;
 };
-
-const unidad = (u: string) => (u === "Unidad" ? "" : ` ${u.toLowerCase()}`);
 
 /** Cuánto dura el error en pantalla. Sin esto se queda hasta el próximo toque. */
 const ERROR_MS = 8_000;
@@ -248,9 +250,9 @@ export function Levante({ data }: { data: Data }) {
       <RefrescoPeriodico />
       <div className="prep-cabecera">
         <div className="prep-cabecera-fila">
-          <Link href="/preparar" className="prep-volver" aria-label="Volver a Preparar">←</Link>
+          <Link href="/preparar" className="prep-volver" aria-label="Volver a Preparar">{IconBack}</Link>
           <div className="prep-titulo">
-            <b>{data.evento.lugar}</b>
+            <h1>{data.evento.lugar}</h1>
             <span className="prep-cuando">
               Levante · {data.evento.esHoy ? <span className="prep-hoy">HOY</span> : null} {data.evento.cuando}
             </span>
@@ -270,7 +272,7 @@ export function Levante({ data }: { data: Data }) {
             ))}
           </nav>
         )}
-        {error && <div className="form-error prep-error" role="alert">{error.texto}</div>}
+        {error && <MensajeDeError className="prep-error">{error.texto}</MensajeDeError>}
       </div>
 
       <div className="content prep-contenido">
@@ -356,97 +358,61 @@ export function Levante({ data }: { data: Data }) {
       </div>
 
       {hoja && (
-        <div className="overlay" onClick={() => setHoja(null)}>
-          <div
-            className="modal"
-            data-sin-deslizar
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="lev-hoja-titulo"
-            onKeyDown={(e) => { if (e.key === "Escape") setHoja(null); }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="lev-hoja-titulo">¿Cuántos faltan?</h2>
-            <div className="msub">{hoja.itemName} · se mandaron {hoja.qty}{unidad(hoja.unit)}</div>
-            <div className="stepper-row">
-              <button type="button" className="step-btn" onClick={() => pasoHoja(-1)} aria-label="Uno menos">−</button>
-              <input
-                className="step-input"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={hoja.qty}
-                step={1}
-                value={hoja.valor}
-                onChange={(e) => setHoja({ ...hoja, valor: e.target.value })}
-                aria-label="Cuántos faltan"
-              />
-              <button type="button" className="step-btn" onClick={() => pasoHoja(1)} aria-label="Uno más">+</button>
-            </div>
-            <div className="delta-line">{textoDeVuelta(hoja)}</div>
-            <div className="modal-actions">
-              {/* El foco arranca en Cancelar: así Escape llega a la hoja y un Enter de más no guarda nada. */}
-              <button type="button" className="btn ghost" onClick={() => setHoja(null)} autoFocus>Cancelar</button>
-              {hoja.estado === "FALTA" && (
-                <button type="button" className="btn ghost" onClick={() => desmarcarHoja(hoja)}>Desmarcar</button>
-              )}
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => guardarHoja(hoja)}
-                disabled={!esFaltaValida(Number(hoja.valor), hoja.qty)}
-              >
-                Guardar
-              </button>
-            </div>
+        // Es un formulario: no se cierra deslizando (`sinDeslizar`), y Enter en
+        // el campo guarda. Escape y el foco los pone la base.
+        <Dialogo titulo="¿Cuántos faltan?" onCerrar={() => setHoja(null)} sinDeslizar alEnviar={() => guardarHoja(hoja)}>
+          <div className="msub">{hoja.itemName} · se mandaron {hoja.qty}{unidad(hoja.unit)}</div>
+          <div className="stepper-row">
+            <button type="button" className="step-btn" onClick={() => pasoHoja(-1)} aria-label="Uno menos">−</button>
+            <input
+              className="step-input"
+              type="number"
+              onWheel={sinRueda}
+              inputMode="numeric"
+              min={1}
+              max={hoja.qty}
+              step={1}
+              value={hoja.valor}
+              onChange={(e) => setHoja({ ...hoja, valor: e.target.value })}
+              aria-label="Cuántos faltan"
+            />
+            <button type="button" className="step-btn" onClick={() => pasoHoja(1)} aria-label="Uno más">+</button>
           </div>
-        </div>
+          <div className="delta-line" aria-live="polite">{textoDeVuelta(hoja)}</div>
+          <div className="modal-actions">
+            {/* El foco arranca en Cancelar: un Enter de más no guarda nada. */}
+            <button type="button" className="btn ghost" onClick={() => setHoja(null)} autoFocus>Cancelar</button>
+            {hoja.estado === "FALTA" && (
+              <button type="button" className="btn ghost" onClick={() => desmarcarHoja(hoja)}>Desmarcar</button>
+            )}
+            <button type="submit" className="btn primary" disabled={!esFaltaValida(Number(hoja.valor), hoja.qty)}>
+              Guardar
+            </button>
+          </div>
+        </Dialogo>
       )}
 
       {sectorAConfirmar && (
-        <div className="overlay" onClick={() => setSectorAConfirmar(null)}>
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="lev-sector-titulo"
-            onKeyDown={(e) => { if (e.key === "Escape") setSectorAConfirmar(null); }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="lev-sector-titulo">
-              ¿Tachar todo {sectores.find((s) => s.category === sectorAConfirmar.category)?.label ?? sectorAConfirmar.category}?
-            </h2>
-            <div className="msub">Se marca que volvió todo lo pendiente del sector. Lo que ya marcaste no cambia.</div>
-            <div className="modal-actions">
-              <button type="button" className="btn ghost" onClick={() => setSectorAConfirmar(null)} autoFocus>Cancelar</button>
-              <button type="button" className="btn primary" onClick={() => tacharSector(sectorAConfirmar)}>Tachar</button>
-            </div>
-          </div>
-        </div>
+        <Confirmar
+          titulo={<>¿Tachar todo {sectores.find((s) => s.category === sectorAConfirmar.category)?.label ?? sectorAConfirmar.category}?</>}
+          textoConfirmar="Tachar"
+          accion={() => tacharSector(sectorAConfirmar)}
+          onCerrar={() => setSectorAConfirmar(null)}
+        >
+          Se marca que volvió todo lo pendiente del sector. Lo que ya marcaste no cambia.
+        </Confirmar>
       )}
 
       {terminarConfirmar !== null && (
-        <div className="overlay" onClick={() => setTerminarConfirmar(null)}>
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="lev-terminar-titulo"
-            onKeyDown={(e) => { if (e.key === "Escape") setTerminarConfirmar(null); }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="lev-terminar-titulo">
-              {terminarConfirmar === 1 ? "Queda 1 sin revisar" : `Quedan ${terminarConfirmar} sin revisar`}
-            </h2>
-            <div className="msub">
-              Quedan como sin revisar, no como faltantes. Después no se puede marcar más: para corregir, la administradora lo reabre.
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn ghost" onClick={() => setTerminarConfirmar(null)} autoFocus>Seguir revisando</button>
-              <button type="button" className="btn primary" onClick={() => void terminar(terminarConfirmar)}>Terminar igual</button>
-            </div>
-          </div>
-        </div>
+        <Confirmar
+          titulo={terminarConfirmar === 1 ? "Queda 1 sin revisar" : `Quedan ${terminarConfirmar} sin revisar`}
+          textoConfirmar="Terminar igual"
+          textoCancelar="Seguir revisando"
+          accion={() => void terminar(terminarConfirmar)}
+          onCerrar={() => setTerminarConfirmar(null)}
+        >
+          Quedan como sin revisar, no como faltantes. Después no se puede marcar más: para corregir, la administradora lo reabre.
+        </Confirmar>
       )}
     </>
   );

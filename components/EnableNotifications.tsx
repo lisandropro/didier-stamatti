@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { probarEsteDispositivo } from "@/app/actions/notifications";
 import { intentar } from "@/lib/actualizacion";
+import { IconBell, IconPhone } from "@/components/iconos";
 
 type State = "loading" | "unsupported" | "ios-install" | "prompt" | "enabled" | "denied" | "working";
 
@@ -67,7 +68,7 @@ export function EnableNotifications() {
         return;
       }
       if (!PUB_KEY) {
-        setError("Falta la configuración de notificaciones. Avisale a quien administra la app.");
+        setError("Falta la configuración de los avisos. Avisale a quien administra la app.");
         setState("prompt");
         return;
       }
@@ -107,6 +108,8 @@ export function EnableNotifications() {
       }
       setState("prompt");
     } catch {
+      // Sigue activado: se dice, en vez de dejar el botón como si no hubiera pasado nada.
+      setError("No se pudieron desactivar los avisos. Revisá la conexión y probá de nuevo.");
       setState("enabled");
     }
   }
@@ -134,34 +137,34 @@ export function EnableNotifications() {
     <div className="notif-enable">
       {state === "enabled" ? (
         <>
-          <span className="notif-enable-ok">🔔 Notificaciones activadas en este dispositivo</span>
-          <button className="btn ghost" onClick={probar} disabled={prueba === MANDANDO}>Probar en este teléfono</button>
-          <button className="btn ghost" onClick={disable}>Desactivar</button>
-          {prueba && <span className="notif-enable-note">{prueba}</span>}
+          <span className="notif-enable-ok">{IconBell} Avisos activados en este teléfono</span>
+          <button type="button" className="btn ghost" onClick={probar} disabled={prueba === MANDANDO}>Probar en este teléfono</button>
+          <button type="button" className="btn ghost" onClick={disable}>Desactivar</button>
+          <span className="notif-enable-note" role="status" aria-live="polite">{prueba}</span>
         </>
       ) : state === "denied" ? (
         <span className="notif-enable-note">
-          Las notificaciones están bloqueadas en este dispositivo. Activálas desde la configuración del navegador
+          Los avisos están bloqueados en este teléfono. Activalos desde la configuración del navegador
           (permisos del sitio) y volvé a esta pantalla.
         </span>
       ) : state === "ios-install" ? (
         <span className="notif-enable-note">
-          📱 En iPhone, para recibir avisos: tocá el botón <b>Compartir</b> de Safari y elegí{" "}
-          <b>“Agregar a inicio”</b>. Después abrí la app desde su ícono y volvé acá para activarlas.
+          {IconPhone} En iPhone, para recibir avisos: tocá el botón <b>Compartir</b> de Safari y elegí{" "}
+          <b>“Agregar a inicio”</b>. Después abrí la app desde su ícono y volvé acá para activarlos.
         </span>
       ) : state === "unsupported" ? (
         <span className="notif-enable-note">
-          Este dispositivo/navegador no permite notificaciones. Igual vas a ver los avisos acá dentro cuando abras la app.
+          Este teléfono o navegador no permite recibir avisos con la app cerrada. Igual los vas a ver acá adentro cuando la abras.
         </span>
       ) : (
         <>
-          <span className="notif-enable-note">Recibí un aviso en este dispositivo cuando alguien modifique un pedido.</span>
-          <button className="btn primary" onClick={enable} disabled={state === "working"}>
-            {state === "working" ? "Activando…" : "Activar notificaciones"}
+          <span className="notif-enable-note">Recibí un aviso en este teléfono cuando alguien modifique un pedido.</span>
+          <button type="button" className="btn primary" onClick={enable} disabled={state === "working"}>
+            {state === "working" ? "Activando…" : "Activar avisos"}
           </button>
         </>
       )}
-      {error && <span className="notif-enable-err">{error}</span>}
+      {error && <span className="notif-enable-err" role="alert">{error}</span>}
     </div>
   );
 }

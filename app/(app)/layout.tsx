@@ -36,7 +36,8 @@ export default async function AppLayout({
           se vuelve a anotar a nombre de quien tiene la sesión ahora. */}
       <PushSubscriptionSync />
       <Sidebar user={user} />
-      <div className="main">{children}</div>
+      {/* <main>: el lector de pantalla puede saltar directo al contenido. */}
+      <main className="main">{children}</main>
       <MobileNav role={user.role} />
       {/* El formulario vive una sola vez acá: se abre desde cualquier pantalla. */}
       <SuggestionBox />

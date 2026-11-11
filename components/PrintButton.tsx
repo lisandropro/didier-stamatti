@@ -1,16 +1,10 @@
 "use client";
 
 import { imprimirParte } from "@/components/PrintablePedido";
-
-const IconPrint = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" />
-    <path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
-  </svg>
-);
+import { IconPrint } from "@/components/iconos";
 
 const IconCartel = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect x="2.5" y="5" width="19" height="12" rx="1.5" />
     <path d="M12 17v3M8.5 20h7" />
   </svg>

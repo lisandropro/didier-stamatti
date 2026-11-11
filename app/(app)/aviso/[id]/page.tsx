@@ -3,10 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { canVerStock } from "@/lib/permissions";
-import { fmtDateTime } from "@/lib/format";
+import { fmtMomento } from "@/lib/dates";
 import { cambiosDeLaTanda } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Qué cambió" };
 
 const KIND_LABEL: Record<string, string> = {
   AGREGADO: "Agregado",
@@ -99,7 +100,7 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
         <div>
           <h1>Qué cambió</h1>
           <div className="sub">
-            {evento ? `Pedido de ${evento.lugar}` : "Pedido"} · {aviso.actorName} · {fmtDateTime(aviso.createdAt)}
+            {evento ? `Pedido de ${evento.lugar}` : "Pedido"} · {aviso.actorName} · {fmtMomento(aviso.createdAt)}
           </div>
         </div>
         <div className="spacer" />
@@ -133,7 +134,7 @@ export default async function AvisoPage({ params }: { params: Promise<{ id: stri
         ) : (
           <>
             <div className="countnote">
-              {cambios.length} {cambios.length === 1 ? "cambio" : "cambios"} · desde {fmtDateTime(aviso.sinceAt)}
+              {cambios.length} {cambios.length === 1 ? "cambio" : "cambios"} · desde {fmtMomento(aviso.sinceAt)}
             </div>
             <div className="tablewrap">
               <table className="tabla-lista">

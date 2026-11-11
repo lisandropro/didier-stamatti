@@ -1,12 +1,6 @@
 import Link from "next/link";
 import type { Hallazgo } from "@/lib/checks";
-
-const IconWarn = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-    <path d="M12 9v4M12 17h.01" />
-    <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
-  </svg>
-);
+import { IconWarn } from "@/components/iconos";
 
 /**
  * Los controles de datos, en Avisos.
@@ -21,10 +15,10 @@ const IconWarn = (
 export function ParaRevisar({ hallazgos }: { hallazgos: Hallazgo[] }) {
   if (hallazgos.length === 0) return null;
   return (
-    <div className="revision">
+    <section className="revision" aria-labelledby="para-revisar">
       <div className="revision-head">
         {IconWarn}
-        <b>Para revisar</b>
+        <h2 id="para-revisar">Para revisar</h2>
         <span className="count-pill">{hallazgos.length}</span>
       </div>
       <ul className="revision-list">
@@ -40,6 +34,6 @@ export function ParaRevisar({ hallazgos }: { hallazgos: Hallazgo[] }) {
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }

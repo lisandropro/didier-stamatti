@@ -87,7 +87,8 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
   ];
 
   return (
-    <aside className="side">
+    // <nav> con nombre: es la navegación principal, no un costado cualquiera.
+    <nav className="side" aria-label="Menú principal">
       <div className="brand">
         <span className="logo-mark" role="img" aria-label="Didier Stamatti Catering" />
       </div>
@@ -97,6 +98,7 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
           key={item.href}
           href={item.href}
           className={`nav${isActive(pathname, item.href) ? " active" : ""}`}
+          aria-current={isActive(pathname, item.href) ? "page" : undefined}
         >
           {item.icon}
           {item.label}
@@ -121,6 +123,6 @@ export function Sidebar({ user }: { user: { name: string; role: string } }) {
         </Link>
         <CerrarSesion variante="icono" />
       </div>
-    </aside>
+    </nav>
   );
 }

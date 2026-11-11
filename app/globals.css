@@ -12,13 +12,37 @@
    saturación quedaron donde estaban, para no enfriar el gris cálido ni
    apagar el dorado. Aclarar --warn-soft no servía: de L91% a L97% el
    contraste sube 0,2 y el techo lo pone el blanco — el trabajo lo tiene que
-   hacer el texto. El bloque oscuro ya pasaba con holgura y no se tocó. */
+   hacer el texto. El bloque oscuro ya pasaba con holgura y no se tocó.
+
+   Segunda pasada, con la misma regla (medido contra el fondo más oscuro):
+     --ok        #2E7D50 → #2A744A. Daba 4,32 sobre --ok-soft (.chip.ok,
+                 .settings-ok); ahora 4,87, y 5,68 sobre blanco.
+     --gold-text El dorado de la marca (#A8813E) sirve de filete, de ícono y de
+                 anillo de foco (3,57 sobre blanco: pasa el 3:1 de lo que no es
+                 texto), pero como LETRA daba 3,19–3,57. Para letra, en claro, va
+                 #86672D: 5,26 sobre blanco, 5,04 sobre --ground y 4,70 sobre
+                 --surface-2. En oscuro el dorado ya daba 6,5–8,0 y se usa tal cual.
+     --on-crit   La letra sobre --crit. Blanco en claro (5,95). En oscuro --crit
+                 es claro y el blanco daba 3,42: va #141312 (5,42).
+     --on-gold   La letra sobre --gold (la inicial del avatar). Blanco daba 3,57
+                 en claro y 2,41 en oscuro; #141312 da 5,19 y 7,69.
+     --field-border  El borde de los campos. --hair daba 1,13 contra el relleno
+                 del campo: de lejos, o al sol en el depósito, no se veía dónde
+                 se escribe. Lo que no es texto pide 3:1: #8A8780 da 3,59 sobre
+                 blanco y 3,20 sobre --surface-2; en oscuro #757269 da 3,63 y 3,28.
+   El texto apagado adentro del cartel rojo (.banner.crit p) daba 4,39 con
+   --muted: ahí va --ink. */
 :root{
+  /* Que el navegador dibuje lo suyo (el calendario de los campos de fecha, los
+     desplegables, las barras de scroll) con el mismo tema que la app. Sin esto,
+     en oscuro el ícono del calendario quedaba negro sobre negro. */
+  color-scheme:light;
   --ground:#FBFAF8; --surface:#FFFFFF; --surface-2:#F3F2EF;
   --ink:#141312; --muted:#6D6A64; --hair:#E7E4DE;
   --brand:#141312; --brand-strong:#000000; --brand-soft:#EEECE7; --on-brand:#FFFFFF;
-  --gold:#A8813E;
-  --ok:#2E7D50; --ok-soft:#E6F0E9;
+  --gold:#A8813E; --gold-text:#86672D; --on-gold:#141312;
+  --on-crit:#FFFFFF; --field-border:#8A8780;
+  --ok:#2A744A; --ok-soft:#E6F0E9;
   --warn:#8E6118; --warn-soft:#F6ECD8;
   --crit:#B23A28; --crit-soft:#F7E4DF;
   --shadow:0 1px 2px rgba(20,19,18,.05),0 6px 20px rgba(20,19,18,.06);
@@ -31,7 +55,6 @@
 
   /* Escala de radios */
   --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px; --r-pill:999px;
-  --radius:14px; /* alias histórico = --r-lg */
 
   /* Movimiento — corto y con desaceleración natural, nunca decorativo */
   --dur-fast:110ms; --dur:170ms;
@@ -61,7 +84,9 @@
     --ground:#0E0E0D; --surface:#1A1A18; --surface-2:#232320;
     --ink:#F2F1ED; --muted:#9C9A93; --hair:#2E2E2A;
     --brand:#F2F1ED; --brand-strong:#FFFFFF; --brand-soft:#26261F; --on-brand:#141312;
-    --gold:#C9A150;
+    --gold:#C9A150; --gold-text:#C9A150; --on-crit:#141312; --field-border:#757269;
+    color-scheme:dark;
+    --shadow-lift:0 2px 4px rgba(0,0,0,.45),0 14px 32px rgba(0,0,0,.55);
     --ok:#5FB985; --ok-soft:#1B2E22; --warn:#D6A24A; --warn-soft:#332A18; --crit:#D96A52; --crit-soft:#33201B;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.5);
   }
@@ -71,7 +96,9 @@
   --ground:#0E0E0D; --surface:#1A1A18; --surface-2:#232320;
   --ink:#F2F1ED; --muted:#9C9A93; --hair:#2E2E2A;
   --brand:#F2F1ED; --brand-strong:#FFFFFF; --brand-soft:#26261F; --on-brand:#141312;
-  --gold:#C9A150;
+  --gold:#C9A150; --gold-text:#C9A150; --on-crit:#141312; --field-border:#757269;
+  color-scheme:dark;
+  --shadow-lift:0 2px 4px rgba(0,0,0,.45),0 14px 32px rgba(0,0,0,.55);
   --ok:#5FB985; --ok-soft:#1B2E22; --warn:#D6A24A; --warn-soft:#332A18; --crit:#D96A52; --crit-soft:#33201B;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.5);
 }
@@ -109,6 +136,28 @@ body{
   -webkit-user-select:text; user-select:text; -webkit-touch-callout:default;
 }
 
+/* El texto de ejemplo de los campos lleva instrucciones ("Si lo dejás vacío, se
+   muestran las fechas"): con el gris del navegador daba 4,12 en claro y 3,42 en
+   oscuro. Con --muted da 4,81 y 5,60 sobre el relleno del campo. */
+::placeholder{color:var(--muted); opacity:1}
+
+/* Los enlaces sueltos del contenido se tienen que ver como enlaces. El reset
+   les deja el color del texto y les saca el subrayado, y había tres que
+   parecían texto común (los dos de Avisos y el evento de una sugerencia).
+   Especificidad cero (:where): cualquier enlace con estilo propio —los avisos
+   para revisar, que en el celular son filas— le gana sin esfuerzo. */
+:where(.content) a:where(:not([class])){color:var(--ink); text-decoration:underline; text-underline-offset:2px}
+
+/* Lo que solo se lee con lector de pantalla ("Sin leer", el nombre de una
+   columna de botones). */
+.sr-only{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+/* Un ícono en medio de una frase: del alto de la letra, sin cortar el renglón. */
+.icono-linea{display:inline-block; width:1em; height:1em; vertical-align:-.14em}
+.icono-linea svg{display:block; width:100%; height:100%}
+
 /* Foco visible al navegar con teclado (no aparece al hacer clic con el mouse).
    :where() = especificidad 0, cualquier regla puntual lo puede sobrescribir. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible{
@@ -116,7 +165,7 @@ body{
 }
 
 /* Los cambios de estado se acompañan, no saltan */
-:where(.btn, .tab, .qbtn, .nav, .miniedit, .seg button, .step-btn, .note-toggle,
+:where(.btn, .tab, .qbtn, .nav, .seg button, .step-btn, .note-toggle,
        .event, .foot-user, .logout-btn, .pass-toggle, .wk-select, .search){
   transition:
     background-color var(--dur) var(--ease),
@@ -158,7 +207,7 @@ body{
 .nav.active{background:var(--brand-soft); color:var(--ink); border-color:var(--hair); font-weight:600}
 .nav.active svg{color:var(--gold)}
 .side .foot{margin-top:auto; padding:var(--sp-2) var(--sp-1); border-top:1px solid var(--hair); display:flex; align-items:center; gap:var(--sp-2); color:var(--muted); font-size:var(--t-sm)}
-.avatar{width:32px; height:32px; flex:0 0 auto; border-radius:50%; background:var(--gold); color:#fff; display:grid; place-items:center; font-size:var(--t-sm); font-weight:700}
+.avatar{width:32px; height:32px; flex:0 0 auto; border-radius:50%; background:var(--gold); color:var(--on-gold); display:grid; place-items:center; font-size:var(--t-sm); font-weight:700}
 
 .main{min-width:0; display:flex; flex-direction:column}
 .topbar{
@@ -185,7 +234,7 @@ body{
 @media (hover:hover){ .btn.primary:hover{background:var(--brand-strong); border-color:var(--brand-strong)} }
 .btn.ghost{background:transparent}
 @media (hover:hover){ .btn.ghost:hover{background:var(--surface-2)} }
-.btn.danger{background:var(--crit); border-color:var(--crit); color:#fff}
+.btn.danger{background:var(--crit); border-color:var(--crit); color:var(--on-crit)}
 @media (hover:hover){ .btn.danger:hover{background:color-mix(in srgb,var(--crit) 85%,#000); border-color:color-mix(in srgb,var(--crit) 85%,#000)} }
 .btn.btn-del{color:var(--muted); border-color:var(--hair); background:transparent}
 @media (hover:hover){ .btn.btn-del:hover{color:var(--crit); border-color:var(--crit); background:var(--crit-soft)} }
@@ -208,7 +257,7 @@ body{
 @media (max-width:560px){ .newprod-btn{margin-left:0; width:100%; justify-content:center} }
 .search{
   flex:1; min-width:220px; display:flex; align-items:center; gap:var(--sp-2);
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
+  background:var(--surface); border:1px solid var(--field-border); border-radius:var(--r-md);
   min-height:var(--tap); padding:0 var(--sp-4); color:var(--muted);
 }
 .search:focus-within{border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 18%,transparent)}
@@ -228,7 +277,7 @@ a.tab{display:inline-flex; align-items:center; text-decoration:none}
 @media (hover:hover){ .tab.active:hover{background:var(--brand-strong); color:var(--ground)} }
 
 /* ===== Table ===== */
-.tablewrap{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto}
+.tablewrap{background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); overflow-x:auto}
 table{width:100%; border-collapse:collapse; font-size:var(--t-base); min-width:680px}
 /* El encabezado acompaña el scroll de listas largas (167 productos) */
 thead th{
@@ -258,12 +307,6 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   .inventory-table .prod,.inventory-table .rubro{overflow-wrap:anywhere}
   .inventory-mobile-meta{display:block; margin-top:5px; color:var(--muted); font-size:var(--t-xs); line-height:1.5}
 }
-.miniedit{
-  font-size:var(--t-sm); color:var(--ink); font-weight:600; cursor:pointer;
-  border:1px solid var(--hair); background:var(--surface);
-  min-height:36px; padding:0 var(--sp-3); border-radius:var(--r-sm); white-space:nowrap;
-}
-@media (hover:hover){ .miniedit:hover{background:var(--brand-soft); border-color:var(--gold)} }
 .dim{color:var(--muted); font-weight:500}
 
 .emptyrow{padding:var(--sp-8) var(--sp-4); text-align:center; color:var(--muted)}
@@ -288,6 +331,9 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
      parte de arriba quedaba inalcanzable. */
   max-height:calc(100dvh - var(--sp-8)); overflow-y:auto; overscroll-behavior:contain;
 }
+/* La hoja toma el foco al abrirse (para que Tab arranque adentro): es un
+   contenedor, no un control, y no lleva anillo. */
+.modal:focus-visible{outline:none}
 .modal.modal-wide{max-width:620px}
 .modal.modal-xwide{max-width:980px}
 
@@ -300,24 +346,21 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   padding:var(--sp-3) var(--sp-5) var(--sp-4); border-top:1px solid var(--hair); flex:0 0 auto;
   display:flex; justify-content:flex-end; gap:var(--sp-2); background:var(--surface);
 }
+/* Cuando la hoja es un formulario, el <form> envuelve cabecera, cuerpo y pie:
+   tiene que comportarse como la hoja misma para que el medio siga scrolleando. */
+.modal-sheet > .dialogo-form{display:flex; flex-direction:column; flex:1 1 auto; min-height:0}
 .modal-sheet .sheet-head h2{margin-bottom:var(--sp-1)}
 .modal-sheet .sheet-head .modal-sub{margin:0}
 /* Solo anima el movimiento, NUNCA la opacidad: si la animación no corre
    (pestaña oculta, headless), el modal igual se ve. Realza, no condiciona. */
 @keyframes modal-in{from{transform:translateY(8px) scale(.985)}to{transform:none}}
 .modal h2{margin:0 0 3px; font-size:var(--t-xl); font-weight:700; letter-spacing:-.01em}
-/* Subtítulo apagado. No es solo del modal: en /importar y /pagos hay texto que
-   explica lo que se ve y no tiene por qué competir con el dato. El margen sí es
-   del modal, donde el subtítulo separa el título del formulario. */
+/* Subtítulo apagado. El margen es del modal, donde el subtítulo separa el
+   título del formulario. */
 .msub{color:var(--muted); font-size:var(--t-sm); text-wrap:pretty}
 .modal .msub{margin-bottom:var(--sp-5)}
 /* Adentro de un bloque de color el subtítulo se apaga por peso, no por gris:
-   gris sobre fondo de color se ve lavado (la misma razón que .imp-linea). Y
-   bajarle opacidad lo volvería a romper: --warn sobre --warn-soft quedó en
-   4,62:1, que pasa AA pero sin sobra para regalar. Hereda el color del
-   bloque y no se toca. */
-.imp-conflictos .msub,
-.pg-alerta .msub,
+   gris sobre fondo de color se ve lavado. Hereda el color del bloque. */
 .revision .msub,
 .banner .msub{color:inherit}
 /* stepper − [n] + del editor de stock */
@@ -325,17 +368,37 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .step-btn{width:54px; height:54px; border-radius:var(--r-md); border:1px solid var(--hair); background:var(--surface-2); font-size:var(--t-3xl); font-weight:600; line-height:1; color:var(--ink); cursor:pointer; display:grid; place-items:center; user-select:none}
 @media (hover:hover){ .step-btn:hover{background:var(--brand-soft); border-color:var(--gold)} }
 .step-btn:active{transform:scale(.95)}
-.step-input{width:118px; height:54px; text-align:center; font-size:var(--t-3xl); font-weight:700; border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface-2); color:var(--ink); font-variant-numeric:tabular-nums; -moz-appearance:textfield}
+.step-input{width:118px; height:54px; text-align:center; font-size:var(--t-3xl); font-weight:700; border:1px solid var(--field-border); border-radius:var(--r-md); background:var(--surface-2); color:var(--ink); font-variant-numeric:tabular-nums; -moz-appearance:textfield}
 .step-input::-webkit-outer-spin-button, .step-input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
 .step-input:focus{outline:2px solid var(--gold); outline-offset:-1px}
 .delta-line{text-align:center; font-size:var(--t-sm); color:var(--muted); margin:2px 0 16px; min-height:18px; font-weight:600}
-.delta-line.active{color:var(--gold)}
+.delta-line.active{color:var(--gold-text)}
 /* Estas dos se venían usando en los modales sin estar definidas: el texto de
    ayuda salía igual que el cuerpo y el error no se distinguía de una aclaración. */
 .modal-sub{margin:calc(var(--sp-2) * -1) 0 var(--sp-4); color:var(--muted); font-size:var(--t-sm); text-wrap:pretty}
 .form-error{
   margin:var(--sp-3) 0 0; padding:var(--sp-3) var(--sp-4); border-radius:var(--r-sm);
   background:var(--crit-soft); border:1px solid var(--crit); color:var(--crit);
+  font-size:var(--t-sm); font-weight:600;
+}
+
+/* "¿Cerrar sin guardar?": aparece al pie de una ventana con algo tipeado cuando
+   se la quiso cerrar tocando afuera o con Escape. Pegada abajo, a la vista
+   aunque el formulario sea largo. */
+.dialogo-descartar{
+  position:sticky; bottom:0; z-index:1; margin-top:var(--sp-4);
+  display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2);
+  padding:var(--sp-3); border:1px solid var(--warn); border-radius:var(--r-md);
+  background:var(--warn-soft); color:var(--ink); font-size:var(--t-sm); font-weight:600;
+}
+.dialogo-descartar span{flex:1 1 100%}
+.dialogo-descartar .btn{flex:1 1 0}
+.modal-sheet .dialogo-descartar{position:static; flex:0 0 auto; margin:0 var(--sp-5) var(--sp-4)}
+/* Una pregunta adentro de una ventana ("¿Seguro?"). No es un error: lleva el
+   filete de atención pero el texto común. */
+.confirm-inline{
+  margin:var(--sp-3) 0 0; padding:var(--sp-3) var(--sp-4); border-radius:var(--r-sm);
+  background:var(--crit-soft); border:1px solid var(--crit); color:var(--ink);
   font-size:var(--t-sm); font-weight:600;
 }
 
@@ -349,13 +412,11 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .field label{display:block; font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; margin-bottom:var(--sp-2)}
 .field input, .field select{
   width:100%; min-height:var(--tap); font-size:var(--t-md); font-family:var(--font-ui);
-  background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-md);
+  background:var(--surface-2); border:1px solid var(--field-border); border-radius:var(--r-md);
   padding:0 var(--sp-3); color:var(--ink);
   transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .field input:focus, .field select:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
-.preview-line{font-size:var(--t-sm); color:var(--muted); margin:-4px 0 16px}
-.preview-line b{color:var(--ink); font-variant-numeric:tabular-nums}
 .modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:6px}
 
 /* ===== Mobile ===== */
@@ -397,10 +458,13 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .login-logo{display:flex; justify-content:center; margin-bottom:18px}
 .login-logo .logo-mark{max-width:210px}
 .login-card h1{margin:0; font-size:var(--t-2xl); font-weight:700; text-align:center; letter-spacing:.06em}
+.login-titulo{text-transform:uppercase}
 .login-sub{margin:4px 0 20px; text-align:center; color:var(--muted); font-size:var(--t-sm)}
-.remember{display:flex; align-items:center; gap:9px; font-size:var(--t-sm); color:var(--muted); margin:4px 0 6px; cursor:pointer}
+.login-ayuda{margin:16px 0 0; text-align:center; color:var(--muted); font-size:var(--t-sm); text-wrap:pretty}
+/* El código de un error, para pasárselo a quien administra la app. */
+.error-codigo{font-size:var(--t-xs); color:var(--muted); margin-top:var(--sp-3); user-select:text; -webkit-user-select:text}
+.remember{display:flex; align-items:center; gap:9px; min-height:var(--tap); font-size:var(--t-sm); color:var(--muted); margin:0; cursor:pointer}
 .remember input{width:16px; height:16px; accent-color:var(--gold)}
-.login-error{background:var(--crit-soft); color:var(--crit); border:1px solid color-mix(in srgb,var(--crit) 30%,transparent); border-radius:var(--r-sm); padding:9px 12px; font-size:var(--t-sm); font-weight:500; margin-top:12px}
 .pass-wrap{position:relative}
 .pass-wrap input{padding-right:50px}
 /* El ojo de "mostrar contraseña".
@@ -434,7 +498,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 /* ===== Mi cuenta / Ajustes ===== */
 .settings-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start}
 .field input:disabled{opacity:.65; cursor:not-allowed}
-.settings-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px 24px 22px; min-width:0}
+.settings-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); padding:24px 24px 22px; min-width:0}
 /* Las tarjetas necesitan ~340px para que los selectores de 3 opciones no se apilen mal */
 @media(max-width:1050px){ .settings-grid{grid-template-columns:1fr} }
 .settings-card h2{margin:0 0 3px; font-size:var(--t-xl); font-weight:700}
@@ -451,7 +515,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .nav{position:relative}
 .notif-badge{
   display:inline-grid; place-items:center; min-width:18px; height:18px; padding:0 5px;
-  margin-left:auto; border-radius:var(--r-pill); background:var(--crit); color:#fff;
+  margin-left:auto; border-radius:var(--r-pill); background:var(--crit); color:var(--on-crit);
   font-size:calc(10.5px * var(--fs)); font-weight:700; line-height:1; font-variant-numeric:tabular-nums;
 }
 .mobnav-ico{position:relative; display:inline-flex}
@@ -483,6 +547,10 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .notif-enable-note{flex:1; min-width:180px; font-size:var(--t-sm); color:var(--muted); line-height:1.4}
 .notif-enable-ok{flex:1; min-width:180px; font-size:var(--t-base); font-weight:600; color:var(--ink)}
 .notif-enable-err{flex-basis:100%; font-size:var(--t-sm); color:var(--crit)}
+/* Los íconos que reemplazaron a los emojis, a la altura del texto. */
+.notif-enable-ok svg, .notif-enable-note svg{display:inline-block; width:18px; height:18px; vertical-align:-4px; margin-right:2px}
+/* Las zonas que anuncian un resultado se dibujan siempre: vacías no ocupan lugar. */
+.notif-enable-note:empty, .share-msg:empty{display:none}
 
 /* ===== Señal de "toque registrado" en la navegación =====
    Reserva su espacio siempre y sólo se enciende si la navegación tarda
@@ -550,7 +618,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .users-head{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); margin-bottom:var(--sp-4); flex-wrap:wrap}
 .users-count{margin:0; color:var(--muted); font-size:var(--t-sm); font-weight:600}
 .user-list{display:flex; flex-direction:column; gap:var(--sp-3); max-width:720px}
-.user-row{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-4)}
+.user-row{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap; background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); padding:var(--sp-4)}
 .user-avatar{width:40px; height:40px; font-size:var(--t-md); flex:0 0 auto}
 .user-info{flex:1; min-width:140px}
 .user-name{font-weight:650}
@@ -562,7 +630,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .reset-shown{font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; font-size:var(--t-lg); font-weight:700; text-align:center; background:var(--surface-2); border:1px dashed var(--hair); border-radius:var(--r-md); padding:var(--sp-3); margin:var(--sp-3) 0; letter-spacing:.02em; user-select:all; word-break:break-all}
 
 /* ===== Aviso de fin de semana pasado (versión guardada) ===== */
-.snapshot-bar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--brand-soft); border:1px solid var(--hair); border-radius:var(--radius); padding:12px 16px; margin-bottom:20px; font-size:var(--t-sm)}
+.snapshot-bar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--brand-soft); border:1px solid var(--hair); border-radius:var(--r-lg); padding:12px 16px; margin-bottom:20px; font-size:var(--t-sm)}
 .snapshot-bar svg{width:19px; height:19px; flex:0 0 auto; color:var(--gold)}
 .snapshot-bar b{font-variant-numeric:tabular-nums}
 
@@ -571,19 +639,19 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
    `appearance:none`, Safari del iPhone le pone su propio dibujo y lo cortaba. */
 .wk-select{
   font-family:var(--font-ui); font-size:var(--t-base); font-weight:600; color:var(--ink);
-  border:1px solid var(--hair); border-radius:var(--r-md); padding:10px 36px 10px 12px; cursor:pointer; max-width:240px;
+  border:1px solid var(--field-border); border-radius:var(--r-md); padding:10px 36px 10px 12px; cursor:pointer; max-width:240px;
   -webkit-appearance:none; appearance:none; line-height:1.25;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center / 16px 16px;
 }
 .tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:var(--sp-4); margin-bottom:var(--sp-5)}
-.tile{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); padding:var(--sp-5); box-shadow:var(--shadow)}
+.tile{background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); padding:var(--sp-5); box-shadow:var(--shadow)}
 .tile .k{font-size:var(--t-sm); color:var(--muted); display:flex; align-items:center; gap:var(--sp-2)}
 .tile .v{font-size:var(--t-3xl); font-weight:700; margin-top:var(--sp-2); font-variant-numeric:tabular-nums; line-height:1.1; letter-spacing:-.02em}
 .tile .v small{font-size:var(--t-md); color:var(--muted); font-weight:400; letter-spacing:0}
 .dot{width:9px; height:9px; border-radius:50%; display:inline-block; flex:0 0 auto}
 
-.banner{border-radius:var(--radius); padding:var(--sp-4); display:flex; gap:var(--sp-3); align-items:flex-start; margin-bottom:var(--sp-5); border:1px solid}
+.banner{border-radius:var(--r-lg); padding:var(--sp-4); display:flex; gap:var(--sp-3); align-items:flex-start; margin-bottom:var(--sp-5); border:1px solid}
 .banner.crit{background:var(--crit-soft); border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
 .banner.ok{background:var(--ok-soft); border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
 .banner svg{width:22px; height:22px; flex:0 0 auto; margin-top:1px}
@@ -591,8 +659,13 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .banner.ok svg{color:var(--ok)}
 .banner b{display:block; font-size:var(--t-base); margin-bottom:2px}
 .banner p{margin:0; font-size:var(--t-sm); color:var(--muted)}
+.banner.crit p{color:var(--ink)}
+/* Un botón adentro de un cartel (Reintentar guardado, Iniciar sesión) no va pegado al texto. */
+.banner > div > .btn{margin-top:var(--sp-2)}
 
 .section-title{font-size:var(--t-lg); font-weight:700; margin:var(--sp-6) 0 var(--sp-3); display:flex; align-items:center; gap:var(--sp-2); letter-spacing:-.01em}
+/* El título puede ir adentro como <h2>, con el contador y los botones al lado. */
+.section-title h2{margin:0; font:inherit; letter-spacing:inherit}
 .count-pill{font-size:var(--t-sm); font-weight:600; color:var(--muted); background:var(--surface-2); border:1px solid var(--hair); padding:2px var(--sp-2); border-radius:var(--r-pill)}
 
 .event-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--sp-4)}
@@ -603,7 +676,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .pasados > summary{
   display:flex; align-items:center; gap:var(--sp-2); cursor:pointer; list-style:none;
   font-size:var(--t-md); font-weight:600; color:var(--muted);
-  padding:var(--sp-3) var(--sp-4); border:1px dashed var(--hair); border-radius:var(--radius);
+  padding:var(--sp-3) var(--sp-4); border:1px dashed var(--hair); border-radius:var(--r-lg);
   background:var(--surface-2);
 }
 .pasados > summary::-webkit-details-marker{display:none}
@@ -624,7 +697,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
    se apoyan por encima con z-index. */
 .event{
   position:relative;
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius);
+  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg);
   padding:var(--sp-4) var(--sp-5); box-shadow:var(--shadow);
   display:flex; flex-direction:column; gap:var(--sp-3); color:var(--ink);
 }
@@ -633,7 +706,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .event .row1{display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-2)}
 .event h3{margin:0; font-size:var(--t-lg); font-weight:650; letter-spacing:-.01em; text-wrap:balance}
 .event-link{color:inherit; text-decoration:none}
-.event-link::after{content:""; position:absolute; inset:0; border-radius:var(--radius); cursor:pointer}
+.event-link::after{content:""; position:absolute; inset:0; border-radius:var(--r-lg); cursor:pointer}
 .event-link:focus-visible::after{outline:2px solid var(--gold); outline-offset:2px}
 .event .meta{display:flex; flex-wrap:wrap; gap:var(--sp-2) var(--sp-4); color:var(--muted); font-size:var(--t-sm)}
 .event .meta b{color:var(--ink); font-weight:600}
@@ -644,7 +717,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   font-size:var(--t-sm); color:var(--muted); border-top:1px solid var(--hair);
   padding-top:var(--sp-3); font-weight:600; margin-top:auto;
 }
-@media (hover:hover){ .event:hover .event-foot{color:var(--gold)} }
+@media (hover:hover){ .event:hover .event-foot{color:var(--gold-text)} }
 
 /* El aviso de faltantes ES el botón que abre el panel: una sola cosa en vez de
    una franja y un botón diciendo lo mismo. Va por encima del enlace estirado. */
@@ -658,12 +731,12 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .event-falta svg{width:15px; height:15px; flex:0 0 auto}
 .event-falta > span:first-of-type{flex:1 1 auto}
 .event-falta-cta{flex:0 0 auto; font-weight:700; opacity:.85; white-space:nowrap}
-@media (hover:hover){ .event-falta:hover{background:var(--crit); color:#fff} }
+@media (hover:hover){ .event-falta:hover{background:var(--crit); color:var(--on-crit)} }
 @media (hover:hover){ .event-falta:hover .event-falta-cta{opacity:1} }
 
 /* El mismo panel se abre desde la barra del pedido. */
 .btn.btn-falta-top{color:var(--crit); border-color:var(--crit); background:var(--crit-soft)}
-@media (hover:hover){ .btn.btn-falta-top:hover{background:var(--crit); color:#fff} }
+@media (hover:hover){ .btn.btn-falta-top:hover{background:var(--crit); color:var(--on-crit)} }
 .btn.btn-falta-top svg{width:15px; height:15px}
 .btn.btn-falta-top .count-pill{background:transparent; border-color:currentColor; color:inherit}
 
@@ -743,7 +816,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .trash-item .btn{flex:0 0 auto}
 @media (max-width:560px){ .trash-item{flex-direction:column; align-items:stretch} }
 
-.empty-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-8) var(--sp-6); text-align:center; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1)}
+.empty-card{background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); padding:var(--sp-8) var(--sp-6); text-align:center; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1)}
 .empty-card .empty-title{font-weight:600; color:var(--ink); font-size:var(--t-md); margin:0}
 .empty-card p{margin:0; max-width:52ch; text-wrap:pretty}
 .empty-card .btn{margin-top:var(--sp-3)}
@@ -759,8 +832,8 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 }
 
 /* ===== Armador de pedido ===== */
-.save-ind{color:var(--gold); font-weight:600}
-.olist{background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden}
+.save-ind{color:var(--gold-text); font-weight:600}
+.olist{background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); overflow:hidden}
 .orow{
   display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1.1fr) auto;
   gap:var(--sp-4); align-items:center; padding:var(--sp-3) var(--sp-5);
@@ -786,14 +859,14 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   font-size:var(--t-sm); color:var(--muted); font-weight:600; cursor:pointer; text-align:left;
   opacity:0; transition:opacity var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-@media (hover:hover){ .note-toggle:hover{color:var(--gold)} }
+@media (hover:hover){ .note-toggle:hover{color:var(--gold-text)} }
 .orow:focus-within .note-toggle{opacity:1}
 @media (hover:hover){ .orow:hover .note-toggle{opacity:1} }
-.note-toggle.has-note{opacity:1; color:var(--gold)}
+.note-toggle.has-note{opacity:1; color:var(--gold-text)}
 /* Sin hover (celular/tablet) o en layout angosto: la nota siempre visible */
 @media(max-width:860px), (hover:none){ .note-toggle{opacity:1} }
 
-.note-input{display:block; width:100%; margin-top:var(--sp-2); font-size:var(--t-sm); font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
+.note-input{display:block; width:100%; margin-top:var(--sp-2); font-size:var(--t-sm); font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--field-border); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
 .note-input:focus{outline:2px solid var(--gold); outline-offset:-1px}
 
 .ocol-stock{font-size:var(--t-sm); color:var(--muted); font-variant-numeric:tabular-nums; min-width:0}
@@ -818,7 +891,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .qbtn svg{width:16px; height:16px}
 .qinput{
   width:66px; height:var(--tap); text-align:center; font-size:var(--t-lg); font-weight:700;
-  border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface-2); color:var(--ink);
+  border:1px solid var(--field-border); border-radius:var(--r-md); background:var(--surface-2); color:var(--ink);
   font-variant-numeric:tabular-nums; -moz-appearance:textfield; font-family:var(--font-ui);
   transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
@@ -826,7 +899,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .qinput:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
 .orow.has-qty .qinput{border-color:color-mix(in srgb,var(--gold) 45%,var(--hair)); background:var(--surface)}
 
-.extras-form{display:flex; gap:var(--sp-3); align-items:flex-end; flex-wrap:wrap; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-4) var(--sp-5)}
+.extras-form{display:flex; gap:var(--sp-3); align-items:flex-end; flex-wrap:wrap; background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); padding:var(--sp-4) var(--sp-5)}
 /* El nombre es un botón: en el celular abre el detalle de la fila. En la
    pantalla ancha se ve y se comporta como texto. */
 .pname-btn{display:block; width:100%; appearance:none; background:none; border:0; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer}
@@ -844,14 +917,14 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .orow-resumen > span{min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .resumen-crit{color:var(--crit); font-weight:650}
 .resumen-warn{color:var(--warn); font-weight:650}
-.resumen-nota{color:var(--gold)}
+.resumen-nota{color:var(--gold-text)}
 .orow-detalle{grid-column:1/-1; display:flex; flex-direction:column; gap:var(--sp-2); padding-top:var(--sp-2); border-top:1px dashed var(--hair); font-size:var(--t-sm); color:var(--muted)}
 .orow-detalle b{color:var(--ink)}
 .orow-detalle .rubro{margin-top:0}
 .detalle-pasos{display:flex; gap:var(--sp-2)}
 .detalle-pasos .qbtn{flex:1}
 /* 16 px de letra: con menos, el teléfono agranda la pantalla al tocarla. */
-.detalle-nota{display:block; width:100%; min-height:var(--tap); font-size:16px; font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
+.detalle-nota{display:block; width:100%; min-height:var(--tap); font-size:16px; font-family:var(--font-ui); background:var(--surface-2); border:1px solid var(--field-border); border-radius:var(--r-sm); padding:var(--sp-2) var(--sp-3); color:var(--ink)}
 .detalle-nota:focus{outline:2px solid var(--gold); outline-offset:-1px}
 
 @media(max-width:860px){
@@ -871,17 +944,16 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .summary-table .cat-row td{background:var(--surface-2); font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.1em; font-weight:700; color:var(--muted); padding:8px 16px}
 .summary-table .parts{font-size:var(--t-sm); color:var(--muted); max-width:340px}
 .summary-table .parts b{color:var(--ink); font-variant-numeric:tabular-nums}
-.summary-table .parts em{font-style:normal; font-size:var(--t-sm); color:var(--gold)}
+.summary-table .parts em{font-style:normal; font-size:var(--t-sm); color:var(--gold-text)}
 
 /* ===== Cartel del pedido (para pegar en cada sector del depósito) ===== */
-.reprint-row{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:22px; font-size:var(--t-sm); color:var(--muted)}
 
 /* ===== Despachar un sector solo =====
    Un renglón por sector con lo pedido y sus acciones. En el celular las
    acciones bajan y ocupan el ancho: los botones se tocan con el pulgar. */
 .sector-block{
   margin-bottom:var(--sp-6); padding:var(--sp-4);
-  background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--radius);
+  background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-lg);
 }
 .sector-title{font-size:var(--t-sm); font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:var(--sp-3)}
 .sector-row{
@@ -906,7 +978,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 }
 .cartel-page{
   aspect-ratio:297/210; width:100%; max-width:640px; margin:0 auto 28px;
-  background:var(--surface); border:2px solid var(--ink); border-radius:var(--radius); box-shadow:var(--shadow);
+  background:var(--surface); border:2px solid var(--ink); border-radius:var(--r-lg); box-shadow:var(--shadow);
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(8px,2vw,18px);
   padding:6%; text-align:center;
 }
@@ -921,7 +993,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .pdf-header{display:flex; align-items:center; gap:16px; padding-bottom:16px; margin-bottom:18px; border-bottom:2px solid var(--ink)}
 .pdf-header .pdf-logo{width:54px; max-width:54px; flex:0 0 auto}
 .pdf-title{margin:0; font-size:var(--t-2xl); font-weight:800; letter-spacing:.08em}
-.pdf-event-box{display:grid; grid-template-columns:repeat(2,1fr); gap:10px 24px; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 18px; margin-bottom:20px}
+.pdf-event-box{display:grid; grid-template-columns:repeat(2,1fr); gap:10px 24px; background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); padding:16px 18px; margin-bottom:20px}
 .pdf-event-row{display:flex; justify-content:space-between; gap:10px; font-size:var(--t-base); border-bottom:1px dashed var(--hair); padding-bottom:6px}
 .pdf-k{color:var(--muted); font-weight:600}
 .pdf-v{font-weight:700}
@@ -935,7 +1007,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .picklist.cols-2{columns:2}
 .picklist.cols-3{columns:3}
 .pl-group{break-inside:avoid; break-after:avoid; margin:14px 0 4px; font-size:var(--t-xs); font-weight:800;
-  letter-spacing:.08em; text-transform:uppercase; color:var(--gold)}
+  letter-spacing:.08em; text-transform:uppercase; color:var(--gold-text)}
 .pl-group:first-child{margin-top:0}
 .pl-row{break-inside:avoid; display:flex; align-items:flex-start; gap:8px; padding:5px 0;
   border-bottom:1px solid var(--hair); font-size:var(--t-base)}
@@ -959,10 +1031,21 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   /* Las impresoras acá son solo blanco y negro: nada de tonos que dependan
      de color para distinguirse. --muted y --hair quedan más oscuros que en
      pantalla (donde un gris clarito alcanza) para que no salgan lavados. */
-  :root{--ground:#fff; --surface:#fff; --surface-2:#f2f2f2; --ink:#000; --muted:#333;
-    --hair:#888; --gold:#000; --ok:#000; --ok-soft:#fff; --warn:#000; --warn-soft:#fff;
-    --crit:#000; --crit-soft:#fff; --shadow:none}
-  .side,.mobnav,.no-print,.wk-select{display:none!important}
+  /* `:root:root` y no `:root`: el tema oscuro se define con
+     `:root[data-theme="dark"]` y `:root:not([data-theme="light"])`, que pesan
+     más que un `:root` solo. Con "Oscuro" elegido en Cuenta, lo impreso salía
+     con la tinta del tema oscuro: casilleros y filetes casi blancos sobre el papel. */
+  :root:root{color-scheme:light;
+    --ground:#fff; --surface:#fff; --surface-2:#f2f2f2; --ink:#000; --muted:#333;
+    --hair:#888; --field-border:#888; --gold:#000; --gold-text:#000; --on-gold:#fff; --on-crit:#fff;
+    --ok:#000; --ok-soft:#fff; --warn:#000; --warn-soft:#fff;
+    --crit:#000; --crit-soft:#fff; --shadow:none; --shadow-lift:none}
+  /* Lo que flota sobre la pantalla no es parte de la hoja. */
+  .side,.mobnav,.no-print,.wk-select,.sin-conexion,.instalar,.overlay,.tiron{display:none!important}
+  /* El logo es un color de fondo recortado con una máscara: sin esto, con
+     "Gráficos de fondo" apagado (como viene el navegador) no salía en el cartel
+     ni en la cabecera del pedido. */
+  .logo-mark{-webkit-print-color-adjust:exact; print-color-adjust:exact}
   .app{display:block}
   .topbar{position:static; background:none; backdrop-filter:none; border-bottom:2px solid #000; padding:0 0 10px}
   .content{padding:14px 0 0; max-width:none}
@@ -1030,11 +1113,11 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .resp-chip svg{width:16px; height:16px; color:var(--muted); flex:0 0 auto}
 .resp-chip-btn{cursor:pointer}
 @media (hover:hover){ .resp-chip-btn:hover{border-color:var(--gold)} }
-.resp-cta{font-size:var(--t-sm); font-weight:700; color:var(--gold)}
+.resp-cta{font-size:var(--t-sm); font-weight:700; color:var(--gold-text)}
 .resp-edit{display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap}
 .resp-edit input{
   font-family:var(--font-ui); font-size:var(--t-base); min-height:var(--tap);
-  padding:0 var(--sp-3); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:0 var(--sp-3); border:1px solid var(--field-border); border-radius:var(--r-md);
   background:var(--surface); color:var(--ink); min-width:220px;
 }
 .resp-edit input:focus{outline:none; border-color:var(--gold)}
@@ -1043,7 +1126,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 /* Selector de rol en la lista de usuarios. */
 .user-role-select{
   font-family:var(--font-ui); font-size:var(--t-sm); font-weight:600; color:var(--ink);
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-sm);
+  background:var(--surface); border:1px solid var(--field-border); border-radius:var(--r-sm);
   padding:var(--sp-2) var(--sp-3); cursor:pointer;
 }
 @media (hover:hover){ .user-role-select:hover{border-color:var(--gold)} }
@@ -1068,7 +1151,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .sug-modal{max-width:560px}
 .sug-modal textarea{
   font-family:var(--font-ui); font-size:var(--t-base); line-height:1.5; resize:vertical;
-  padding:var(--sp-3); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-3); border:1px solid var(--field-border); border-radius:var(--r-md);
   background:var(--surface); color:var(--ink); width:100%;
 }
 .sug-modal textarea:focus{outline:none; border-color:var(--gold)}
@@ -1080,7 +1163,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .sug-filters label span{font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700}
 .sug-filters select{
   font-family:var(--font-ui); font-size:var(--t-sm); min-height:var(--tap); padding:0 var(--sp-3);
-  border:1px solid var(--hair); border-radius:var(--r-md); background:var(--surface); color:var(--ink);
+  border:1px solid var(--field-border); border-radius:var(--r-md); background:var(--surface); color:var(--ink);
 }
 .sug-filters .countnote{margin:0 0 var(--sp-2)}
 
@@ -1115,7 +1198,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 }
 .sug-admin textarea{
   font-family:var(--font-ui); font-size:var(--t-base); line-height:1.5; resize:vertical;
-  padding:var(--sp-3); border:1px solid var(--hair); border-radius:var(--r-md);
+  padding:var(--sp-3); border:1px solid var(--field-border); border-radius:var(--r-md);
   background:var(--surface); color:var(--ink); width:100%;
 }
 .sug-admin textarea:focus{outline:none; border-color:var(--gold)}
@@ -1155,6 +1238,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 }
 .revision-head{display:flex; align-items:center; gap:var(--sp-2); margin-bottom:var(--sp-3); color:var(--ink)}
 .revision-head svg{width:20px; height:20px; color:var(--warn); flex:0 0 auto}
+.revision-head h2{margin:0; font-size:inherit; font-weight:700}
 .revision-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
 .revision-item{font-size:var(--t-sm); line-height:1.45; padding-left:var(--sp-4); position:relative}
 .revision-item::before{content:"•"; position:absolute; left:0; color:var(--muted)}
@@ -1162,7 +1246,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 /* Pantalla ancha: el aviso sigue siendo un párrafo con su enlace subrayado. */
 @media not all and (max-width:860px){
   .revision-item a{color:var(--ink); text-decoration:underline; text-underline-offset:2px}
-  @media (hover:hover){ .revision-item a:hover{color:var(--gold)} }
+  @media (hover:hover){ .revision-item a:hover{color:var(--gold-text)} }
 }
 /* Celular: cada aviso con enlace es una fila que se toca entera, con una flecha:
    como la lista de una app. Antes era un párrafo con enlaces subrayados, y uno largo
@@ -1184,306 +1268,9 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
      `/` descarta esa línea y se queda con la anterior: la flecha se ve igual. */
   .revision-item > a::after{content:"›"; content:"›" / ""; margin-left:auto; flex:none; font-size:var(--t-xl); color:var(--muted)}
   .revision-texto{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; min-width:0}
-  @media (hover:hover){ .revision-item > a:hover{color:var(--gold)} }
+  @media (hover:hover){ .revision-item > a:hover{color:var(--gold-text)} }
 }
 .chip-baja{margin-left:var(--sp-2); font-size:var(--t-xs)}
-
-/* ===== Comprobantes ================================================== */
-/* Dos pantallas con contextos opuestos: la captura se usa de pie en el
-   depósito con una mano ocupada, y la de pagos sentada en una oficina. Por eso
-   una va a pantalla completa con los controles abajo y la otra es una tabla
-   densa. Todo con los tokens que ya existen — no hay un solo color nuevo. */
-
-/* --- Recepción: el arranque ------------------------------------------ */
-/* Anclado abajo y no arriba: se sostiene el teléfono con una mano y una caja
-   con la otra, y el pulgar no llega al tercio superior. Queda encima de la
-   barra de navegación, siempre a la vista aunque la lista del día crezca. */
-.cap-arranque{
-  position:sticky; bottom:var(--sp-4); z-index:15;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:var(--sp-3); width:100%; min-height:132px;
-  background:var(--brand); color:var(--on-brand);
-  border:none; border-radius:var(--r-xl); cursor:pointer;
-  font-family:var(--font-ui); font-size:var(--t-xl); font-weight:650;
-  letter-spacing:-.01em; box-shadow:var(--shadow-lift);
-  transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease);
-}
-.cap-arranque svg{width:34px; height:34px}
-.cap-arranque:active{transform:scale(.985)}
-@media (prefers-reduced-motion:reduce){
-  .cap-arranque{transition:none}
-  .cap-arranque:active{transform:none}
-}
-
-/* --- Recepción: la cámara -------------------------------------------- */
-.cap-camara{position:fixed; inset:0; z-index:60; background:#000}
-.cap-video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
-/* El marco es la única señal de estado que se ve con el teléfono en movimiento:
-   pasa de blanco tenue a dorado cuando engancha el código. */
-.cap-marco{
-  position:absolute; inset:12% 8% 26%; border:2px solid rgba(255,255,255,.5);
-  border-radius:var(--r-lg); transition:border-color var(--dur) var(--ease);
-}
-.cap-marco.leido{border-color:var(--gold); box-shadow:0 0 0 3px rgba(168,129,62,.28)}
-@media (prefers-reduced-motion:reduce){ .cap-marco{transition:none} }
-.cap-estado{
-  position:absolute; left:0; right:0; bottom:calc(26% - 34px); margin:0;
-  text-align:center; color:#fff; font-size:var(--t-sm); font-weight:600;
-  text-shadow:0 1px 3px rgba(0,0,0,.7);
-}
-/* Los controles abajo: se sostiene el teléfono con una mano y una caja con la
-   otra, y arriba no llega el pulgar. */
-.cap-controles{
-  position:absolute; left:0; right:0; bottom:0; height:26%;
-  display:flex; align-items:center; justify-content:space-between;
-  padding:0 var(--sp-6);
-  background:linear-gradient(to top, rgba(0,0,0,.72), transparent);
-}
-.cap-disparo{
-  width:76px; height:76px; border-radius:50%; cursor:pointer;
-  background:#fff; border:4px solid rgba(255,255,255,.45);
-  transition:transform var(--dur-fast) var(--ease);
-}
-.cap-disparo:active{transform:scale(.92)}
-@media (prefers-reduced-motion:reduce){
-  .cap-disparo{transition:none}
-  .cap-disparo:active{transform:none}
-}
-.cap-cancelar{
-  background:none; border:none; color:#fff; cursor:pointer;
-  font-family:var(--font-ui); font-size:var(--t-md); font-weight:600;
-  min-height:var(--tap); padding:0 var(--sp-2);
-}
-.cap-hueco{width:64px}
-
-/* --- Recepción: la revisión ------------------------------------------ */
-.cap-revision{display:flex; flex-direction:column; gap:var(--sp-5)}
-.cap-previa{
-  width:100%; max-height:44vh; object-fit:contain; background:var(--surface-2);
-  border:1px solid var(--hair); border-radius:var(--r-lg);
-}
-.cap-lectura{
-  margin:0; font-size:var(--t-sm); font-weight:600; color:var(--muted);
-  display:flex; align-items:center; gap:var(--sp-2);
-}
-.cap-lectura.ok{color:var(--ok)}
-.cap-grupo{border:none; margin:0; padding:0}
-.cap-grupo legend{
-  font-size:var(--t-sm); font-weight:650; color:var(--muted);
-  padding:0; margin-bottom:var(--sp-2);
-}
-/* La aclaración chica debajo de un grupo de opciones: explica por qué la
-   respuesta puede no importar, sin competir con los botones. */
-.cap-nota{
-  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted); line-height:1.4;
-}
-.cap-opciones{display:flex; gap:var(--sp-3)}
-.cap-opcion{
-  flex:1; min-height:60px; cursor:pointer;
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
-  font-family:var(--font-ui); font-size:var(--t-md); font-weight:650; color:var(--ink);
-  transition:background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
-}
-.cap-opcion.elegida{background:var(--brand); border-color:var(--brand); color:var(--on-brand)}
-/* Guardar queda SIEMPRE al alcance del pulgar.
- *
- * Antes era el ultimo elemento de una pila que scrollea: con cinco fotos en la
- * grilla mas las preguntas, caia abajo del pliegue. Y eso contradecia lo que la
- * pantalla dice de si misma — las preguntas son salteables a proposito, porque
- * el dia que llegan tres proveedores juntos es el dia que se abandona una app
- * que obliga a contestarlas. Si hay que scrollear pasandolas para guardar, en
- * la practica no son salteables: estan en el medio.
- *
- * Es el mismo patron que ya usa el boton de arranque de esta misma pantalla. */
-.cap-cierre{
-  position:sticky; bottom:var(--sp-4); z-index:15;
-  display:flex; flex-direction:column; gap:var(--sp-3);
-  /* Fondo propio: sin esto la grilla de fotos se ve pasar por atras del boton. */
-  padding-top:var(--sp-3);
-  background:linear-gradient(to bottom, transparent, var(--ground) 22%);
-}
-.cap-guardar{min-height:56px; font-size:var(--t-lg)}
-/* Aire abajo para que el boton pegajoso no tape la ultima pregunta al final
-   del scroll. */
-.cap-revision{padding-bottom:var(--sp-4)}
-
-.cap-listo{
-  display:flex; align-items:center; gap:var(--sp-2); margin:0 0 var(--sp-4);
-  padding:var(--sp-4); border-radius:var(--r-md);
-  background:var(--ok-soft); color:var(--ok); font-weight:650;
-}
-.cap-tilde{font-size:var(--t-lg)}
-.cap-aviso{
-  margin:0 0 var(--sp-4); padding:var(--sp-4); border-radius:var(--r-md);
-  background:var(--warn-soft); color:var(--warn); font-size:var(--t-sm); font-weight:600;
-}
-.cap-error{
-  margin:0 0 var(--sp-4); padding:var(--sp-4); border-radius:var(--r-md);
-  background:var(--crit-soft); color:var(--crit); font-size:var(--t-sm); font-weight:600;
-}
-/* Alto real para que el botón caiga abajo aunque la lista del día esté vacía.
-   Se descuentan la barra de título y la de navegación; con la lista larga toma
-   el relevo el `position:sticky` del propio botón. */
-.cap-recepcion{
-  display:flex; flex-direction:column; gap:var(--sp-4);
-  min-height:calc(100dvh - 200px);
-}
-.cap-recepcion .cap-arranque{margin-top:auto}
-.cap-lista{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
-.cap-item{
-  display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:var(--sp-3);
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
-  padding:var(--sp-3) var(--sp-4);
-}
-.cap-item-hora{font-size:var(--t-sm); color:var(--muted); font-variant-numeric:tabular-nums}
-.cap-item-nombre{font-weight:600; font-size:var(--t-base)}
-.cap-item-meta{font-size:var(--t-sm); color:var(--muted); text-align:right}
-
-/* --- Pagos ------------------------------------------------------------ */
-.pg-grupo{margin-bottom:var(--sp-6)}
-.pg-vencido{color:var(--crit)}
-.pg-tabla{width:100%; border-collapse:collapse; font-size:var(--t-base)}
-.pg-tabla th{
-  text-align:left; font-size:var(--t-xs); font-weight:700; text-transform:uppercase;
-  letter-spacing:.04em; color:var(--muted); padding:var(--sp-3) var(--sp-4);
-  border-bottom:1px solid var(--hair); white-space:nowrap;
-}
-.pg-tabla td{padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--hair)}
-.pg-tabla tr:last-child td{border-bottom:none}
-/* Los importes en columna: las comas alineadas se comparan de un vistazo, y
-   comparar es exactamente lo que se hace en esta pantalla. */
-.pg-num{text-align:right; font-variant-numeric:tabular-nums}
-/* El encabezado necesita el selector más específico: `.pg-tabla th` le gana a
-   `.pg-num` por especificidad, y el título quedaba a la izquierda de su columna. */
-.pg-tabla th.pg-num{text-align:right}
-.pg-fuerte{font-weight:700}
-.pg-check{width:44px}
-.pg-check input{width:20px; height:20px; accent-color:var(--brand); cursor:pointer}
-.pg-ver{width:1%; white-space:nowrap}
-.pg-mini{min-height:34px; padding:0 var(--sp-3); font-size:var(--t-sm)}
-.pg-tipo{
-  margin-left:var(--sp-2); font-size:var(--t-xs); color:var(--muted);
-  text-transform:uppercase; letter-spacing:.03em;
-}
-.pg-elegida td{background:var(--brand-soft)}
-/* Mientras se arma una transferencia, lo de otro proveedor se deshabilita DE
-   VERDAD. Antes solo se atenuaba: parecía deshabilitado y no lo estaba, y
-   tocarlo borraba la selección sin aviso. Un control que miente sobre lo que
-   hace es peor que uno que no está. Para cambiar de proveedor: "Deshacer". */
-.pg-otra td{opacity:.55}
-.pg-otra input{cursor:not-allowed}
-
-/* El filtro por entidad. Va arriba de todo y a la vista: un total de plata sin
-   saber de qué contribuyente es, es un total que no significa nada. */
-.pg-entidades{
-  display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-bottom:var(--sp-4);
-}
-.pg-ent{
-  padding:var(--sp-2) var(--sp-4); border-radius:var(--r-pill);
-  background:var(--surface-2); border:1px solid transparent;
-  font-size:var(--t-sm); font-weight:650; color:var(--muted); text-decoration:none;
-  transition:background-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-@media (hover:hover){ .pg-ent:hover{color:var(--ink)} }
-.pg-ent.elegida{background:var(--surface); border-color:var(--hair); color:var(--ink)}
-/* Lo que falta resolver. Se distingue porque no es una entidad más: es trabajo
-   pendiente, y un contador es lo que hace que ese trabajo se termine. */
-.pg-ent.aviso{color:var(--warn)}
-.pg-ent.aviso.elegida{background:var(--warn-soft); border-color:var(--hair)}
-
-/* La bandeja de comprobantes sin entidad, con su lista y su selector. Es
-   trabajo de ordenar, no una alarma: por eso no lleva el fondo de aviso. */
-.pg-huerfanos{margin-bottom:var(--sp-5)}
-.pg-huerfanos-lista{list-style:none; margin:var(--sp-3) 0 0; padding:0}
-.pg-huerfanos-lista li{
-  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4);
-  padding:var(--sp-3) 0; border-bottom:1px solid var(--hair);
-}
-.pg-huerfanos-lista li:last-child{border-bottom:none}
-.pg-huerfano-info{display:flex; flex-direction:column; gap:2px; min-width:0}
-.pg-huerfano-info strong{font-size:var(--t-md); color:var(--ink)}
-/* El selector se toca con el pulgar: esta pantalla también se usa por teléfono. */
-.pg-huerfanos-lista select{min-height:var(--tap); max-width:45%}
-
-.pg-alerta{
-  background:var(--warn-soft); border:1px solid var(--hair); border-radius:var(--r-md);
-  padding:var(--sp-4); margin-bottom:var(--sp-5); font-size:var(--t-sm); color:var(--warn);
-}
-.pg-alerta ul{margin:var(--sp-2) 0 0; padding-left:var(--sp-5)}
-.pg-pendientes{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:var(--sp-3)}
-.pg-pendientes li{
-  background:var(--surface-2); border-radius:var(--r-pill);
-  padding:var(--sp-2) var(--sp-4); font-size:var(--t-sm); color:var(--muted);
-}
-.pg-pendientes strong{color:var(--ink)}
-
-.pg-barra{
-  position:sticky; bottom:0; z-index:20; margin-top:var(--sp-6);
-  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap;
-  gap:var(--sp-4); padding:var(--sp-4) var(--sp-5);
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg);
-  box-shadow:var(--shadow-lift);
-}
-.pg-barra-datos{display:flex; align-items:baseline; gap:var(--sp-4); flex-wrap:wrap}
-.pg-barra-prov{font-weight:700}
-.pg-barra-total{font-size:var(--t-2xl); font-weight:700; font-variant-numeric:tabular-nums}
-.pg-barra-cuenta{font-size:var(--t-sm); color:var(--muted)}
-.pg-barra-acciones{display:flex; gap:var(--sp-3)}
-
-.pg-visor{
-  background:var(--surface); border-radius:var(--r-lg); box-shadow:var(--shadow-lift);
-  max-width:min(920px, 94vw); max-height:92vh; overflow:auto; padding:var(--sp-4);
-}
-.pg-visor header{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:var(--sp-4); margin-bottom:var(--sp-3);
-}
-.pg-visor img{width:100%; height:auto; border-radius:var(--r-md); background:var(--surface-2)}
-
-.sr-only{
-  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
-  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
-}
-
-@media (max-width:640px){
-  .pg-ver{display:none}
-  .pg-barra{flex-direction:column; align-items:stretch}
-  .pg-barra-acciones .btn{flex:1}
-}
-
-/* La fila entera abre el comprobante: quien paga los mira todos, así que el
-   objetivo tiene que ser grande. El nombre es además un botón real, porque una
-   fila no se puede enfocar con el teclado. */
-.pg-fila{cursor:pointer}
-@media (hover:hover){ .pg-fila:hover td{background:var(--surface-2)} }
-@media (hover:hover){ .pg-elegida:hover td{background:var(--brand-soft)} }
-.pg-nombre{
-  background:none; border:none; padding:0; cursor:pointer; text-align:left;
-  font:inherit; color:inherit;
-}
-.pg-ver{color:var(--muted)}
-.pg-ver svg{width:18px; height:18px; display:block}
-
-/* El total se copia sin separador de miles: es como se tipea un importe en el
-   homebanking, y pegarlo con puntos lo rechaza. */
-.pg-barra-total{
-  background:none; border:none; padding:0; cursor:pointer; color:inherit;
-  font-family:inherit; font-size:var(--t-2xl); font-weight:700;
-  font-variant-numeric:tabular-nums; display:inline-flex; align-items:baseline; gap:var(--sp-2);
-}
-.pg-copiar{
-  font-size:var(--t-xs); font-weight:600; color:var(--muted);
-  text-transform:uppercase; letter-spacing:.04em;
-}
-.pg-fecha{
-  display:inline-flex; align-items:center; gap:var(--sp-2);
-  font-size:var(--t-sm); color:var(--muted); white-space:nowrap;
-}
-.pg-fecha input{
-  font:inherit; color:var(--ink); background:var(--surface);
-  border:1px solid var(--hair); border-radius:var(--r-sm);
-  padding:0 var(--sp-2); min-height:38px;
-}
 
 /* La hoja de "Más" de la barra inferior. Solo aparece cuando el rol tiene más
    entradas de las que entran: hoy, únicamente ADMIN. */
@@ -1507,847 +1294,28 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   .mobmas a.active svg{color:var(--gold)}
 }
 
-/* El resultado de marcar pagos. Va pegado a la barra de selección —donde está
-   mirando quien acaba de tocar el botón— y no arriba de todo, que en una lista
-   larga queda fuera de pantalla. */
-.pg-aviso{
-  display:flex; align-items:flex-start; gap:var(--sp-2); justify-content:space-between;
-  padding:12px 14px; border-radius:var(--r-md); font-size:var(--t-sm); font-weight:600;
-  border:1px solid; margin-bottom:var(--sp-3); text-wrap:pretty;
-}
-.pg-aviso button{
-  border:none; background:none; color:inherit; font-size:20px; line-height:1;
-  cursor:pointer; padding:0 4px; opacity:.7;
-}
-@media (hover:hover){ .pg-aviso button:hover{opacity:1} }
-.pg-aviso-bien{background:var(--ok-bg,#0f2a1a); border-color:var(--ok-line,#1f6b3f); color:var(--ok-ink,#7ee0a5)}
-.pg-aviso-ojo{background:var(--warn-bg,#2c2410); border-color:var(--warn-line,#7a6220); color:var(--warn-ink,#f0cf7a)}
-.pg-aviso-mal{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8)}
-
-/* ===== Completar un comprobante a mano ===== */
-
-/* La foto al lado del formulario. En el teléfono se apilan y la foto queda
-   arriba, que es el orden en que se mira: primero el papel, después el campo. */
-.cmp-partido{display:grid; gap:var(--sp-5); grid-template-columns:1fr; align-items:start}
-@media(min-width:900px){
-  .cmp-partido{grid-template-columns:minmax(0,1fr) minmax(320px,420px)}
-  /* La foto se queda quieta mientras se baja por los campos. */
-  .cmp-papel{position:sticky; top:var(--sp-5)}
-}
-
-.cmp-papel{background:var(--surface-2); border:1px solid var(--hair); border-radius:var(--r-lg); overflow:hidden}
-.cmp-foto{display:block; width:100%; height:auto; max-height:78vh; object-fit:contain}
-.cmp-sin-foto{padding:var(--sp-7) var(--sp-5); text-align:center; color:var(--muted); font-size:var(--t-sm)}
-
-.cmp-form{display:flex; flex-direction:column; gap:var(--sp-4)}
-.cmp-campo{display:flex; flex-direction:column; gap:6px}
-.cmp-campo > span{font-size:var(--t-sm); font-weight:650; color:var(--ink)}
-.cmp-campo input{
-  min-height:var(--tap); padding:10px 12px; font-size:16px; /* 16px: menos que eso y iOS hace zoom al enfocar */
-  border:1px solid var(--hair); border-radius:var(--r-md);
-  background:var(--surface); color:var(--ink); width:100%;
-}
-.cmp-campo input:focus-visible{outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold)}
-.cmp-campo input:disabled{background:var(--surface-2); color:var(--muted); cursor:not-allowed}
-.cmp-campo small{font-size:var(--t-xs); color:var(--muted)}
-
-.cmp-guardar{min-height:var(--tap); margin-top:var(--sp-2)}
-
-.cmp-error,.cmp-pagado,.cmp-duplicado{
-  padding:12px 14px; border-radius:var(--r-md); border:1px solid;
-  font-size:var(--t-sm); margin-bottom:var(--sp-4); text-wrap:pretty;
-}
-.cmp-error{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8); font-weight:600}
-.cmp-pagado{background:var(--surface-2); border-color:var(--hair); color:var(--ink)}
-.cmp-duplicado{background:var(--warn-bg,#2c2410); border-color:var(--warn-line,#7a6220); color:var(--warn-ink,#f0cf7a)}
-.cmp-duplicado-acciones{display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-3)}
-
-/* En claro los tres avisos necesitan sus propios valores: los de arriba están
-   pensados sobre fondo oscuro y sobre blanco no llegan a 4.5:1. */
-@media(prefers-color-scheme:light){
-  .cmp-error{background:#FDF2F2; border-color:#E4B4B4; color:#8A1F27}
-  .cmp-duplicado{background:#FCF6E6; border-color:#DCC079; color:#6B4E10}
-}
-
-/* Las filas de "falta resolver". Cada una abre la pantalla donde se completa,
-   así que se comportan como enlaces y no como un listado decorativo. */
-.pg-faltantes{list-style:none; margin:0 0 var(--sp-4); padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
-.pg-faltantes a{
-  display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:var(--sp-3);
-  min-height:var(--tap); padding:10px 14px; text-decoration:none;
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
-  color:var(--ink);
-}
-@media (hover:hover){ .pg-faltantes a:hover{border-color:var(--gold)} }
-.pg-faltantes a:focus-visible{outline:2px solid var(--gold); outline-offset:1px}
-.pg-faltantes-quien{font-weight:650; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.pg-faltantes-que{font-size:var(--t-sm); color:var(--muted)}
-.pg-faltantes-ir{color:var(--muted); font-size:20px; line-height:1}
-@media(max-width:560px){
-  /* En el teléfono el motivo baja: dos textos y una flecha en 360px dejan el
-     nombre del proveedor en tres letras y un puntito. */
-  .pg-faltantes a{grid-template-columns:1fr auto; row-gap:2px}
-  .pg-faltantes-que{grid-column:1; grid-row:2}
-  .pg-faltantes-ir{grid-column:2; grid-row:1 / span 2}
-}
-
-/* ===== La lectura automática ===== */
-
-.cmp-leer{width:100%; min-height:var(--tap)}
-
-/* Un campo propuesto por el lector y todavía no confirmado. El borde punteado
-   dice "esto no lo escribió nadie todavía" sin depender del color, que en una
-   pantalla al sol o con daltonismo puede no llegar. */
-.cmp-propuesto input{border-style:dashed; border-color:var(--gold); background:var(--surface-2)}
-.cmp-propuesto > span::after{
-  content:" · propuesto"; font-weight:600; color:var(--gold); font-size:var(--t-xs);
-}
-
-.cmp-nota{font-size:var(--t-sm); color:var(--muted); margin:0; text-wrap:pretty}
-
-.cmp-semaforo{
-  padding:12px 14px; border-radius:var(--r-md); border:1px solid;
-  font-size:var(--t-sm); text-wrap:pretty;
-}
-.cmp-semaforo-bien{background:var(--ok-bg,#0f2a1a); border-color:var(--ok-line,#1f6b3f); color:var(--ok-ink,#7ee0a5)}
-.cmp-semaforo-mal{background:var(--bad-bg,#2e1416); border-color:var(--bad-line,#7d2b31); color:var(--bad-ink,#f2a3a8)}
-.cmp-semaforo-neutro{background:var(--surface-2); border-color:var(--hair); color:var(--ink)}
-
-@media(prefers-color-scheme:light){
-  .cmp-semaforo-bien{background:#EFF7F1; border-color:#A9CDB5; color:#1B5E31}
-  .cmp-semaforo-mal{background:#FDF2F2; border-color:#E4B4B4; color:#8A1F27}
-}
-
-/* ===== Marcar el papel antes de guardar ===== */
-
-.rec-caja{display:flex; flex-direction:column; gap:var(--sp-2)}
-.rec-lienzo{
-  width:100%; height:auto; display:block; border-radius:var(--r-md);
-  background:var(--surface-2);
-  /* Sin esto, arrastrar una esquina desplaza la página en vez de mover el punto:
-     el navegador se queda con el gesto antes de que lo vea el lienzo. */
-  touch-action:none;
-  cursor:grab;
-}
-.rec-lienzo:active{cursor:grabbing}
-.rec-ayuda{font-size:var(--t-sm); color:var(--muted); margin:0; text-wrap:pretty}
-.cap-sin-recorte{width:100%; min-height:var(--tap)}
-
-.rec-pie{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); flex-wrap:wrap}
-.rec-girar{min-height:var(--tap); display:inline-flex; align-items:center; gap:6px; flex-shrink:0}
-.rec-girar svg{width:18px; height:18px}
-.cap-progreso{font-size:var(--t-sm); font-weight:600; color:var(--muted); margin:0 0 var(--sp-2)}
-
-/* Las dos acciones de cada fila de pago: la foto del comprobante y el detalle
-   reconstruido. Van separadas y con nombres distintos a propósito — un solo
-   icono para las dos terminaba en que alguien mandara la reconstrucción
-   creyendo que mandaba la factura. */
-.pg-accion{
-  display:inline-flex; align-items:center; justify-content:center;
-  width:34px; height:34px; border:none; background:none; cursor:pointer;
-  color:var(--muted); border-radius:var(--r-sm); text-decoration:none;
-}
-@media (hover:hover){ .pg-accion:hover{color:var(--gold); background:var(--surface-2)} }
-.pg-accion:focus-visible{outline:2px solid var(--gold); outline-offset:1px}
-.pg-accion svg{width:19px; height:19px}
-
-/* "+ 2 sin importe" junto al total de un proveedor. Va en su propia línea y en
-   el color de atención: es la diferencia entre "debe $0" y "no se sabe cuánto
-   debe", y esa diferencia se paga. */
-.pg-sin-importe{
-  display:block; font-size:var(--t-xs); font-weight:600;
-  color:var(--warn-ink,#f0cf7a); margin-top:2px; white-space:nowrap;
-}
-@media(prefers-color-scheme:light){ .pg-sin-importe{color:#6B4E10} }
-
-/* El marco que sigue al papel en el visor.
-   Reemplaza a `.cap-marco`, que era un recuadro fijo: aquel decía "poné el papel
-   más o menos acá" y éste dice "encontré el papel, es esto". */
-.cap-marco-vivo{
-  position:absolute; inset:0; width:100%; height:100%;
-  object-fit:cover; pointer-events:none; z-index:2;
-}
-
-/* ===== Modo lote: la cámara es la pantalla de trabajo ===== */
-
-/* La tira de fotos sacadas, sobre los controles. Dice "van tres" sin contar
-   nada, y deja descartar la que salió movida sin salir de la cámara. */
-.cap-tira{
-  position:absolute; left:0; right:0; bottom:132px; z-index:3;
-  display:flex; gap:8px; padding:8px 14px; overflow-x:auto;
-  scrollbar-width:none; -webkit-overflow-scrolling:touch;
-}
-.cap-tira::-webkit-scrollbar{display:none}
-.cap-mini{
-  position:relative; flex:0 0 auto; width:54px; height:72px; padding:0;
-  border:2px solid rgba(255,255,255,.85); border-radius:6px; overflow:hidden;
-  background:#000; cursor:pointer; touch-action:manipulation;
-}
-.cap-mini img{width:100%; height:100%; object-fit:cover; display:block}
-.cap-mini-x{
-  position:absolute; top:-1px; right:1px; color:#fff; font-size:17px; line-height:1;
-  text-shadow:0 1px 3px rgba(0,0,0,.9);
-}
-
-/* "Listo" ocupa el lugar que antes estaba vacío, y solo cuando hay algo que
-   guardar: un botón que aparece cuando sirve se encuentra mejor que uno que
-   está siempre y a veces no hace nada. */
-.cap-listo-btn{
-  display:inline-flex; align-items:center; gap:8px;
-  min-height:var(--tap); padding:0 18px; border:none; border-radius:var(--r-pill);
-  background:#22c07a; color:#04231a; font-family:var(--font-ui);
-  font-size:var(--t-md); font-weight:700; cursor:pointer; touch-action:manipulation;
-}
-.cap-cuenta{
-  display:grid; place-items:center; min-width:22px; height:22px; padding:0 6px;
-  border-radius:var(--r-pill); background:rgba(0,0,0,.22); font-size:var(--t-sm);
-}
-
-/* La grilla de revisión: las fotos de la tanda antes de guardar. Ya vienen
-   recortadas por el visor, así que acá no hay nada que ajustar — solo mirar. */
-.cap-grilla{
-  display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr));
-  gap:var(--sp-3); margin-bottom:var(--sp-4);
-}
-.cap-grilla-item{position:relative; border-radius:var(--r-md); overflow:hidden; background:var(--surface-2)}
-.cap-grilla-item img{width:100%; aspect-ratio:3/4; object-fit:cover; display:block}
-.cap-quitar{
-  position:absolute; top:6px; right:6px; min-height:30px; padding:0 10px;
-  border:none; border-radius:var(--r-pill); background:rgba(0,0,0,.7); color:#fff;
-  font-family:var(--font-ui); font-size:var(--t-xs); font-weight:650; cursor:pointer;
-}
-/* Cuando el detector no encontró el papel, la foto se guarda entera. Decirlo
-   evita la sorpresa de abrirla después y verla con media mesa adentro. */
-.cap-sin-recorte-aviso{
-  position:absolute; left:6px; bottom:6px; padding:2px 7px; border-radius:var(--r-pill);
-  background:rgba(0,0,0,.7); color:var(--warn-ink,#f0cf7a); font-size:var(--t-xs); font-weight:650;
-}
-.cap-sumar{width:100%; min-height:var(--tap); margin-bottom:var(--sp-4)}
-
-/* ---------------------------------------------------------------------------
-   Importar de ARCA
-   --------------------------------------------------------------------------- */
-
-.imp{display:flex; flex-direction:column; gap:var(--sp-5)}
-/* El formulario en su propia superficie. Antes flotaba en una pagina vacia sin
-   ancla: el ojo no sabia donde empezar, y una pantalla que se usa una vez por
-   mes tiene que decir sola que hacer. */
-.imp-form{
-  display:flex; flex-direction:column; gap:var(--sp-4); align-items:flex-start;
-  background:var(--surface-2); border-radius:var(--r-md);
-  padding:var(--sp-5); max-width:640px;
-}
-.imp-form input[type="file"]{font-size:var(--t-sm); color:var(--muted)}
-.imp-error{white-space:pre-wrap; word-break:break-word}
-
-/* La vista previa. Va en una tarjeta propia porque es un paso aparte: lo que
-   se ve acá todavia NO se guardo. */
-.imp-previa{
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
-  padding:var(--sp-5); display:flex; flex-direction:column; gap:var(--sp-4);
-}
-.imp-previa h2{margin:0; font-size:var(--t-lg)}
-
-/* Los tres numeros que decide mirar antes de aplicar. */
-.imp-numeros{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:var(--sp-5)}
-.imp-numeros li{display:flex; flex-direction:column; gap:2px; min-width:150px; flex:1}
-.imp-numeros strong{font-size:var(--t-xl); font-variant-numeric:tabular-nums; color:var(--ink)}
-.imp-numeros span{font-size:var(--t-sm); color:var(--muted); line-height:1.35}
-
-/* Las diferencias contra correcciones a mano: no se pisan, se muestran. */
-.imp-conflictos{
-  background:var(--warn-soft); border-radius:var(--r-md);
-  padding:var(--sp-4); font-size:var(--t-sm); color:var(--warn);
-}
-.imp-conflictos ul{margin:var(--sp-2) 0 0; padding-left:var(--sp-5)}
-.imp-conflictos p{margin:var(--sp-2) 0 0}
-
-/* Las filas que se entienden pero no entran: hoy, las que están en otra moneda.
-   Se listan enteras porque a cada una hay que ir a cargarla a mano, y un
-   contador obligaría a abrir el CSV para saber cuáles. */
-.imp-salteadas{
-  background:var(--warn-soft); border-radius:var(--r-md);
-  padding:var(--sp-4); font-size:var(--t-sm); color:var(--warn);
-}
-.imp-salteadas p{margin:var(--sp-2) 0 0}
-.imp-salteadas ul{margin:var(--sp-3) 0 0; padding-left:var(--sp-5); display:flex; flex-direction:column; gap:2px}
-.imp-salteadas li{word-break:break-word}
-/* Gris sobre un fondo de color se ve lavado: se apaga con el mismo tono, no con --muted. */
-.imp-linea{opacity:.75}
-
-/* El corte de fecha. Angosto a propósito: es una fecha, no un párrafo, y un
-   campo del ancho del formulario invita a creer que es obligatorio. */
-.imp-desde{margin-bottom:var(--sp-4)}
-.imp-desde input{max-width:220px}
-.imp-ayuda{
-  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted);
-  line-height:1.45; max-width:62ch;
-}
-
-/* Las que venían en otra moneda. Superficie propia y no color de advertencia:
-   no salió nada mal, pero el importe lo calculó la máquina y hay que poder
-   mirarlo. Se muestra la cuenta entera, no solo el resultado. */
-.imp-convertidas{
-  background:var(--surface-2); border-radius:var(--r-md);
-  padding:var(--sp-4); font-size:var(--t-sm); color:var(--ink);
-}
-.imp-convertidas ul{
-  list-style:none; margin:var(--sp-3) 0 0; padding:0;
-  display:flex; flex-direction:column; gap:var(--sp-3);
-}
-.imp-convertidas li{display:flex; flex-direction:column; gap:2px}
-.imp-conv-quien{color:var(--muted)}
-.imp-conv-cuenta{font-variant-numeric:tabular-nums; word-break:break-word}
-
-.imp-acciones{display:flex; gap:var(--sp-3)}
-.imp-hecho{line-height:1.45}
-
-.imp-historial{margin-top:var(--sp-6)}
-.imp-historial h2{font-size:var(--t-md); color:var(--muted); margin:0 0 var(--sp-3)}
-.imp-historial ul{list-style:none; margin:0; padding:0}
-.imp-historial li{
-  display:flex; flex-direction:column; gap:2px;
-  padding:var(--sp-3) 0; border-bottom:1px solid var(--hair);
-}
-.imp-historial li:last-child{border-bottom:none}
-
-/* ---------------------------------------------------------------------------
-   Pagos en pantalla angosta: la tabla cambia de ESTRUCTURA, no de tamaño
-   ---------------------------------------------------------------------------
-
-   El problema que resuelve: `.tablewrap` scrollea horizontal, y en un teléfono
-   lo que quedaba afuera era la columna del IMPORTE. La pantalla que existe para
-   decidir qué pagar mostraba proveedor y fecha, y ningún número.
-
-   Achicar la letra no lo arregla —solo posterga el corte—. Lo que cambia es la
-   forma: cada fila pasa a ser una grilla de dos renglones donde el importe
-   tiene su lugar propio, alineado a la derecha, sin competir con nada.
-
-       [✓]  Proveedor              $ 764.107,11
-       [✓]  vence 11/09/26            👁  📄
-
-   El `<table>` se mantiene en el marcado: en escritorio sigue siendo una tabla
-   de verdad —con su encabezado, su densidad y su semántica para el lector de
-   pantalla— y eso no se sacrifica por el teléfono. */
-
-@media (max-width: 640px){
-  /* Sin scroll horizontal: si algo no entra, se reacomoda. */
+/* ===== Tablas en pantallas muy angostas =====================================
+   Hasta 640 px el marco de una tabla no scrollea de costado: lo que no entra se
+   reacomoda (las tablas del celular son listas, ver más abajo) en vez de quedar
+   escondido a la derecha. Esta regla nació con la pantalla de pagos, que ya no
+   existe, pero alcanzaba a TODAS las tablas de la app: se conserva tal cual,
+   acá y con su nombre, para no cambiar cómo se ven hoy. */
+@media (max-width:640px){
   .tablewrap{overflow-x:visible}
-
-  /* **La causa raiz.** Hay un `table{min-width:680px}` global: es lo que
-     obligaba a TODA tabla de la app a desbordar y scrollear en un telefono.
-     Acá se anula, que es lo que permite que la fila se reacomode en vez de
-     empujar el importe afuera. */
-  .pg-tabla-vence, .pg-tabla-vence tbody, .pg-tabla-vence tr, .pg-tabla-vence td{
-    display:block;
-    min-width:0;
-    max-width:100%;
-  }
-  /* El encabezado se oculta a la vista pero SIGUE en el árbol de
-     accesibilidad: cada celda mantiene su columna para el lector de pantalla. */
-  .pg-tabla-vence thead{
-    position:absolute; width:1px; height:1px; overflow:hidden;
-    clip-path:inset(50%); white-space:nowrap;
-  }
-
-  .pg-tabla-vence tr{
-    display:grid;
-    /* `minmax(0,1fr)` y no `1fr`: `1fr` es `minmax(auto,1fr)`, y ese `auto`
-       toma como minimo el ancho del contenido sin cortar. Con el nombre en
-       nowrap la columna se niega a achicarse y vuelve a empujar el importe
-       afuera — el mismo problema, ahora adentro del grid. */
-    grid-template-columns:auto minmax(0,1fr) auto;
-    grid-template-areas:
-      "check nombre importe"
-      "check vence  acciones";
-    align-items:center;
-    column-gap:var(--sp-3);
-    row-gap:var(--sp-1);
-    padding:var(--sp-3) var(--sp-4);
-    border-bottom:1px solid var(--hair);
-  }
-  .pg-tabla-vence tr:last-child{border-bottom:none}
-  .pg-tabla-vence td{padding:0; border:none}
-
-  .pg-tabla-vence .pg-check{grid-area:check; align-self:center}
-  .pg-tabla-vence .pg-c-nombre{grid-area:nombre; min-width:0}
-  .pg-tabla-vence .pg-c-vence{grid-area:vence; font-size:var(--t-sm); color:var(--muted)}
-  /* Las dos acciones son distintas a proposito —el COMPROBANTE es la foto del
-     papel y el DETALLE es la hoja que arma el sistema— asi que ninguna puede
-     quedar cortada. `display:block` del reacomodo las apilaba y la segunda se
-     iba de la fila. */
-  .pg-tabla-vence .pg-ver{
-    grid-area:acciones; justify-self:end;
-    display:flex; gap:var(--sp-2); align-items:center;
-  }
-
-  /* El importe es lo que se vino a ver: gana peso y no se parte nunca. */
-  .pg-tabla-vence .pg-num{
-    grid-area:importe; justify-self:end; white-space:nowrap;
-    font-size:var(--t-lg); font-weight:650; color:var(--ink);
-    font-variant-numeric:tabular-nums;
-  }
-
-  /* El nombre puede ser largo; se corta con puntos suspensivos en vez de
-     empujar el importe fuera de la pantalla. */
-  .pg-tabla-vence .pg-nombre{
-    display:block; max-width:100%; overflow:hidden;
-    text-overflow:ellipsis; white-space:nowrap; text-align:left;
-  }
-
-  /* La de deuda por proveedor: tres columnas, y "Comprobantes" es una etiqueta
-     larga para una cifra corta. El conteo baja como dato secundario del nombre
-     y el total se queda con la derecha. */
-  .pg-tabla-deuda, .pg-tabla-deuda tbody, .pg-tabla-deuda tr, .pg-tabla-deuda td{
-    display:block;
-    min-width:0;
-    max-width:100%;
-  }
-  .pg-tabla-deuda thead{
-    position:absolute; width:1px; height:1px; overflow:hidden;
-    clip-path:inset(50%); white-space:nowrap;
-  }
-  .pg-tabla-deuda tr{
-    display:grid;
-    grid-template-columns:minmax(0,1fr) auto;
-    grid-template-areas:
-      "nombre total"
-      "cant   total";
-    align-items:center;
-    column-gap:var(--sp-3);
-    padding:var(--sp-3) var(--sp-4);
-    border-bottom:1px solid var(--hair);
-  }
-  .pg-tabla-deuda tr:last-child{border-bottom:none}
-  .pg-tabla-deuda td{padding:0; border:none}
-  .pg-tabla-deuda .pg-c-nombre{
-    grid-area:nombre; min-width:0;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-  .pg-tabla-deuda .pg-c-cant{
-    grid-area:cant; text-align:left;
-    font-size:var(--t-sm); color:var(--muted);
-  }
-  /* `Comprobantes` no aparece como encabezado, asi que la cifra sola no se
-     entenderia: la unidad va pegada al numero. */
-  .pg-tabla-deuda .pg-c-cant::after{content:" comprobantes"}
-  .pg-tabla-deuda .pg-fuerte{
-    grid-area:total; justify-self:end; text-align:right; white-space:nowrap;
-    font-size:var(--t-lg); font-variant-numeric:tabular-nums;
-  }
 }
-
-/* ---------------------------------------------------------------------------
-   Entidades — a nombre de quién viene cada factura
-   ---------------------------------------------------------------------------
-
-   La versión anterior era un formulario suelto y una tarjeta adentro del
-   contenido, con la prosa cruzando toda la pantalla. Acá el alta es un bloque
-   con su propio fondo —es una acción, no un ítem más— y las entidades son una
-   LISTA con reglas finas, no tarjetas: son cuatro datos por fila, y encerrar
-   cada una en su caja agrega peso visual sin agregar información. */
-
-.ent{display:flex; flex-direction:column; gap:var(--sp-5)}
-
-.ent-alta{
-  display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-4);
-  background:var(--surface-2); border-radius:var(--r-md);
-  padding:var(--sp-4) var(--sp-5);
-}
-/* El nombre se lleva el espacio sobrante; el CUIT tiene largo fijo y no gana
-   nada con ser más ancho. */
-.ent-alta .field{flex:1 1 220px; min-width:0; gap:var(--sp-2)}
-.ent-alta .ent-campo-cuit{flex:0 1 190px}
-.ent-alta .btn{flex:0 0 auto; min-height:var(--tap)}
-
-.ent-lista{list-style:none; margin:0; padding:0}
-.ent-lista li{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:var(--sp-4); padding:var(--sp-4) 0;
-  border-bottom:1px solid var(--hair);
-}
-.ent-lista li:first-child{padding-top:0}
-.ent-lista li:last-child{border-bottom:none}
-/* Desactivada: se atenúa, no se esconde. Sus comprobantes siguen existiendo y
-   alguien tiene que poder entender de quién son. */
-.ent-inactiva .ent-datos{opacity:.55}
-
-.ent-datos{display:flex; flex-direction:column; gap:var(--sp-1); min-width:0}
-.ent-nombre{
-  display:flex; align-items:center; gap:var(--sp-2);
-  font-size:var(--t-md); font-weight:600; color:var(--ink);
-}
-.ent-meta{display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap}
-
-/* El CUIT se edita en el lugar. Se ve que es editable —subrayado punteado— sin
-   disfrazarse de botón: no es una acción, es un valor que se puede corregir. */
-.ent-cuit{
-  background:none; border:none; padding:0; cursor:pointer;
-  font-family:var(--font-ui); font-size:var(--t-sm); color:var(--muted);
-  font-variant-numeric:tabular-nums; letter-spacing:.01em;
-  border-bottom:1px dashed var(--hair);
-  transition:color var(--dur) var(--ease), border-color var(--dur) var(--ease);
-}
-@media (hover:hover){ .ent-cuit:hover{color:var(--ink); border-bottom-color:var(--muted)} }
-.ent-cuit:focus-visible{outline:2px solid var(--gold); outline-offset:3px; border-radius:2px}
-.ent-cuit-input{
-  width:15ch; font-size:var(--t-sm); font-variant-numeric:tabular-nums;
-  min-height:var(--tap);
-}
-.ent-cuenta{font-size:var(--t-sm); color:var(--muted)}
-.ent-cuenta::before{content:"· "}
-
-.ent-nota{
-  margin:0; font-size:var(--t-sm); color:var(--muted);
-  max-width:68ch; line-height:1.5; text-wrap:pretty;
-}
-
-@media (max-width: 560px){
-  /* El botón baja a su propia línea en vez de apretar el nombre. */
-  .ent-lista li{flex-wrap:wrap}
-  .ent-lista li .btn{width:100%}
-  .ent-alta .btn{width:100%}
-}
-
-/* ---------------------------------------------------------------------------
-   Prosa introductoria
-   ---------------------------------------------------------------------------
-   Un párrafo que explica una pantalla cruzaba los 1120px del contenido. A esa
-   medida el ojo pierde el renglón al volver, que es exactamente el problema que
-   el límite de 65-75 caracteres resuelve. */
-.intro{
-  max-width:68ch; margin:0 0 var(--sp-5);
-  font-size:var(--t-base); color:var(--muted); line-height:1.55;
-  text-wrap:pretty;
-}
-.intro strong{color:var(--ink); font-weight:600}
-
-/* Importar de ARCA: el selector de archivo, con el control nativo escondido
-   pero enfocable, y su etiqueta haciendo de botón. */
-.imp-archivo{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap}
-.imp-archivo .btn{min-height:var(--tap); cursor:pointer}
-/* El input escondido sigue recibiendo foco por teclado: el anillo tiene que
-   verse en la etiqueta, o no hay forma de saber dónde está el foco. */
-.imp-archivo input:focus-visible + .btn{outline:2px solid var(--gold); outline-offset:2px}
-.imp-nombre{font-size:var(--t-sm); color:var(--ink); word-break:break-all}
-.imp-vacio{color:var(--muted)}
-
-/* Que hace la importacion, cuando todavia no se hizo ninguna. Un vacio que
-   ensena la pantalla en vez de decir "no hay nada": es la unica pantalla de la
-   app que se usa una vez por mes, asi que nadie recuerda que esperaba. */
-.imp-que-hace{
-  margin-top:var(--sp-6); max-width:640px;
-  border-top:1px solid var(--hair); padding-top:var(--sp-5);
-}
-.imp-que-hace h2{
-  margin:0 0 var(--sp-3); font-size:var(--t-sm); font-weight:650;
-  color:var(--muted); letter-spacing:.02em;
-}
-.imp-que-hace dl{margin:0; display:flex; flex-direction:column; gap:var(--sp-4)}
-.imp-que-hace dt{font-size:var(--t-base); font-weight:600; color:var(--ink)}
-.imp-que-hace dd{
-  margin:var(--sp-1) 0 0; font-size:var(--t-sm); color:var(--muted);
-  line-height:1.5; max-width:60ch;
-}
-
-/* ---------------------------------------------------------------------------
-   Pagos — el estado de la deuda, en una línea
-   ---------------------------------------------------------------------------
-
-   **No es un tablero, y esa es la decisión.** La pantalla abre en "qué vence"
-   porque la pregunta que trae a alguien acá es "¿qué pago hoy?", y una lista
-   ordenada por urgencia la contesta más rápido que unas cifras. Esto no compite
-   con la lista: la enmarca. Quien abre quiere saber en qué tamaño de problema
-   está antes de empezar a leer filas.
-
-   Por eso las cifras son del tamaño de un título de sección y no de un titular:
-   el número grande y solo, con su etiqueta chiquita debajo, es la plantilla que
-   convierte cualquier pantalla en un panel de métricas — y acá el protagonista
-   tiene que seguir siendo la lista. */
-
-.pg-resumen{
-  display:flex; flex-wrap:wrap; gap:var(--sp-6);
-  margin:0 0 var(--sp-5); padding:0 0 var(--sp-4);
-  border-bottom:1px solid var(--hair);
-}
-.pg-resumen-item{min-width:0}
-.pg-resumen dt{
-  font-size:var(--t-sm); color:var(--muted); margin-bottom:2px;
-}
-.pg-resumen dd{
-  margin:0; display:flex; flex-direction:column; gap:1px;
-  font-size:var(--t-lg); font-weight:650; color:var(--ink);
-  font-variant-numeric:tabular-nums; white-space:nowrap;
-}
-/* Lo vencido es plata que ya se pasó de fecha: se lee distinto del resto sin
-   gritar. El color hace el trabajo; el tamaño se mantiene. */
-.pg-resumen-vencido dd{color:var(--crit)}
-.pg-resumen-vencido dt{color:var(--crit)}
-
-.pg-resumen-detalle{
-  font-size:var(--t-sm); font-weight:400; color:var(--muted);
-  white-space:normal;
-}
-/* Un total al que le faltan comprobantes sin importe es un número más chico que
-   la deuda real. Se avisa donde se lee el número, no en una nota al pie. */
-.pg-resumen-incompleto{color:var(--warn)}
-/* Lo que sale solo: información, no tarea. Se muestra apagado porque nadie
-   tiene que hacer nada con esto — pero se muestra, porque la plata sale. */
-.pg-resumen-debito dt, .pg-resumen-debito dd{color:var(--muted)}
-
-@media (max-width: 560px){
-  /* Los tres en fila no entran; en columna cada uno conserva su renglón y el
-     importe no se parte. */
-  .pg-resumen{flex-direction:column; gap:var(--sp-4)}
-}
-
-/* El permiso para saltear las preguntas, arriba de ellas. */
-.cap-salteables{margin:0}
-
-/* ---------------------------------------------------------------------------
-   Proveedores — a cuántos días se le paga a cada uno
-   ---------------------------------------------------------------------------
-   Una lista de trabajo, no una tabla de consulta: se recorre de arriba hacia
-   abajo hasta vaciarla. Por eso las filas que faltan se distinguen por dónde
-   están —van primero— y además por una marca, no sólo por color: quien no
-   distingue tonos tiene que poder verlo igual. */
-
-.cond{display:flex; flex-direction:column; gap:var(--sp-4)}
-
-.cond-total{margin:0 0 var(--sp-2); font-size:var(--t-base); color:var(--ink)}
-.cond-avance{margin:0; font-size:var(--t-sm); color:var(--muted)}
-
-.cond-lista{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
-
-.cond-fila{
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
-  padding:var(--sp-4); display:flex; flex-direction:column; gap:var(--sp-3);
-}
-/* La ya resuelta: se achica y se apaga. No se resalta lo que falta —al empezar
-   falta todo, y un resalte que abarca la pantalla entera no resalta nada—; se
-   encoge lo hecho, y la lista se acorta sola a medida que avanza. */
-.cond-hecha{
-  flex-direction:row; align-items:center; justify-content:space-between;
-  gap:var(--sp-4); padding:var(--sp-3) var(--sp-4); background:var(--surface-2);
-}
-.cond-resuelto{display:flex; align-items:center; gap:var(--sp-3); flex-shrink:0}
-.cond-chip{
-  background:var(--brand); color:var(--on-brand);
-  border-radius:var(--r-pill); padding:3px var(--sp-3);
-  font-size:var(--t-sm); font-weight:600; white-space:nowrap;
-}
-.cond-cambiar{
-  background:none; border:none; padding:0; cursor:pointer;
-  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
-}
-@media (hover:hover){ .cond-cambiar:hover{color:var(--ink)} }
-
-@media (max-width:560px){
-  .cond-hecha{flex-direction:column; align-items:flex-start; gap:var(--sp-2)}
-  /* Más chicos de ancho, nunca de alto: 44px es el área táctil mínima y no se
-     negocia. Lo que se recorta es el aire y la palabra "días". */
-  .cond-op{padding:0 var(--sp-3); font-size:var(--t-sm)}
-  .cond-dias{display:none}
-  .cond-dias-ultimo{display:inline}
-  .cond-fila{padding:var(--sp-3)}
-}
-
-.cond-quien{display:flex; flex-direction:column; gap:2px; min-width:0}
-.cond-nombre{font-size:var(--t-base); font-weight:600; color:var(--ink); word-break:break-word}
-.cond-plata{font-size:var(--t-sm); color:var(--muted); font-variant-numeric:tabular-nums}
-.cond-sindeuda{font-style:italic}
-/* El aviso viaja pegado al número, no en otra línea: separado se lee como un
-   comentario y el número sigue pareciendo completo. */
-.cond-incompleto{color:var(--warn)}
-
-/* Los plazos. Botones y no un desplegable: tocar una vez contra abrir, buscar
-   y elegir, en una pantalla que se recorre cien veces seguidas. */
-.cond-opciones{display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:center}
-.cond-op{
-  min-height:var(--tap); padding:0 var(--sp-3);
-  border:1px solid var(--hair); border-radius:var(--r-pill);
-  background:var(--surface); color:var(--ink);
-  font-size:var(--t-sm); font-weight:500; cursor:pointer;
-  transition:background .12s cubic-bezier(.22,1,.36,1), border-color .12s cubic-bezier(.22,1,.36,1);
-}
-@media (hover:hover){ .cond-op:hover:not(:disabled){background:var(--surface-2)} }
-.cond-op:disabled{opacity:.5; cursor:not-allowed}
-.cond-op:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
-/* El elegido, marcado por relleno y peso además del color. */
-.cond-op-on{background:var(--brand); border-color:var(--brand); color:var(--on-brand); font-weight:650}
-.cond-otro{color:var(--muted)}
-
-.cond-otro-campo{display:flex; gap:var(--sp-2); align-items:center}
-.cond-otro-campo input{
-  width:84px; min-height:var(--tap); padding:0 var(--sp-3);
-  border:1px solid var(--hair); border-radius:var(--r-sm);
-  background:var(--surface); color:var(--ink); font-size:var(--t-sm);
-}
-.cond-otro-campo input:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
-
-/* Qué significa el plazo elegido para ESTE proveedor. Es el control: "60 días"
-   al lado de una factura de julio se delata solo. */
-.cond-efecto{margin:0; font-size:var(--t-sm); color:var(--ink); font-variant-numeric:tabular-nums}
-
-.cond-firma{margin:0; font-size:var(--t-xs); color:var(--muted)}
-.cond-borrar{
-  background:none; border:none; padding:0; cursor:pointer;
-  font-size:var(--t-xs); color:var(--muted); text-decoration:underline;
-}
-@media (hover:hover){ .cond-borrar:hover:not(:disabled){color:var(--ink)} }
-.cond-borrar:disabled{opacity:.5; cursor:not-allowed}
-
-.cond-error{margin:0; font-size:var(--t-sm); color:var(--crit)}
-
-/* Un vacío que enseña de dónde salen los proveedores, en vez de decir que no
-   hay ninguno. */
-.cond-vacio{
-  border:1px dashed var(--hair); border-radius:var(--r-md);
-  padding:var(--sp-6); text-align:center; max-width:60ch; margin:0 auto;
-}
-.cond-vacio h2{margin:0 0 var(--sp-2); font-size:var(--t-lg); color:var(--ink)}
-.cond-vacio p{margin:0; font-size:var(--t-sm); color:var(--muted); line-height:1.5}
-
-@media (prefers-reduced-motion: reduce){
-  .cond-op{transition:none}
-}
-
-/* La fecha calculada con el plazo del proveedor. Se marca porque NO la dice el
-   papel: una fecha calculada que se muestra igual que una leída es una fecha
-   inventada con buena presentación, y quien paga no sabe cuál puede discutir.
-   La marca no es sólo color — "aprox." se lee aunque no se distingan tonos. */
-.pg-propuesto{color:var(--muted)}
-.pg-propuesto abbr{
-  font-size:var(--t-xs); text-decoration:none; border-bottom:1px dotted currentColor;
-  cursor:help;
-}
-
-/* ---------------------------------------------------------------------------
-   Ingresos — lo que se le cobró al cliente por cada evento
-   ---------------------------------------------------------------------------
-   La mitad que faltaba del margen. Como en Proveedores, es una lista de
-   trabajo: lo cargado se muestra en una línea y lo que falta es lo que ocupa
-   lugar. */
-
-.ing{display:flex; flex-direction:column; gap:var(--sp-4)}
-.ing-avance{margin:0; font-size:var(--t-sm); color:var(--muted)}
-.ing-lista{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--sp-2)}
-
-.ing-fila{
-  background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-md);
-  padding:var(--sp-4); display:flex; align-items:center; justify-content:space-between;
-  gap:var(--sp-4); flex-wrap:wrap;
-}
-.ing-hecha{background:var(--surface-2)}
-.ing-abierta{flex-direction:column; align-items:stretch; gap:var(--sp-4)}
-
-.ing-quien{display:flex; flex-direction:column; gap:2px; min-width:0}
-.ing-nombre{font-size:var(--t-base); font-weight:600; color:var(--ink); word-break:break-word}
-.ing-sub{font-size:var(--t-sm); color:var(--muted)}
-/* Los invitados NO son los comensales que se facturan. Van apagados y con el
-   nombre puesto, para que nadie los copie en el campo equivocado. */
-.ing-invitados{opacity:.8}
-
-.ing-plata{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap}
-.ing-neto{font-size:var(--t-lg); font-weight:650; color:var(--ink); font-variant-numeric:tabular-nums}
-.ing-detalle{font-size:var(--t-sm); color:var(--muted)}
-.ing-pendiente{color:var(--warn)}
-.ing-sinprecio{font-size:var(--t-sm); color:var(--muted); font-style:italic}
-
-.ing-editar{
-  background:none; border:none; padding:0; cursor:pointer;
-  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
-}
-@media (hover:hover){ .ing-editar:hover{color:var(--ink)} }
-
-.ing-campos{display:flex; gap:var(--sp-4); flex-wrap:wrap}
-.ing-campos .field{flex:1; min-width:200px; margin-bottom:0}
-.ing-ayuda{
-  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted);
-  line-height:1.45; max-width:62ch;
-}
-
-.ing-iva{border:none; margin:0; padding:0}
-.ing-iva legend{
-  font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.07em;
-  color:var(--muted); font-weight:600; margin-bottom:var(--sp-2); padding:0;
-}
-.ing-opciones{display:flex; gap:var(--sp-2); flex-wrap:wrap}
-.ing-op{
-  min-height:var(--tap); padding:0 var(--sp-4);
-  border:1px solid var(--hair); border-radius:var(--r-pill);
-  background:var(--surface); color:var(--ink);
-  font-size:var(--t-sm); font-weight:500; cursor:pointer;
-}
-@media (hover:hover){ .ing-op:hover{background:var(--surface-2)} }
-.ing-op:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
-.ing-op-on{background:var(--brand); border-color:var(--brand); color:var(--on-brand); font-weight:650}
-
-.ing-extras{display:flex; flex-direction:column; gap:var(--sp-2)}
-.ing-extras-titulo{
-  font-size:var(--t-xs); text-transform:uppercase; letter-spacing:.07em;
-  color:var(--muted); font-weight:600;
-}
-.ing-extra{display:flex; gap:var(--sp-2); align-items:center; flex-wrap:wrap}
-.ing-extra input{
-  min-height:var(--tap); padding:0 var(--sp-3); flex:1; min-width:140px;
-  border:1px solid var(--hair); border-radius:var(--r-sm);
-  background:var(--surface); color:var(--ink); font-size:var(--t-sm);
-}
-.ing-extra input:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
-.ing-quitar{
-  background:none; border:none; padding:0 var(--sp-2); cursor:pointer;
-  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
-}
-@media (hover:hover){ .ing-quitar:hover{color:var(--crit)} }
-
-.ing-acciones{display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap}
-.ing-borrar{
-  background:none; border:none; padding:0; cursor:pointer;
-  font-size:var(--t-sm); color:var(--muted); text-decoration:underline;
-}
-@media (hover:hover){ .ing-borrar:hover:not(:disabled){color:var(--crit)} }
-.ing-firma{font-size:var(--t-xs); color:var(--muted)}
-.ing-error{margin:0; font-size:var(--t-sm); color:var(--crit)}
-
-.ing-vacio{
-  border:1px dashed var(--hair); border-radius:var(--r-md);
-  padding:var(--sp-6); text-align:center; max-width:60ch; margin:0 auto;
-}
-.ing-vacio h2{margin:0 0 var(--sp-2); font-size:var(--t-lg); color:var(--ink)}
-.ing-vacio p{margin:0; font-size:var(--t-sm); color:var(--muted); line-height:1.5}
-
-@media (max-width:560px){
-  .ing-fila{flex-direction:column; align-items:stretch}
-  .ing-campos{flex-direction:column; gap:var(--sp-3)}
-}
-
-/* El rubro del proveedor: decide si su plata entra en el costo de los eventos.
-   Se muestra también en la fila compacta porque "sin rubro" significa que ese
-   proveedor NO está contando en ningún costo. */
-.cond-rubro{font-size:var(--t-xs); color:var(--muted); white-space:nowrap}
-.cond-rubro-falta{color:var(--warn)}
-.cond-categoria{margin-bottom:0}
-.cond-categoria select{max-width:280px}
-.cond-ayuda{
-  margin:var(--sp-2) 0 0; font-size:var(--t-sm); color:var(--muted);
-  line-height:1.45; max-width:62ch;
-}
-
-/* El margen, con su advertencia pegada. El costo NO está medido: es la parte
-   que le tocó a este evento del gasto del período. Decirlo al lado del número
-   es la diferencia entre un dato y una cifra que alguien va a usar para poner
-   un precio creyendo que es exacta. */
-.ing-margen{display:block; font-size:var(--t-sm); color:var(--ink); font-variant-numeric:tabular-nums}
-.ing-aprox{color:var(--muted)}
 
 /* Dispositivos: lo que hay que resolver se lee en rojo, no solo con un punto. */
 .disp-lista{display:flex; flex-direction:column; gap:var(--sp-4)}
 .disp-alarma{color:var(--crit); font-weight:600}
+/* Cambios tardíos: cada evento se despliega. El renglón que se toca mide lo que un dedo. */
+.tardio-evento{border-top:1px solid var(--hair)}
+.tardio-evento:first-of-type{border-top:none}
+.tardio-evento > summary{padding:var(--sp-3) 0; cursor:pointer; font-size:var(--t-base); line-height:1.45}
+.tardio-evento > .revision-list{padding-bottom:var(--sp-3)}
 /* Preparar: pensado para el teléfono del depósito. Filas grandes para tocar
    con una mano, la cantidad bien visible y la nota siempre a la vista. */
 .prep-lista{display:flex; flex-direction:column; gap:var(--sp-3)}
-.prep-card{display:block; background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--sp-4); color:var(--ink); text-decoration:none}
+.prep-card{display:block; background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); box-shadow:var(--shadow); padding:var(--sp-4); color:var(--ink); text-decoration:none}
 .prep-card-top{display:flex; align-items:center; gap:var(--sp-2); font-size:var(--t-lg)}
 .prep-card-cuando{color:var(--muted); font-size:var(--t-sm); margin-top:2px}
 .prep-dia{font-size:var(--t-xs); font-weight:700; padding:2px var(--sp-2); border-radius:var(--r-pill); background:var(--surface-2); border:1px solid var(--hair)}
@@ -2367,7 +1335,8 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .prep-titulo{flex:1; min-width:0; display:flex; flex-direction:column; gap:0; color:var(--muted); font-size:var(--t-sm); line-height:1.25}
 .prep-cuando{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 /* El lugar ocupa todo el ancho de su renglón: si no entra, se corta con "…" y no se parte. */
-.prep-titulo b{min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--ink); font-size:var(--t-md)}
+.prep-titulo h1{margin:0; font-weight:700; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--ink); font-size:var(--t-md)}
+.prep-volver svg{width:22px; height:22px}
 .prep-hoy{color:var(--crit); font-weight:800}
 .prep-faltan{display:flex; align-items:center; min-height:var(--tap); padding:0 var(--sp-2); color:var(--crit); font-weight:700; text-decoration:none; white-space:nowrap}
 /* Los saltos a cada sector van en la cabecera fija. En la computadora entran en
@@ -2403,13 +1372,13 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .prep-seccion{scroll-margin-top:130px}
 .prep-solo-lectura{margin:0; color:var(--muted); font-size:var(--t-sm)}
 .count-pill.ok{color:var(--ok); border-color:var(--ok)}
-.prep-aplicar{background:var(--surface); border:2px solid var(--warn); border-radius:var(--radius); padding:var(--sp-3)}
+.prep-aplicar{background:var(--surface); border:2px solid var(--warn); border-radius:var(--r-lg); padding:var(--sp-3)}
 .prep-fila-caja{margin-bottom:var(--sp-2)}
 /* touch-action: sin esto el teléfono espera para ver si es doble toque (zoom) y la fila responde tarde. */
-.prep-fila{display:flex; align-items:center; gap:var(--sp-3); width:100%; min-height:56px; padding:var(--sp-3); background:var(--surface); border:1px solid var(--hair); border-radius:var(--radius); margin:0; text-align:left; color:var(--ink); font:inherit; cursor:pointer; touch-action:manipulation}
+.prep-fila{display:flex; align-items:center; gap:var(--sp-3); width:100%; min-height:56px; padding:var(--sp-3); background:var(--surface); border:1px solid var(--hair); border-radius:var(--r-lg); margin:0; text-align:left; color:var(--ink); font:inherit; cursor:pointer; touch-action:manipulation}
 .prep-fila.armada{border-bottom-left-radius:0; border-bottom-right-radius:0}
 /* La pregunta de las filas de "Cambios para aplicar": pegada a la fila, con los dos botones grandes. */
-.prep-confirma{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); padding:var(--sp-3); background:var(--warn-soft); border:1px solid var(--warn); border-top:0; border-radius:0 0 var(--radius) var(--radius)}
+.prep-confirma{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); padding:var(--sp-3); background:var(--warn-soft); border:1px solid var(--warn); border-top:0; border-radius:0 0 var(--r-lg) var(--r-lg)}
 .prep-confirma-texto{flex:1 1 100%; font-weight:700; color:var(--ink)}
 .prep-confirma .btn{flex:1 1 0; justify-content:center; touch-action:manipulation}
 .prep-fila:disabled{cursor:default; opacity:1}
@@ -2432,11 +1401,11 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .prep-nada{color:var(--muted); margin:0}
 
 /* ===== Aviso de lo ya preparado, en el editor de pedidos ============== */
-.prep-aviso-fila{grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin-top:var(--sp-2); padding:var(--sp-2) var(--sp-3); border:1px solid var(--warn); border-radius:var(--radius); background:var(--surface-2); font-size:var(--t-sm)}
+.prep-aviso-fila{grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin-top:var(--sp-2); padding:var(--sp-2) var(--sp-3); border:1px solid var(--warn); border-radius:var(--r-lg); background:var(--surface-2); font-size:var(--t-sm)}
 .prep-aviso-fila span{flex:1 1 220px}
 .chip-prep{margin-left:var(--sp-2); font-size:var(--t-xs)}
 .prep-ojo{color:var(--warn); font-weight:700}
-.instalar{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-4); background:var(--surface); border:1px solid var(--gold); border-radius:var(--radius)}
+.instalar{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-4); background:var(--surface); border:1px solid var(--gold); border-radius:var(--r-lg)}
 .instalar-texto{flex:1 1 240px; font-size:var(--t-sm); line-height:1.4}
 
 /* Tarjeta de Preparar: quién cambió el pedido por última vez. Lo reciente, en
@@ -2467,7 +1436,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 /* Debajo de un faltante, lo que hace la administradora con el stock: pegado a
    la fila (la fila pierde las esquinas de abajo), con los dos botones grandes. */
 .lev-fila-caja:has(.lev-baja) .prep-fila{border-bottom-left-radius:0; border-bottom-right-radius:0}
-.lev-baja{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); padding:var(--sp-3); background:var(--crit-soft); border:1px solid var(--crit); border-top:0; border-radius:0 0 var(--radius) var(--radius)}
+.lev-baja{display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); padding:var(--sp-3); background:var(--crit-soft); border:1px solid var(--crit); border-top:0; border-radius:0 0 var(--r-lg) var(--r-lg)}
 .lev-baja-texto{flex:1 1 100%; font-weight:700; color:var(--ink)}
 .lev-baja .btn{flex:1 1 0; justify-content:center; touch-action:manipulation}
 .lev-baja-nota{margin:var(--sp-1) 0 0; padding:0 var(--sp-3); font-size:var(--t-sm); color:var(--muted)}
@@ -2545,6 +1514,16 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   /* Con menos de 16 px, el iPhone agranda la página al tocar el campo y se
      pierde la vista de 6 productos por pantalla. */
   .search input, .resp-edit input, .wk-select{font-size:16px}
+  /* La misma regla para el resto de los campos: los de las ventanas medían 15 px
+     y los de sugerencias y usuarios, 12,5–14. `max()` para que la letra grande
+     de Cuenta siga agrandándolos. */
+  .field input, .field select, .field textarea, .sug-modal textarea, .sug-admin textarea,
+  .sug-filters select, .user-role-select{font-size:max(16px, var(--t-md))}
+
+  /* Lo que se toca mide lo que un dedo (--tap). En la pantalla ancha estos
+     controles quedan como estaban. */
+  .rowmenu-btn{width:var(--tap); height:var(--tap)}
+  .user-actions .btn, .user-role-select, .resp-chip-btn{min-height:var(--tap)}
 }
 
 .sub-chip{margin-left:var(--sp-2)}
@@ -2669,7 +1648,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
          .mobnav button, .rowmenu-list button, .revision-item > a, .resp-chip-btn,
          .pname-btn, .topbar-volver, .rowmenu-btn, .nav, .step-btn,
          .notif-item:not(:disabled), button.sug-row, a.sug-row, .seg button,
-         .miniedit, .prep-faltan, .prep-salto, .prep-volver, .pasados > summary,
+         .prep-faltan, .prep-salto, .prep-volver, .pasados > summary,
          .lev-card):active{
     opacity:.6; transition:opacity 0s;
   }

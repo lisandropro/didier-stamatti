@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { updatePeriod } from "@/app/actions/period";
 import { intentar } from "@/lib/actualizacion";
+import { Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError } from "@/components/Formulario";
 
 /**
  * Editar las fechas y el nombre de un período operativo.
@@ -36,6 +38,9 @@ export function EditPeriodModal({
 
   const hasta = unSoloDia ? startDay : endDay;
   const huboCambio = label !== periodo.labelPropio || startDay !== periodo.startDay || hasta !== periodo.endDay;
+  const sePuedeGuardar = huboCambio && Boolean(startDay) && Boolean(hasta);
+  // Lo que comparten los tres pasos: el mismo cierre y las mismas guardas.
+  const ventana = { onCerrar: onClose, ocupado: saving, cambiado: huboCambio, sinDeslizar: true } as const;
 
   async function guardar(permitirDuplicado = false) {
     if (saving) return;
@@ -45,121 +50,115 @@ export function EditPeriodModal({
     setSaving(false);
     if (r.duplicado) return setDuplicado({ nombre: r.duplicado.nombre });
     if (r.eventosFuera && r.rangoSugerido) return setFuera({ eventos: r.eventosFuera, sugerido: r.rangoSugerido });
-    if (!r.ok) return setError(r.error ?? "No se pudo guardar.");
+    if (!r.ok) {
+      // El error se muestra en el formulario: si saltó desde "Guardar igual", se vuelve a él.
+      setDuplicado(null);
+      return setError(r.error ?? "No se pudo guardar.");
+    }
     onSaved();
   }
 
   // --- Achicar dejaría eventos afuera ----------------------------------------
   if (fuera) {
     return (
-      <div className="overlay" onClick={onClose}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>Así quedan eventos afuera</h2>
-          <div className="msub">
-            Con esas fechas, {fuera.eventos.length === 1 ? "este evento queda" : "estos eventos quedan"} fuera del
-            período, y su pedido contaría contra el stock equivocado:
-          </div>
-          <div className="sug-list">
-            {fuera.eventos.map((e) => (
-              <div key={e.id} className="sug-row" style={{ cursor: "default" }}>
-                <span className="sug-row-title">{e.lugar}</span>
-                <span className="sug-row-meta">{e.dia}</span>
-              </div>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setFuera(null)} disabled={saving}>
-              Volver a las fechas
-            </button>
-            <button
-              className="btn primary"
-              disabled={saving}
-              onClick={() => {
-                setStart(fuera.sugerido.startDay);
-                setEnd(fuera.sugerido.endDay);
-                setUnSoloDia(fuera.sugerido.startDay === fuera.sugerido.endDay);
-                setFuera(null);
-              }}
-            >
-              Usar {fuera.sugerido.label}
-            </button>
-          </div>
+      <Dialogo titulo="Así quedan eventos afuera" {...ventana}>
+        <div className="msub">
+          Con esas fechas, {fuera.eventos.length === 1 ? "este evento queda" : "estos eventos quedan"} fuera del
+          período, y su pedido contaría contra el stock equivocado:
         </div>
-      </div>
+        <div className="sug-list">
+          {fuera.eventos.map((e) => (
+            <div key={e.id} className="sug-row" style={{ cursor: "default" }}>
+              <span className="sug-row-title">{e.lugar}</span>
+              <span className="sug-row-meta">{e.dia}</span>
+            </div>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={() => setFuera(null)} disabled={saving}>
+            Volver a las fechas
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={saving}
+            onClick={() => {
+              setStart(fuera.sugerido.startDay);
+              setEnd(fuera.sugerido.endDay);
+              setUnSoloDia(fuera.sugerido.startDay === fuera.sugerido.endDay);
+              setFuera(null);
+            }}
+          >
+            Usar {fuera.sugerido.label}
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   // --- Ya hay otro con el mismo rango ----------------------------------------
   if (duplicado) {
     return (
-      <div className="overlay" onClick={onClose}>
-        <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-          <h2>Ya existe uno igual</h2>
-          <div className="msub">
-            <b>{duplicado.nombre}</b> ya cubre exactamente esas fechas. Podés dejarlo así si de verdad son dos
-            grupos distintos de vajilla.
-          </div>
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setDuplicado(null)} disabled={saving}>
-              Volver
-            </button>
-            <button className="btn primary" onClick={() => guardar(true)} disabled={saving}>
-              {saving ? "Guardando…" : "Guardar igual"}
-            </button>
-          </div>
+      <Dialogo titulo="Ya existe uno igual" {...ventana}>
+        <div className="msub">
+          <b>{duplicado.nombre}</b> ya cubre exactamente esas fechas. Podés dejarlo así si de verdad son dos
+          grupos distintos de vajilla.
         </div>
-      </div>
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={() => setDuplicado(null)} disabled={saving}>
+            Volver
+          </button>
+          <button type="button" className="btn primary" onClick={() => guardar(true)} disabled={saving}>
+            {saving ? "Guardando…" : "Guardar igual"}
+          </button>
+        </div>
+      </Dialogo>
     );
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <h2>Editar período</h2>
-        <div className="msub">
-          Ahora va del <b>{periodo.rangeLabel}</b>. Si lo achicás, te aviso antes de guardar qué eventos
-          quedarían afuera.
-        </div>
-        <div className="field">
-          <label htmlFor="per-nombre">Nombre (opcional)</label>
-          <input
-            id="per-nombre"
-            type="text"
-            value={label}
-            placeholder="Si lo dejás vacío, se muestran las fechas"
-            onChange={(e) => setLabel(e.target.value)}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <div className="field" style={{ flex: 1 }}>
-            <label htmlFor="per-desde">Desde</label>
-            <input id="per-desde" type="date" value={startDay} onChange={(e) => setStart(e.target.value)} />
-          </div>
-          {!unSoloDia && (
-            <div className="field" style={{ flex: 1 }}>
-              <label htmlFor="per-hasta">Hasta</label>
-              <input id="per-hasta" type="date" value={endDay} onChange={(e) => setEnd(e.target.value)} />
-            </div>
-          )}
-        </div>
-        <label className="check-line">
-          <input type="checkbox" checked={unSoloDia} onChange={(e) => setUnSoloDia(e.target.checked)} />
-          Es un solo día
-        </label>
-        {error && <div className="login-error">{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button
-            className="btn primary"
-            onClick={() => guardar()}
-            disabled={saving || !huboCambio || !startDay || !hasta}
-          >
-            {saving ? "Guardando…" : huboCambio ? "Guardar" : "Sin cambios"}
-          </button>
-        </div>
+    <Dialogo
+      titulo="Editar período"
+      {...ventana}
+      alEnviar={() => {
+        if (sePuedeGuardar) void guardar();
+      }}
+    >
+      <div className="msub">
+        Ahora va del <b>{periodo.rangeLabel}</b>. Si lo achicás, te aviso antes de guardar qué eventos
+        quedarían afuera.
       </div>
-    </div>
+      <Campo label="Nombre (opcional)">
+        <input
+          type="text"
+          value={label}
+          placeholder="Si lo dejás vacío, se muestran las fechas"
+          onChange={(e) => setLabel(e.target.value)}
+        />
+      </Campo>
+      <div style={{ display: "flex", gap: 12 }}>
+        <Campo label="Desde" style={{ flex: 1 }}>
+          <input type="date" value={startDay} onChange={(e) => setStart(e.target.value)} />
+        </Campo>
+        {!unSoloDia && (
+          <Campo label="Hasta" style={{ flex: 1 }}>
+            <input type="date" value={endDay} onChange={(e) => setEnd(e.target.value)} />
+          </Campo>
+        )}
+      </div>
+      <label className="check-line">
+        <input type="checkbox" checked={unSoloDia} onChange={(e) => setUnSoloDia(e.target.checked)} />
+        Es un solo día
+      </label>
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn primary" disabled={saving || !sePuedeGuardar}>
+          {saving ? "Guardando…" : huboCambio ? "Guardar" : "Sin cambios"}
+        </button>
+      </div>
+    </Dialogo>
   );
 }

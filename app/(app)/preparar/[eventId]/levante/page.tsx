@@ -8,6 +8,7 @@ import { diaDe, fmtEvento, fmtMomento, hoy } from "@/lib/dates";
 import { Levante } from "@/components/Levante";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Levante" };
 
 /** Lo que baja el botón de un faltante descontable; null si no hay stock contado. */
 function cuantoBajaDe(i: { faltan: number }, stock: number | null): number | null {

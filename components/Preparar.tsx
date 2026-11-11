@@ -9,6 +9,10 @@ import { pideConfirmacion, seccionesDePantalla, type EstadoItem, type Visto, typ
 import { esCategoria } from "@/lib/categories";
 import { vibrar, PATRON } from "@/lib/vibrar";
 import { RefrescoPeriodico } from "@/components/RefrescoPeriodico";
+import { Confirmar } from "@/components/Dialogo";
+import { MensajeDeError } from "@/components/Formulario";
+import { IconBack } from "@/components/iconos";
+import { unidad } from "@/components/util";
 
 type Item = {
   clave: string;
@@ -29,8 +33,6 @@ type Data = {
   faltantes: { id: string; name: string; unit: string; pedido: number; hay: number; faltan: number }[];
   puedeTildar: boolean;
 };
-
-const unidad = (u: string) => (u === "Unidad" ? "" : ` ${u.toLowerCase()}`);
 
 /** Lo que se ve de una fila: viaja con cada toque, y el servidor guarda eso y
  *  no lo que diga el pedido cuando llega el toque. */
@@ -193,11 +195,11 @@ export function Preparar({ data }: { data: Data }) {
           lista, quien está scrolleado más abajo tocaría sin ver que no se guardó. */}
       <div className="prep-cabecera">
         <div className="prep-cabecera-fila">
-          <Link href="/preparar" className="prep-volver" aria-label="Volver a Preparar">←</Link>
+          <Link href="/preparar" className="prep-volver" aria-label="Volver a Preparar">{IconBack}</Link>
           {/* Dos líneas: el lugar arriba, entero si entra, y cuándo abajo. En una sola,
               en un teléfono de 360 px el lugar quedaba en "MUS…". */}
           <div className="prep-titulo">
-            <b>{data.evento.lugar}</b>
+            <h1>{data.evento.lugar}</h1>
             <span className="prep-cuando">
               {data.evento.esHoy ? <span className="prep-hoy">HOY</span> : null} {data.evento.cuando}
             </span>
@@ -221,7 +223,7 @@ export function Preparar({ data }: { data: Data }) {
             ))}
           </nav>
         )}
-        {error && <div className="form-error prep-error" role="alert">{error.texto}</div>}
+        {error && <MensajeDeError className="prep-error">{error.texto}</MensajeDeError>}
       </div>
 
       <div className="content prep-contenido">
@@ -291,26 +293,14 @@ export function Preparar({ data }: { data: Data }) {
       </div>
 
       {sectorAConfirmar && (
-        <div className="overlay" onClick={() => setSectorAConfirmar(null)}>
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="prep-sector-titulo"
-            onKeyDown={(e) => { if (e.key === "Escape") setSectorAConfirmar(null); }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="prep-sector-titulo">¿Tildar todo {sectores.find((s) => s.category === sectorAConfirmar.category)?.label ?? sectorAConfirmar.category}?</h2>
-            <div className="msub">
-              Se tilda solo lo pendiente. Lo que cambió o hay que sacar se confirma de a uno, porque hay que mover algo.
-            </div>
-            <div className="modal-actions">
-              {/* El foco arranca en Cancelar: así Escape llega al diálogo y un Enter de más no tilda nada. */}
-              <button type="button" className="btn ghost" onClick={() => setSectorAConfirmar(null)} autoFocus>Cancelar</button>
-              <button type="button" className="btn primary" onClick={() => tildarSector(sectorAConfirmar)}>Tildar</button>
-            </div>
-          </div>
-        </div>
+        <Confirmar
+          titulo={<>¿Tildar todo {sectores.find((s) => s.category === sectorAConfirmar.category)?.label ?? sectorAConfirmar.category}?</>}
+          textoConfirmar="Tildar"
+          accion={() => tildarSector(sectorAConfirmar)}
+          onCerrar={() => setSectorAConfirmar(null)}
+        >
+          Se tilda solo lo pendiente. Lo que cambió o hay que sacar se confirma de a uno, porque hay que mover algo.
+        </Confirmar>
       )}
     </>
   );

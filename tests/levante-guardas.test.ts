@@ -152,10 +152,14 @@ test("en el levante el teléfono vibra al marcar, y solo si el toque hace algo",
 
 test("la hoja de cuántos faltan es un formulario: no se cierra deslizando", () => {
   const c = fuente("components/Levante.tsx");
-  const desde = c.indexOf('aria-labelledby="lev-hoja-titulo"');
+  // La hoja es un `Dialogo` (la base de todas las ventanas): `sinDeslizar` le
+  // pone el `data-sin-deslizar` que frena el gesto, y `alEnviar` la vuelve un formulario.
+  const desde = c.indexOf('titulo="¿Cuántos faltan?"');
   assert.ok(desde > -1, "no está la hoja de cuántos faltan");
-  const apertura = c.slice(c.lastIndexOf("<div", desde), desde);
-  assert.match(apertura, /className="modal"\s+data-sin-deslizar/);
+  const apertura = c.slice(c.lastIndexOf("<Dialogo", desde), c.indexOf("\n", desde));
+  assert.match(apertura, /sinDeslizar/);
+  assert.match(apertura, /alEnviar=/);
+  assert.match(fuente("components/Dialogo.tsx"), /data-sin-deslizar=\{sinDeslizar/);
 });
 
 test("descontar del stock lo decide solo quien toca el stock, y pasa por el mismo camino que el ajuste", () => {

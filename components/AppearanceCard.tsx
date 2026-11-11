@@ -72,11 +72,12 @@ export function AppearanceCard() {
       </p>
 
       <div className="field">
-        <label>Tamaño de texto</label>
-        <div className="seg">
+        <label id="apariencia-tamano">Tamaño de texto</label>
+        <div className="seg" role="group" aria-labelledby="apariencia-tamano">
           {SIZES.map((s) => (
             <button
               key={s.v}
+              type="button"
               className={ready && size === s.v ? "active" : ""}
               onClick={() => pickSize(s.v)}
               aria-pressed={ready && size === s.v}
@@ -89,11 +90,12 @@ export function AppearanceCard() {
       </div>
 
       <div className="field" style={{ marginTop: 20, marginBottom: 4 }}>
-        <label>Tema</label>
-        <div className="seg">
+        <label id="apariencia-tema">Tema</label>
+        <div className="seg" role="group" aria-labelledby="apariencia-tema">
           {THEMES.map((t) => (
             <button
               key={t.v}
+              type="button"
               className={ready && theme === t.v ? "active" : ""}
               onClick={() => pickTheme(t.v)}
               aria-pressed={ready && theme === t.v}

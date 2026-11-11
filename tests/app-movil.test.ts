@@ -197,6 +197,7 @@ test("el menú ⋯ no se cierra porque se cerró el teclado", () => {
 
 test("las ventanas de formulario no se cierran deslizando", () => {
   assert.ok(fuente("components/ComportamientoDeApp.tsx").includes("data-sin-deslizar"), "deslizar tira lo tipeado en un formulario");
+  assert.ok(fuente("components/Dialogo.tsx").includes("data-sin-deslizar={sinDeslizar"), "la base de las ventanas no pone el atributo que frena el gesto");
   assert.ok(fuente("app/globals.css").includes(".modal[data-sin-deslizar]::before{content:none}"), "las hojas que no se deslizan muestran la manija");
   for (const archivo of [
     "components/EditEventModal.tsx",
@@ -209,7 +210,8 @@ test("las ventanas de formulario no se cierran deslizando", () => {
     "components/InventoryTable.tsx",
     "components/OrderBuilder.tsx",
   ]) {
-    assert.ok(fuente(archivo).includes("data-sin-deslizar"), `${archivo}: el formulario se cierra deslizando`);
+    // Las ventanas se arman con `Dialogo`: `sinDeslizar` es lo que pone el atributo.
+    assert.ok(fuente(archivo).includes("sinDeslizar"), `${archivo}: el formulario se cierra deslizando`);
   }
 });
 
@@ -241,7 +243,7 @@ test("los detalles de las listas del celular", () => {
 test("tocar responde también en avisos, sugerencias, segmentos y el resto de lo que se toca", () => {
   const css = fuente("app/globals.css");
   const seccion = css.slice(css.indexOf("/* ===== Al tocar"));
-  for (const sel of [".notif-item:not(:disabled)", "button.sug-row", "a.sug-row", ".seg button", ".miniedit", ".prep-faltan", ".prep-salto", ".prep-volver", ".pasados > summary", ".lev-card"]) {
+  for (const sel of [".notif-item:not(:disabled)", "button.sug-row", "a.sug-row", ".seg button", ".prep-faltan", ".prep-salto", ".prep-volver", ".pasados > summary", ".lev-card"]) {
     assert.ok(seccion.includes(sel), `${sel} no responde al tocar`);
   }
   assert.ok(!/\.event, \.event-falta,/.test(seccion), ".event-falta está adentro de .event: se apagaban los dos a la vez");

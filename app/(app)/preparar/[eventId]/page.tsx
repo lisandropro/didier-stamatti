@@ -9,6 +9,7 @@ import { nombreDe } from "@/lib/period-fit";
 import { Preparar } from "@/components/Preparar";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Preparar" };
 
 export default async function PrepararEventoPage({ params }: { params: Promise<{ eventId: string }> }) {
   const sesion = await getSessionUser();

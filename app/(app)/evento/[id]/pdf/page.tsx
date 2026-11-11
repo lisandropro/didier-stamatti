@@ -3,7 +3,7 @@ import { canVerStock } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { fmtEventDate } from "@/lib/format";
+import { fmtEvento } from "@/lib/dates";
 import { PrintButton, PrintSectorButton } from "@/components/PrintButton";
 import { PrintablePedido, type Bloque } from "@/components/PrintablePedido";
 import { ShareOrderButton } from "@/components/ShareOrderButton";
@@ -12,16 +12,10 @@ import { PickList } from "@/components/PickList";
 import { CATEGORIES as SECTORS, CATEGORY_LABEL, llevaCartel } from "@/lib/categories";
 import { sectoresConPedido } from "@/lib/order-sections";
 import type { PickItem } from "@/lib/picklist";
+import { IconDown } from "@/components/iconos";
 
 export const dynamic = "force-dynamic";
-
-const IconDown = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M12 3v12M8 11l4 4 4-4" /><path d="M4 17v2.5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V17" />
-  </svg>
-);
-
-
+export const metadata = { title: "PDF del pedido" };
 
 export default async function EventoPdfPage({
   params,
@@ -76,7 +70,7 @@ export default async function EventoPdfPage({
   const eventInfo = (
     <div className="pdf-event-box">
       <div className="pdf-event-row"><span className="pdf-k">Lugar</span><span className="pdf-v">{ev.lugar}</span></div>
-      <div className="pdf-event-row"><span className="pdf-k">Fecha</span><span className="pdf-v">{fmtEventDate(ev.date)}</span></div>
+      <div className="pdf-event-row"><span className="pdf-k">Fecha</span><span className="pdf-v">{fmtEvento(ev.date)}</span></div>
       <div className="pdf-event-row"><span className="pdf-k">Invitados</span><span className="pdf-v">{ev.guests}</span></div>
       <div className="pdf-event-row"><span className="pdf-k">Responsable</span><span className="pdf-v">{ev.responsable || "—"}</span></div>
     </div>
@@ -93,7 +87,7 @@ export default async function EventoPdfPage({
         clave: `cartel-${sector}`,
         tipo: "cartel",
         sector,
-        nodo: <Cartel sector={sector} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} />,
+        nodo: <Cartel sector={sector} lugar={ev.lugar} dateLabel={fmtEvento(ev.date)} />,
       });
     }
     bloques.push({
@@ -104,7 +98,7 @@ export default async function EventoPdfPage({
         <div className="pdf-section">
           <div className="pdf-header">
             <span className="logo-mark pdf-logo" role="img" aria-label="Didier Stamatti Catering" />
-            <h1 className="pdf-title">{CATEGORY_LABEL[sector]}</h1>
+            <h2 className="pdf-title">{CATEGORY_LABEL[sector]}</h2>
           </div>
           {eventInfo}
           <PickList products={bucket.products} customs={bucket.customs} />
@@ -142,7 +136,7 @@ export default async function EventoPdfPage({
           {IconDown} Descargar
         </a>
         <PrintButton hayCarteles={carteles > 0} />
-        <ShareOrderButton eventId={ev.id} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} disabled={totalItems === 0} />
+        <ShareOrderButton eventId={ev.id} lugar={ev.lugar} dateLabel={fmtEvento(ev.date)} disabled={totalItems === 0} />
       </div>
 
       <div className="content pdf-content">
@@ -151,7 +145,7 @@ export default async function EventoPdfPage({
             papeles que no le tocan. Solo se ofrecen los que tienen algo pedido. */}
         {sectores.length > 0 && (
           <div className="no-print sector-block">
-            <div className="sector-title">Mandar un sector solo</div>
+            <h2 className="sector-title">Mandar un sector solo</h2>
             {sectores.map((s) => (
               <div key={s.key} className="sector-row">
                 <div className="sector-name">
@@ -168,7 +162,7 @@ export default async function EventoPdfPage({
                   <ShareOrderButton
                     eventId={ev.id}
                     lugar={ev.lugar}
-                    dateLabel={fmtEventDate(ev.date)}
+                    dateLabel={fmtEvento(ev.date)}
                     sector={s.key}
                     label={`Compartir ${s.label}`}
                     variant="ghost"

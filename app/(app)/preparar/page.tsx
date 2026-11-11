@@ -8,8 +8,10 @@ import { linkDelLevante } from "@/lib/levante";
 import { fmtEvento, haceCuanto, hoy, sumarDias } from "@/lib/dates";
 import { InstalarApp } from "@/components/InstalarApp";
 import { RefrescoPeriodico } from "@/components/RefrescoPeriodico";
+import { IconWarn } from "@/components/iconos";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Preparar" };
 
 /** Cuántas acciones entran en la tarjeta; el resto se cuenta ("y 2 más"). */
 const MAX_EN_TARJETA = 3;
@@ -90,7 +92,7 @@ export default async function PrepararPage() {
                     qué agregar o sacar de lo que estaba preparado. */}
                 {e.acciones.length > 0 && (
                   <div className="prep-alerta">
-                    ⚠ Para rehacer: {e.acciones.slice(0, MAX_EN_TARJETA).join(" · ")}
+                    <span className="icono-linea">{IconWarn}</span> Para rehacer: {e.acciones.slice(0, MAX_EN_TARJETA).join(" · ")}
                     {e.acciones.length > MAX_EN_TARJETA ? ` · y ${e.acciones.length - MAX_EN_TARJETA} más` : ""}
                   </div>
                 )}

@@ -5,30 +5,23 @@ import { useState } from "react";
 import { createUser, resetUserPassword, setUserRole, deleteUser } from "@/app/actions/users";
 import { ROLES, ROLE_LABEL, ROLE_HELP } from "@/lib/permissions";
 import { intentar } from "@/lib/actualizacion";
+import { Confirmar, Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError, MensajeDeExito } from "@/components/Formulario";
+import { IconKey, IconPlus, IconTrash } from "@/components/iconos";
 
 type User = { id: string; name: string; email: string; role: string };
 
 /** Qué implica cada rol, en la confirmación de cambio de rol. */
 const ROLE_DETALLE: Record<string, string> = {
-  ADMIN: "va a poder editar stock, administrar el catálogo, gestionar usuarios y borrar fines de semana.",
-  ARMADOR: "va a poder armar pedidos y manejar los fines de semana, pero no editar stock ni el catálogo ni los usuarios.",
+  ADMIN: "va a poder editar stock, administrar el catálogo, gestionar usuarios y borrar períodos.",
+  ARMADOR: "va a poder armar pedidos y manejar los períodos, pero no editar stock ni el catálogo ni los usuarios.",
   LOGISTICA:
-    "va a poder mirar todo —pedidos, faltantes, inventario e historiales—, cambiar el responsable de cada fiesta y tildar lo que se prepara en el depósito. No va a poder modificar pedidos, stock ni el catálogo.",
+    "va a poder mirar todo —pedidos, faltantes, inventario e historiales—, cambiar el responsable de cada evento y tildar lo que se prepara en el depósito. No va a poder modificar pedidos, stock ni el catálogo.",
   DEPOSITO:
     "va a ver en el teléfono los eventos que vienen, con sus pedidos y lo que falta, y tildar lo que prepara. No va a poder modificar pedidos, ni entrar al inventario, al historial ni a los usuarios.",
 };
 
 
-
-const IconPlus = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-);
-const IconKey = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="8" cy="15" r="4" /><path d="m10.85 12.15 8.15-8.15M18 6l2 2M15 9l1.5 1.5" /></svg>
-);
-const IconTrash = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" /></svg>
-);
 
 export function UsersManager({ users, meId }: { users: User[]; meId: string }) {
   const router = useRouter();
@@ -94,30 +87,29 @@ export function UsersManager({ users, meId }: { users: User[]; meId: string }) {
         <ResetPasswordModal user={resetFor} onClose={() => setResetFor(null)} onDone={() => { setResetFor(null); router.refresh(); }} />
       )}
       {deleteFor && (
-        <ConfirmModal
-          title="¿Borrar este usuario?"
-          body={<>Se va a borrar el acceso de <b>{deleteFor.name}</b> ({deleteFor.email}). No va a poder entrar más. Esta acción no se puede deshacer.</>}
-          confirmLabel="Sí, borrar"
-          danger
-          run={() => deleteUser(deleteFor.id)}
-          onClose={() => setDeleteFor(null)}
-          onDone={() => { setDeleteFor(null); router.refresh(); }}
-        />
+        <Confirmar
+          titulo="¿Borrar este usuario?"
+          textoConfirmar="Sí, borrar"
+          textoEnCurso="Borrando…"
+          peligro
+          accion={() => deleteUser(deleteFor.id)}
+          onCerrar={() => setDeleteFor(null)}
+          alListo={() => { setDeleteFor(null); router.refresh(); }}
+        >
+          Se va a borrar el acceso de <b>{deleteFor.name}</b> ({deleteFor.email}). No va a poder entrar más. Esta acción no se puede deshacer.
+        </Confirmar>
       )}
       {roleChange && (
-        <ConfirmModal
-          title="¿Cambiar el rol?"
-          body={
-            <>
-              <b>{roleChange.user.name}</b> va a pasar a <b>{ROLE_LABEL[roleChange.to]?.toLowerCase()}</b>:{" "}
-              {ROLE_DETALLE[roleChange.to] ?? "cambia lo que puede hacer en la app."}
-            </>
-          }
-          confirmLabel="Cambiar rol"
-          run={() => setUserRole(roleChange.user.id, roleChange.to)}
-          onClose={() => setRoleChange(null)}
-          onDone={() => { setRoleChange(null); router.refresh(); }}
-        />
+        <Confirmar
+          titulo="¿Cambiar el rol?"
+          textoConfirmar="Cambiar rol"
+          accion={() => setUserRole(roleChange.user.id, roleChange.to)}
+          onCerrar={() => setRoleChange(null)}
+          alListo={() => { setRoleChange(null); router.refresh(); }}
+        >
+          <b>{roleChange.user.name}</b> va a pasar a <b>{ROLE_LABEL[roleChange.to]?.toLowerCase()}</b>:{" "}
+          {ROLE_DETALLE[roleChange.to] ?? "cambia lo que puede hacer en la app."}
+        </Confirmar>
       )}
     </>
   );
@@ -131,7 +123,10 @@ function NewUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const valid = Boolean(name.trim()) && email.includes("@") && password.length >= 6;
+
   async function save() {
+    if (saving || !valid) return;
     setSaving(true);
     setError(null);
     const res = await intentar(() => createUser({ name, email, role, password }));
@@ -140,42 +135,41 @@ function NewUserModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
     else setError(res.error ?? "No se pudo crear.");
   }
 
-  const valid = name.trim() && email.includes("@") && password.length >= 6;
-
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <h2>Nuevo usuario</h2>
-        <div className="msub">Creá el acceso y pasale la contraseña temporal a la persona. Después ella la cambia desde “Mi cuenta”.</div>
-        <div className="field">
-          <label>Nombre</label>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Ej: Enrique" />
-        </div>
-        <div className="field">
-          <label>Email (con el que va a ingresar)</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@ejemplo.com" />
-        </div>
-        <div className="field">
-          <label>Rol</label>
-          <select value={role} onChange={(e) => setRole(e.target.value)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABEL[r]} ({ROLE_HELP[r]})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>Contraseña temporal</label>
-          <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
-        </div>
-        {error && <div className="login-error">{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn primary" onClick={save} disabled={saving || !valid}>{saving ? "Creando…" : "Crear usuario"}</button>
-        </div>
+    <Dialogo
+      titulo="Nuevo usuario"
+      onCerrar={onClose}
+      ocupado={saving}
+      cambiado={Boolean(name || email || password)}
+      sinDeslizar
+      alEnviar={save}
+    >
+      <div className="msub">Creá el acceso y pasale la contraseña temporal a la persona. Después ella la cambia desde “Mi cuenta”.</div>
+      <Campo label="Nombre">
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="off" placeholder="Ej: Enrique" />
+      </Campo>
+      <Campo label="Email (con el que va a ingresar)">
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="nombre@ejemplo.com" />
+      </Campo>
+      <Campo label="Rol">
+        <select value={role} onChange={(e) => setRole(e.target.value)}>
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABEL[r]} ({ROLE_HELP[r]})
+            </option>
+          ))}
+        </select>
+      </Campo>
+      <Campo label="Contraseña temporal">
+        {/* A la vista y sin que el navegador ofrezca guardarla: es de otra persona. */}
+        <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Mínimo 8 caracteres" />
+      </Campo>
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+        <button type="submit" className="btn primary" disabled={saving || !valid}>{saving ? "Creando…" : "Crear usuario"}</button>
       </div>
-    </div>
+    </Dialogo>
   );
 }
 
@@ -186,6 +180,7 @@ function ResetPasswordModal({ user, onClose, onDone }: { user: User; onClose: ()
   const [done, setDone] = useState(false);
 
   async function save() {
+    if (saving || password.length < 6) return;
     setSaving(true);
     setError(null);
     const res = await intentar(() => resetUserPassword(user.id, password));
@@ -195,78 +190,36 @@ function ResetPasswordModal({ user, onClose, onDone }: { user: User; onClose: ()
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-        <h2>Restablecer contraseña</h2>
-        <div className="msub">Nueva contraseña temporal para <b>{user.name}</b>. Pasásela y que la cambie desde “Mi cuenta”.</div>
-        {done ? (
-          <>
-            <div className="settings-ok">✓ Contraseña actualizada. Pasale esta contraseña a {user.name}:</div>
-            <div className="reset-shown">{password}</div>
-            <div className="modal-actions">
-              <button className="btn primary" onClick={onDone}>Listo</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="field">
-              <label>Contraseña temporal</label>
-              <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus placeholder="Mínimo 6 caracteres" />
-            </div>
-            {error && <div className="login-error">{error}</div>}
-            <div className="modal-actions">
-              <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-              <button className="btn primary" onClick={save} disabled={saving || password.length < 6}>{saving ? "Guardando…" : "Cambiar contraseña"}</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({
-  title,
-  body,
-  confirmLabel,
-  danger,
-  run,
-  onClose,
-  onDone,
-}: {
-  title: string;
-  body: React.ReactNode;
-  confirmLabel: string;
-  danger?: boolean;
-  run: () => Promise<{ ok: boolean; error?: string }>;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function confirm() {
-    setSaving(true);
-    setError(null);
-    const res = await intentar(() => run());
-    setSaving(false);
-    if (res.ok) onDone();
-    else setError(res.error ?? "No se pudo completar.");
-  }
-
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{title}</h2>
-        <div className="msub">{body}</div>
-        {error && <div className="login-error">{error}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className={`btn ${danger ? "danger" : "primary"}`} onClick={confirm} disabled={saving}>
-            {saving ? "Aplicando…" : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Dialogo
+      titulo="Restablecer contraseña"
+      // Ya cambiada, cerrar es "Listo": hay que refrescar la lista igual.
+      onCerrar={done ? onDone : onClose}
+      ocupado={saving}
+      cambiado={!done && password.length > 0}
+      sinDeslizar
+      alEnviar={done ? onDone : save}
+    >
+      <div className="msub">Nueva contraseña temporal para <b>{user.name}</b>. Pasásela y que la cambie desde “Mi cuenta”.</div>
+      <MensajeDeExito>{done && <>✓ Contraseña actualizada. Pasale esta contraseña a {user.name}:</>}</MensajeDeExito>
+      {done ? (
+        <>
+          <div className="reset-shown">{password}</div>
+          <div className="modal-actions">
+            <button type="submit" className="btn primary" autoFocus>Listo</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <Campo label="Contraseña temporal">
+            <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Mínimo 8 caracteres" />
+          </Campo>
+          {error && <MensajeDeError>{error}</MensajeDeError>}
+          <div className="modal-actions">
+            <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button type="submit" className="btn primary" disabled={saving || password.length < 6}>{saving ? "Guardando…" : "Cambiar contraseña"}</button>
+          </div>
+        </>
+      )}
+    </Dialogo>
   );
 }

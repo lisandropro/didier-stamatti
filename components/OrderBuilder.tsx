@@ -18,6 +18,10 @@ import { RowMenu, type RowMenuItem } from "@/components/RowMenu";
 import { ConfirmDeleteEvent } from "@/components/ConfirmDeleteEvent";
 import { setEventStatus } from "@/app/actions/period";
 import { OPCIONES_CATEGORIA as CATS } from "@/lib/categories";
+import { norm, sinRueda } from "@/components/util";
+import { Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError } from "@/components/Formulario";
+import { IconBack, IconCopy, IconEdit, IconInfo, IconPrint, IconSearch, IconTrash, IconWarn } from "@/components/iconos";
 
 type ProductRow = {
   id: string;
@@ -61,28 +65,13 @@ type Data = {
 };
 
 
-const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-
 /** Id estable del input de cantidad de una fila, para devolverle el foco al destrabarla. */
 const idDeCantidad = (clave: string) => "cantidad-" + clave;
 
-const IconWarn = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
-);
-const IconTrash = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 13h9l1-13" /></svg>
-);
-const IconEdit = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-  </svg>
-);
-const IconCopy = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg>
-);
-const IconBack = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-);
+/** Las acciones del pedido contestan "Tenés que iniciar sesión." cuando la
+ *  sesión venció a mitad de una carga. Se reconoce por el texto porque es lo
+ *  único que llega del servidor. */
+const sesionVencida = (texto: string) => /iniciar sesi[oó]n/i.test(texto);
 
 /** Color de la barra de stock según lo que dice la fila. */
 const RELLENO: Record<NivelDeStock, string> = {
@@ -106,11 +95,19 @@ export function OrderBuilder({ data }: { data: Data }) {
     if (drafts.size) writeDraft(draftKey, [...drafts.entries()]);
     else clearDraft(draftKey);
   }
+  // Lo último que ESTE teléfono sabe que quedó guardado de cada producto: lo que
+  // trajo la página y, después, lo que fue guardando. Viaja con cada guardado
+  // (`visto`) para que el servidor escriba solo lo que acá se tocó: cambiar la
+  // nota no puede pisar la cantidad que otro teléfono cargó mientras tanto, ni
+  // al revés. Es lo que la fila mostraba, no lo que hay en la base: por eso al
+  // guardar se anota lo que se mandó y no lo que contestó el servidor.
+  const [vistos] = useState(() => new Map(data.products.map((p) => [p.id, { qty: p.qty, note: p.note }])));
   const [queue] = useState(() => new AutosaveQueue<OrderSave>(async (value) => {
     const key = value.kind === "product" ? value.row.id : "custom:" + value.id;
     const result = value.kind === "product"
-      ? await setLine({ eventId: data.event.id, productId: value.row.id, qty: value.row.qty, note: value.row.note })
+      ? await setLine({ eventId: data.event.id, productId: value.row.id, qty: value.row.qty, note: value.row.note, visto: vistos.get(value.row.id) })
       : await setCustomQty(value.id, value.qty);
+    if (result.ok && value.kind === "product") vistos.set(value.row.id, { qty: value.row.qty, note: value.row.note });
     // Una respuesta vieja no puede borrar una cantidad más reciente.
     if (result.ok && drafts.get(key) === value) { drafts.delete(key); keepDrafts(); }
     return result;
@@ -128,6 +125,10 @@ export function OrderBuilder({ data }: { data: Data }) {
   const [showShortages, setShowShortages] = useState(false);
   const [showResp, setShowResp] = useState(false);
   const [showBorrar, setShowBorrar] = useState(false);
+  // Se quiso salir del editor con algo sin guardar y no se pudo: el enlace se
+  // frena para no perder lo cargado, y eso hay que decirlo. Sin este aviso se
+  // tocaba "Volver" o la barra de abajo y no pasaba nada.
+  const [salidaTrabada, setSalidaTrabada] = useState(false);
   useEffect(() => {
     let alive = true;
     queueMicrotask(() => {
@@ -174,6 +175,11 @@ export function OrderBuilder({ data }: { data: Data }) {
       event.preventDefault();
       event.stopPropagation();
       if (await queue.flush()) router.push(url.pathname + url.search + url.hash);
+      else {
+        // No se sale: el cartel de arriba explica por qué y qué hacer.
+        setSalidaTrabada(true);
+        window.scrollTo({ top: 0 });
+      }
     }
     window.addEventListener("beforeunload", leaving);
     document.addEventListener("click", navigate, true);
@@ -343,7 +349,7 @@ export function OrderBuilder({ data }: { data: Data }) {
       onSelect: () => void toggleStatus(),
       disabled: pending > 0 || statusSaving,
     },
-    { label: "Responsable de la fiesta", onSelect: () => setShowResp(true) },
+    { label: "Responsable del evento", onSelect: () => setShowResp(true) },
     ...(data.canBorrar ? [{ label: "Borrar evento", onSelect: () => setShowBorrar(true), disabled: pending > 0, peligro: true }] : []),
   ];
 
@@ -358,7 +364,7 @@ export function OrderBuilder({ data }: { data: Data }) {
             <span className="sub-datos">
               {data.event.subLabel} · {inOrderCount} producto{inOrderCount === 1 ? "" : "s"} en el pedido
             </span>
-            <span className={`save-ind${!saveStatus.error && pending === 0 && !savedOnce ? " inicial" : ""}`}>
+            <span role="status" aria-live="polite" className={`save-ind${!saveStatus.error && pending === 0 && !savedOnce ? " inicial" : ""}`}>
               {saveStatus.error ? "Sin guardar" : pending > 0 ? "Guardando…" : savedOnce ? "Guardado ✓" : "Se guarda solo mientras cargás"}
             </span>
           </div>
@@ -368,7 +374,8 @@ export function OrderBuilder({ data }: { data: Data }) {
         {/* Único lugar donde se informan los faltantes: no hay banner aparte. */}
         {over.length > 0 && (
           <button
-            className="btn btn-falta btn-falta-top"
+            type="button"
+            className="btn btn-falta-top"
             onClick={() => setShowShortages(true)}
             aria-label={`Ver faltantes (${over.length})`}
           >
@@ -379,9 +386,7 @@ export function OrderBuilder({ data }: { data: Data }) {
           <button className="btn ghost" onClick={() => setShowEdit(true)}>{IconEdit} Editar evento</button>
           <button className="btn ghost" disabled={pending > 0} onClick={() => setShowCopy(true)}>{IconCopy} Repetir pedido</button>
           <Link className="btn ghost" href={`/evento/${data.event.id}/pdf`}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
-            </svg>
+            {IconPrint}
             PDF del pedido
           </Link>
           <button className={`btn${status === "LISTO" ? "" : " primary"}`} disabled={pending > 0 || statusSaving} onClick={toggleStatus}>
@@ -401,20 +406,44 @@ export function OrderBuilder({ data }: { data: Data }) {
       <div className="content">
         {(error || saveStatus.error) && (
           <div role="alert" className="banner crit">{IconWarn}<div><b>{error || saveStatus.error}</b>
-            {saveStatus.error && <button className="btn ghost" onClick={() => { void queue.flush(); }}>Reintentar guardado</button>}
+            {saveStatus.error && salidaTrabada && (
+              <p>No salimos de esta pantalla para no perder lo que cargaste: primero tiene que guardarse.</p>
+            )}
+            {saveStatus.error && sesionVencida(saveStatus.error) ? (
+              <>
+                {/* Reintentar no sirve sin sesión: hay que volver a entrar. Lo
+                    cargado queda guardado en este teléfono (el borrador) y se
+                    vuelve a mandar al abrir otra vez el pedido. Carga completa y
+                    no un enlace de la app: los enlaces están frenados mientras
+                    haya algo sin guardar. */}
+                <p>Lo que cargaste queda guardado acá y se manda solo cuando vuelvas a abrir este pedido.</p>
+                <button
+                  type="button"
+                  className="btn primary"
+                  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- carga completa a propósito
+                  onClick={() => window.location.assign("/login")}
+                >
+                  Iniciar sesión
+                </button>
+              </>
+            ) : saveStatus.error ? (
+              <button type="button" className="btn ghost" onClick={() => { void queue.flush().then((ok) => { if (ok) setSalidaTrabada(false); }); }}>Reintentar guardado</button>
+            ) : null}
           </div></div>
         )}
 
         <div className="ro-resp solo-ancho">
-          <span className="ro-resp-label">Responsable de la fiesta</span>
+          <span className="ro-resp-label">Responsable del evento</span>
           <ResponsableEditor eventId={data.event.id} responsable={data.event.responsable} canEdit />
         </div>
 
 
         <div className="searchbar">
           <label className="search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
+            {IconSearch}
             <input
+              aria-label="Buscar en todo el catálogo"
+              enterKeyHint="search"
               placeholder="Buscar en todo el catálogo…"
               value={query}
               onChange={(e) => escribirBusqueda(e.target.value)}
@@ -423,11 +452,11 @@ export function OrderBuilder({ data }: { data: Data }) {
           {!searching && (
             <div className="filtros-scroll">
               {CATS.map((c) => (
-                <button key={c.v} className={`tab${tab === c.v ? " active" : ""}`} onClick={() => elegirPestania(c.v)}>
+                <button key={c.v} type="button" className={`tab${tab === c.v ? " active" : ""}`} aria-pressed={tab === c.v} onClick={() => elegirPestania(c.v)}>
                   {c.l}
                 </button>
               ))}
-              <button className={`tab${tab === "EXTRAS" ? " active" : ""}`} onClick={() => elegirPestania("EXTRAS")}>
+              <button type="button" className={`tab${tab === "EXTRAS" ? " active" : ""}`} aria-pressed={tab === "EXTRAS"} onClick={() => elegirPestania("EXTRAS")}>
                 Extras{customs.length > 0 ? ` (${customs.length})` : ""}
               </button>
             </div>
@@ -549,7 +578,7 @@ export function OrderBuilder({ data }: { data: Data }) {
                     <button className="qbtn" onClick={() => stepQty(p.id, -1)} aria-label="Restar uno">−</button>
                     <input
                       className="qinput"
-                      type="number"
+                      type="number" onWheel={sinRueda}
                       inputMode="numeric"
                       min={0}
                       id={idDeCantidad(p.id)}
@@ -615,7 +644,7 @@ export function OrderBuilder({ data }: { data: Data }) {
         )}
 
         <div className="hint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
+          {IconInfo}
           Lo vacío no va en el pedido. “Otros eventos” es lo que ya pidieron los demás eventos de este período del mismo depósito.
         </div>
       </div>
@@ -650,15 +679,12 @@ export function OrderBuilder({ data }: { data: Data }) {
         />
       )}
       {showResp && (
-        <div className="overlay" onClick={() => setShowResp(false)}>
-          <div className="modal" data-sin-deslizar onClick={(e) => e.stopPropagation()}>
-            <h2>Responsable de la fiesta</h2>
-            <ResponsableEditor eventId={data.event.id} responsable={data.event.responsable} canEdit />
-            <div className="modal-actions">
-              <button className="btn ghost" onClick={() => setShowResp(false)}>Cerrar</button>
-            </div>
+        <Dialogo titulo="Responsable del evento" onCerrar={() => setShowResp(false)} sinDeslizar>
+          <ResponsableEditor eventId={data.event.id} responsable={data.event.responsable} canEdit />
+          <div className="modal-actions">
+            <button type="button" className="btn ghost" onClick={() => setShowResp(false)}>Cerrar</button>
           </div>
-        </div>
+        </Dialogo>
       )}
       {showBorrar && (
         <ConfirmDeleteEvent
@@ -713,60 +739,62 @@ function CopyOrderModal({
     : sourceEvents;
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        {selected ? (
-          <>
-            <h2>¿Copiar este pedido?</h2>
-            <div className="msub">
-              Vas a traer el pedido de <b>{selected.lugar}</b> ({selected.dateLabel}, {selected.lineCount} producto
-              {selected.lineCount === 1 ? "" : "s"}) a este evento.
-              {hasLines && <> <b>Reemplaza</b> lo que ya cargaste en este evento.</>}
-              {preparadosCount > 0 && (
-                <> <b>{preparadosCount} {preparadosCount === 1 ? "ítem ya está preparado y va a cambiar" : "ítems ya están preparados y van a cambiar"}:</b> el depósito va a tener que rehacerlos.</>
-              )}
-            </div>
-            {error && <div className="login-error">{error}</div>}
-            <div className="modal-actions">
-              <button className="btn ghost" onClick={() => setSelected(null)} disabled={saving}>Volver</button>
-              <button className="btn primary" onClick={confirm} disabled={saving}>
-                {saving ? "Copiando…" : "Copiar pedido"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <h2>Repetir pedido</h2>
-            <div className="msub">Elegí un evento anterior y traé su pedido a este, para no cargarlo de cero.</div>
-            {sourceEvents.length === 0 ? (
-              <div className="emptyrow">Todavía no hay otros eventos con pedido para copiar.</div>
-            ) : (
-              <>
-                <label className="search" style={{ marginBottom: "var(--sp-3)" }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
-                  <input placeholder="Buscar por lugar o período…" value={query} onChange={(e) => setQuery(e.target.value)} />
-                </label>
-                <div className="copy-list">
-                  {list.map((e) => (
-                    <button key={e.id} className="copy-row" onClick={() => setSelected(e)}>
-                      <div>
-                        <div className="copy-lugar">{e.lugar}</div>
-                        <div className="copy-meta">{e.periodLabel} · {e.dateLabel}</div>
-                      </div>
-                      <span className="chip neutral">{e.lineCount} prod.</span>
-                    </button>
-                  ))}
-                  {list.length === 0 && <div className="emptyrow">No hay eventos que coincidan.</div>}
-                </div>
-              </>
+    // Un solo `Dialogo` para los dos pasos. Mientras copia no se cierra: antes,
+    // tocar afuera escondía la ventana con la copia en curso.
+    <Dialogo
+      titulo={selected ? "¿Copiar este pedido?" : "Repetir pedido"}
+      onCerrar={onClose}
+      ocupado={saving}
+    >
+      {selected ? (
+        <>
+          <div className="msub">
+            Vas a traer el pedido de <b>{selected.lugar}</b> ({selected.dateLabel}, {selected.lineCount} producto
+            {selected.lineCount === 1 ? "" : "s"}) a este evento.
+            {hasLines && <> <b>Reemplaza</b> lo que ya cargaste en este evento.</>}
+            {preparadosCount > 0 && (
+              <> <b>{preparadosCount} {preparadosCount === 1 ? "ítem ya está preparado y va a cambiar" : "ítems ya están preparados y van a cambiar"}:</b> el depósito va a tener que rehacerlos.</>
             )}
-            <div className="modal-actions">
-              <button className="btn ghost" onClick={onClose}>Cerrar</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+          </div>
+          {error && <MensajeDeError>{error}</MensajeDeError>}
+          <div className="modal-actions">
+            <button type="button" className="btn ghost" onClick={() => setSelected(null)} disabled={saving} autoFocus>Volver</button>
+            <button type="button" className="btn primary" onClick={confirm} disabled={saving}>
+              {saving ? "Copiando…" : "Copiar pedido"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="msub">Elegí un evento anterior y traé su pedido a este, para no cargarlo de cero.</div>
+          {sourceEvents.length === 0 ? (
+            <div className="emptyrow">Todavía no hay otros eventos con pedido para copiar.</div>
+          ) : (
+            <>
+              <label className="search" style={{ marginBottom: "var(--sp-3)" }}>
+                {IconSearch}
+                <input aria-label="Buscar un evento por lugar o período" enterKeyHint="search" placeholder="Buscar por lugar o período…" value={query} onChange={(e) => setQuery(e.target.value)} />
+              </label>
+              <div className="copy-list">
+                {list.map((e) => (
+                  <button key={e.id} type="button" className="copy-row" onClick={() => setSelected(e)}>
+                    <div>
+                      <div className="copy-lugar">{e.lugar}</div>
+                      <div className="copy-meta">{e.periodLabel} · {e.dateLabel}</div>
+                    </div>
+                    <span className="chip neutral">{e.lineCount} prod.</span>
+                  </button>
+                ))}
+                {list.length === 0 && <div className="emptyrow">No hay eventos que coincidan.</div>}
+              </div>
+            </>
+          )}
+          <div className="modal-actions">
+            <button type="button" className="btn ghost" onClick={onClose}>Cerrar</button>
+          </div>
+        </>
+      )}
+    </Dialogo>
   );
 }
 
@@ -841,6 +869,11 @@ function ExtrasPanel({
     finally { setSaving(false); marcarGuardado(); }
   }
 
+  /** Enter en cualquiera de los campos agrega el ítem, como el botón. */
+  function conEnter(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") void add();
+  }
+
   function changeQty(id: string, next: number) {
     const q = Math.max(1, next);
     if (saving || !validQuantity(q, 1)) return;
@@ -876,28 +909,24 @@ function ExtrasPanel({
   return (
     <>
       <div className="extras-form">
-        <div className="field" style={{ flex: 2, marginBottom: 0 }}>
-          <label>Ítem fuera de catálogo</label>
-          <input type="text" placeholder="Ej: Vajilla alquilada, hielo seco…" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div className="field" style={{ flex: 1.1, marginBottom: 0 }}>
-          <label>Sector</label>
+        <Campo label="Ítem fuera de catálogo" style={{ flex: 2, marginBottom: 0 }}>
+          <input type="text" placeholder="Ej: Vajilla alquilada, hielo seco…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={conEnter} />
+        </Campo>
+        <Campo label="Sector" style={{ flex: 1.1, marginBottom: 0 }}>
           <select value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="" disabled>Elegir…</option>
             {CATS.map((c) => (
               <option key={c.v} value={c.v}>{c.l}</option>
             ))}
           </select>
-        </div>
-        <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-          <label>Unidad (opcional)</label>
-          <input type="text" placeholder="Cajas, bolsas…" value={unit} onChange={(e) => setUnit(e.target.value)} />
-        </div>
-        <div className="field" style={{ width: 90, marginBottom: 0 }}>
-          <label>Cantidad</label>
-          <input type="number" inputMode="numeric" min={1} value={qty} onChange={(e) => setQty(e.target.value)} />
-        </div>
-        <button className="btn primary" onClick={add} disabled={saving || !name.trim() || !category}>
+        </Campo>
+        <Campo label="Unidad (opcional)" style={{ flex: 1, marginBottom: 0 }}>
+          <input type="text" placeholder="Cajas, bolsas…" value={unit} onChange={(e) => setUnit(e.target.value)} onKeyDown={conEnter} />
+        </Campo>
+        <Campo label="Cantidad" style={{ width: 90, marginBottom: 0 }}>
+          <input type="number" onWheel={sinRueda} inputMode="numeric" min={1} value={qty} onChange={(e) => setQty(e.target.value)} onKeyDown={conEnter} />
+        </Campo>
+        <button type="button" className="btn primary" onClick={add} disabled={saving || !name.trim() || !category}>
           {saving ? "Agregando…" : "Agregar"}
         </button>
       </div>
@@ -927,7 +956,7 @@ function ExtrasPanel({
                 <button className="qbtn" onClick={() => pedirCambio(c.id, c.qty - 1)} aria-label="Restar uno">−</button>
                 <input
                   className="qinput"
-                  type="number"
+                  type="number" onWheel={sinRueda}
                   inputMode="numeric"
                   min={1}
                   id={idDeCantidad(clave)}

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { IconCal, IconHistory, IconSearch } from "@/components/iconos";
+import { MOTIVOS_DE_STOCK, norm } from "@/components/util";
 
 type PeriodRow = {
   id: string;
@@ -23,24 +25,9 @@ type MovementRow = {
 /** `movements` son los últimos; `totalMovimientos`, cuántos hay en total. */
 type Data = { periodos: PeriodRow[]; movements: MovementRow[]; totalMovimientos: number };
 
-const REASONS = [
-  { v: "TODOS", l: "Todos" },
-  { v: "ROTURA", l: "Rotura" },
-  { v: "PERDIDA", l: "Pérdida" },
-  { v: "COMPRA", l: "Compra" },
-  { v: "AJUSTE", l: "Ajuste" },
-];
+const REASONS = [{ v: "TODOS", l: "Todos" }, ...MOTIVOS_DE_STOCK];
 const REASON_LABEL: Record<string, string> = { ROTURA: "Rotura", PERDIDA: "Pérdida", COMPRA: "Compra", AJUSTE: "Ajuste" };
 const REASON_CLASS: Record<string, string> = { ROTURA: "crit", PERDIDA: "crit", COMPRA: "ok", AJUSTE: "neutral" };
-
-const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-
-const IconCal = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9h18M8 2.5v4M16 2.5v4" /></svg>
-);
-const IconHistory = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /><path d="M12 8v4l3 2" /></svg>
-);
 
 export function Historial({ data }: { data: Data }) {
   const [tab, setTab] = useState<"periodos" | "movements">("periodos");
@@ -50,16 +37,16 @@ export function Historial({ data }: { data: Data }) {
       <div className="topbar">
         <div>
           <h1>Historial</h1>
-          <div className="sub">Fines de semana pasados y movimientos de stock</div>
+          <div className="sub">Períodos pasados y movimientos de stock</div>
         </div>
       </div>
 
       <div className="content">
         <div className="seg" style={{ maxWidth: 360, marginBottom: 20 }}>
-          <button className={tab === "periodos" ? "active" : ""} onClick={() => setTab("periodos")}>
-            Fines de semana ({data.periodos.length})
+          <button type="button" className={tab === "periodos" ? "active" : ""} aria-pressed={tab === "periodos"} onClick={() => setTab("periodos")}>
+            Períodos pasados ({data.periodos.length})
           </button>
-          <button className={tab === "movements" ? "active" : ""} onClick={() => setTab("movements")}>
+          <button type="button" className={tab === "movements" ? "active" : ""} aria-pressed={tab === "movements"} onClick={() => setTab("movements")}>
             Movimientos de stock ({data.totalMovimientos})
           </button>
         </div>
@@ -126,14 +113,14 @@ function Movements({ movements, total }: { movements: MovementRow[]; total: numb
     <>
       <div className="searchbar">
         <label className="search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
-          <input placeholder="Buscar producto…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          {IconSearch}
+          <input aria-label="Buscar producto" enterKeyHint="search" placeholder="Buscar producto…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         {/* Como en Inventario: en el celular los motivos van en una sola fila que
             se desliza, no apilados en dos líneas. */}
         <div className="filtros-scroll">
           {REASONS.map((r) => (
-            <button key={r.v} className={`tab${reason === r.v ? " active" : ""}`} onClick={() => setReason(r.v)}>
+            <button key={r.v} type="button" className={`tab${reason === r.v ? " active" : ""}`} aria-pressed={reason === r.v} onClick={() => setReason(r.v)}>
               {r.l}
             </button>
           ))}

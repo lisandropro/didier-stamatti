@@ -2,12 +2,7 @@
 
 import { useState } from "react";
 import { nombreDeArchivo } from "@/lib/order-sections";
-
-const IconShare = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M12 3v13M8 7l4-4 4 4" />
-  </svg>
-);
+import { IconShare } from "@/components/iconos";
 
 
 export function ShareOrderButton({
@@ -76,10 +71,12 @@ export function ShareOrderButton({
 
   return (
     <div className="share-wrap">
-      <button className={`btn ${variant}`} onClick={share} disabled={busy || disabled}>
+      <button type="button" className={`btn ${variant}`} onClick={share} disabled={busy || disabled}>
         {IconShare} {busy ? "Preparando…" : label}
       </button>
-      {msg && <span className="share-msg">{msg}</span>}
+      {/* Siempre dibujado, vacío mientras no hay nada que decir: así el lector de
+          pantalla anuncia "PDF descargado" cuando aparece. */}
+      <span className="share-msg" role="status" aria-live="polite">{msg}</span>
     </div>
   );
 }

@@ -3,11 +3,12 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { canSendSuggestions, canManageSuggestions } from "@/lib/permissions";
-import { fmtDateTime } from "@/lib/format";
+import { fmtMomento } from "@/lib/dates";
 import { KIND_LABEL, STATUS_LABEL, STATUS_CLASS, screenLabel } from "@/lib/suggestions";
 import { SuggestionAdmin } from "@/components/SuggestionAdmin";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Sugerencia" };
 
 export default async function SugerenciaPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
@@ -32,7 +33,7 @@ export default async function SugerenciaPage({ params }: { params: Promise<{ id:
         <div>
           <h1>{s.title}</h1>
           <div className="sub">
-            {KIND_LABEL[s.kind] ?? s.kind} · {s.authorName} · {fmtDateTime(s.createdAt)}
+            {KIND_LABEL[s.kind] ?? s.kind} · {s.authorName} · {fmtMomento(s.createdAt)}
           </div>
         </div>
         <div className="spacer" />
@@ -48,17 +49,17 @@ export default async function SugerenciaPage({ params }: { params: Promise<{ id:
 
       <div className="content">
         <section className="sug-block">
-          <div className="section-title">Qué dice</div>
+          <h2 className="section-title">Qué dice</h2>
           <p className="sug-body">{s.body}</p>
         </section>
 
         {s.reply ? (
           <section className="sug-block sug-reply">
-            <div className="section-title">Respuesta</div>
+            <h2 className="section-title">Respuesta</h2>
             <p className="sug-body">{s.reply}</p>
             <p className="sug-meta">
               {s.repliedByName ?? "La administradora"}
-              {s.repliedAt ? ` · ${fmtDateTime(s.repliedAt)}` : ""}
+              {s.repliedAt ? ` · ${fmtMomento(s.repliedAt)}` : ""}
             </p>
           </section>
         ) : (
@@ -70,7 +71,7 @@ export default async function SugerenciaPage({ params }: { params: Promise<{ id:
         )}
 
         <section className="sug-block">
-          <div className="section-title">Contexto</div>
+          <h2 className="section-title">Contexto</h2>
           <dl className="sug-facts">
             <div>
               <dt>Pantalla</dt>
@@ -96,7 +97,7 @@ export default async function SugerenciaPage({ params }: { params: Promise<{ id:
             )}
             <div>
               <dt>Enviada</dt>
-              <dd>{fmtDateTime(s.createdAt)}</dd>
+              <dd>{fmtMomento(s.createdAt)}</dd>
             </div>
             {admin && (
               <>

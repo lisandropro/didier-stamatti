@@ -7,21 +7,7 @@ import { useState } from "react";
 import { ShortagesModal } from "@/components/ShortagesModal";
 import { ResponsableEditor } from "@/components/ResponsableEditor";
 import { computeShortage } from "@/lib/shortage-rule";
-
-const IconWarn = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-    <path d="M12 9v4M12 17h.01" />
-    <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
-  </svg>
-);
-const IconBack = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-);
-const IconPrint = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M7 8V3.5h10V8M7 17h10v3.5H7z" /><path d="M4.5 8h15a1.5 1.5 0 0 1 1.5 1.5V16h-4M3 16h4M3 9.5A1.5 1.5 0 0 1 4.5 8" />
-  </svg>
-);
+import { IconBack, IconPrint, IconWarn } from "@/components/iconos";
 
 type Row = {
   id: string;
@@ -92,7 +78,8 @@ export function OrderReadOnly({
         <Link className="btn ghost solo-ancho" href="/">Volver</Link>
         {faltantes.length > 0 && (
           <button
-            className="btn btn-falta btn-falta-top"
+            type="button"
+            className="btn btn-falta-top"
             onClick={() => setVerFaltantes(true)}
             aria-label={`Ver faltantes (${faltantes.length})`}
           >
@@ -111,7 +98,7 @@ export function OrderReadOnly({
 
       <div className="content">
         <div className="ro-resp">
-          <span className="ro-resp-label">Responsable de la fiesta</span>
+          <span className="ro-resp-label">Responsable del evento</span>
           <ResponsableEditor
             eventId={data.event.id}
             responsable={data.event.responsable}
@@ -132,7 +119,7 @@ export function OrderReadOnly({
             return (
               <section key={cat} className="ro-section">
                 <div className="section-title">
-                  {nombreDeCategoria(cat)}
+                  <h2>{nombreDeCategoria(cat)}</h2>
                   <span className="count-pill">{delSector.length + extras.length}</span>
                 </div>
                 <div className="tablewrap">

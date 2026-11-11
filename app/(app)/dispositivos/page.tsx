@@ -5,6 +5,7 @@ import { estadoDeDispositivos, FALLOS_PARA_ALARMA } from "@/lib/dispositivos";
 import { fmtMomento } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Dispositivos" };
 
 export default async function DispositivosPage() {
   // Como el resto: la pantalla comprueba su propio permiso, no se apoya en que
@@ -31,7 +32,7 @@ export default async function DispositivosPage() {
               </h2>
               {p.dispositivos.length === 0 ? (
                 <p className="disp-alarma">
-                  Ningún teléfono: no le llega ningún aviso. Tiene que entrar a Avisos y tocar “Activar notificaciones”.
+                  Ningún teléfono: no le llega ningún aviso. Tiene que entrar a Avisos y tocar “Activar avisos”.
                 </p>
               ) : (
                 <ul className="revision-list">

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { updateName } from "@/app/actions/account";
 import { intentar } from "@/lib/actualizacion";
+import { Campo, MensajeDeError, MensajeDeExito } from "@/components/Formulario";
 
 export function ProfileCard({ name, email }: { name: string; email: string }) {
   const router = useRouter();
@@ -15,6 +16,7 @@ export function ProfileCard({ name, email }: { name: string; email: string }) {
   const changed = value.trim() !== name && value.trim().length > 0;
 
   async function save() {
+    if (!changed || saving) return;
     setSaving(true);
     setError(null);
     setDone(false);
@@ -29,36 +31,41 @@ export function ProfileCard({ name, email }: { name: string; email: string }) {
   }
 
   return (
-    <div className="settings-card">
+    <form
+      className="settings-card"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
       <h2>Perfil</h2>
       <p className="settings-sub">Tu nombre es el que aparece abajo en el menú.</p>
 
-      <div className="field">
-        <label>Nombre</label>
+      <Campo label="Nombre">
         <input
           type="text"
           value={value}
           maxLength={40}
+          autoComplete="name"
           onChange={(e) => {
             setValue(e.target.value);
             setDone(false);
           }}
         />
-      </div>
+      </Campo>
 
-      <div className="field">
-        <label>Email (tu usuario para ingresar)</label>
+      <Campo label="Email (tu usuario para ingresar)">
         <input type="text" value={email} disabled />
-      </div>
+      </Campo>
 
-      {error && <div className="login-error">{error}</div>}
-      {done && <div className="settings-ok">✓ Nombre actualizado.</div>}
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+      <MensajeDeExito>{done && "✓ Nombre actualizado."}</MensajeDeExito>
 
       <div className="modal-actions" style={{ marginTop: 16 }}>
-        <button className="btn primary" onClick={save} disabled={!changed || saving}>
+        <button type="submit" className="btn primary" disabled={!changed || saving}>
           {saving ? "Guardando…" : "Guardar nombre"}
         </button>
       </div>
-    </div>
+    </form>
   );
 }

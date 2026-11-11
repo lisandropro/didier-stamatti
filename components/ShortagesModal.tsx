@@ -3,13 +3,10 @@
 import { useEffect, useState } from "react";
 import { getEventShortages } from "@/app/actions/shortages";
 import type { ShortageRow } from "@/lib/shortage-rule";
-
-const IconWarn = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-    <path d="M12 9v4M12 17h.01" />
-    <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
-  </svg>
-);
+import { intentar } from "@/lib/actualizacion";
+import { Dialogo } from "@/components/Dialogo";
+import { MensajeDeError } from "@/components/Formulario";
+import { IconWarn } from "@/components/iconos";
 
 /** Panel informativo de faltantes de un evento. Solo lee: no toca pedidos,
  *  productos ni movimientos. */
@@ -27,15 +24,10 @@ export function ShortagesModal({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
-
-  useEffect(() => {
     let vivo = true;
-    getEventShortages(eventId).then((res) => {
+    // Con `intentar`: si la consulta falla (sin señal), se dice, en vez de
+    // quedar en "Calculando…" para siempre.
+    intentar(() => getEventShortages(eventId)).then((res) => {
       if (!vivo) return;
       if (!res.ok) return setError(res.error ?? "No se pudieron calcular los faltantes.");
       setRows(res.rows ?? []);
@@ -49,8 +41,7 @@ export function ShortagesModal({
   const compartidos = rows?.filter((r) => r.causedByOthers).length ?? 0;
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal modal-xwide modal-sheet" onClick={(e) => e.stopPropagation()}>
+    <Dialogo etiqueta={`Faltantes de ${lugar}`} onCerrar={onClose} ancho="xwide" className="modal-sheet">
         <div className="sheet-head">
           <h2>Faltantes de {lugar}</h2>
           <p className="modal-sub">
@@ -60,7 +51,7 @@ export function ShortagesModal({
         </div>
 
         <div className="sheet-body">
-          {error && <div className="form-error">{error}</div>}
+          {error && <MensajeDeError>{error}</MensajeDeError>}
           {rows === null && !error && <p className="trash-meta">Calculando…</p>}
 
           {rows?.length === 0 && (
@@ -97,7 +88,7 @@ export function ShortagesModal({
                       <th>Producto</th>
                       <th>Pide este evento</th>
                       <th>Piden los otros</th>
-                      <th>Total del finde</th>
+                      <th>Total del período</th>
                       <th>En el depósito</th>
                       <th>Disponible acá</th>
                       <th>Falta</th>
@@ -166,9 +157,8 @@ export function ShortagesModal({
         </div>
 
         <div className="sheet-foot">
-          <button className="btn ghost" onClick={onClose}>Cerrar</button>
+          <button type="button" className="btn ghost" onClick={onClose}>Cerrar</button>
         </div>
-      </div>
-    </div>
+    </Dialogo>
   );
 }

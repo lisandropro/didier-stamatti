@@ -10,6 +10,7 @@ import { canManageUsers, canSeeChecks } from "@/lib/permissions";
 import { collectProblems } from "@/lib/healthcheck";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Avisos" };
 
 export default async function NotificacionesPage() {
   const user = await getSessionUser();

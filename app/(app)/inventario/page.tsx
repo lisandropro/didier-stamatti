@@ -6,6 +6,7 @@ import { InventoryTable } from "@/components/InventoryTable";
 import { ordenDeCategoria } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Inventario" };
 
 export default async function InventarioPage() {
   const session = await getSessionUser();

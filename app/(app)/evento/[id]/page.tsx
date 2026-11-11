@@ -11,7 +11,19 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-
+/**
+ * El título de la pestaña es el lugar del evento: con dos pedidos abiertos en
+ * la computadora, se distinguen sin entrar. Se pregunta lo mismo que la
+ * pantalla (sesión y permiso) antes de leer nada: a quien no puede ver el
+ * pedido no se le filtra ni el nombre.
+ */
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const session = await getSessionUser();
+  if (!session || !canVerStock(session.role)) return { title: "Pedido" };
+  const { id } = await params;
+  const ev = await prisma.event.findUnique({ where: { id }, select: { lugar: true, deletedAt: true } });
+  return { title: ev && !ev.deletedAt ? ev.lugar : "Pedido" };
+}
 
 export default async function EventoPage({
   params,

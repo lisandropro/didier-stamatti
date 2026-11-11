@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { intentar } from "@/lib/actualizacion";
 import { deleteEvent } from "@/app/actions/period";
+import { Dialogo } from "@/components/Dialogo";
+import { MensajeDeError } from "@/components/Formulario";
 
 /** Confirmación para mandar un evento a la papelera. Vive en el editor del
  *  pedido: en la tarjeta de la portada estaba pegada a "Armar pedido", y en el
@@ -33,24 +35,23 @@ export function ConfirmDeleteEvent({
   }
 
   return (
-    // Tocar afuera mientras dice "Borrando…" cerraba el modal con el borrado en curso.
-    <div className="overlay" onClick={saving ? undefined : onClose}>
-      <div className="modal" onClick={(ev) => ev.stopPropagation()}>
-        <h2>¿Borrar el evento de {evento.lugar}?</h2>
-        <p className="modal-sub">
-          {evento.lineCount > 0
-            ? `Se va a la papelera junto con sus ${evento.lineCount} producto${evento.lineCount > 1 ? "s" : ""} del pedido.`
-            : "Todavía no tiene pedido cargado."}{" "}
-          El resto del período no se toca, y lo podés recuperar desde la papelera.
-        </p>
-        {err && <div className="form-error">{err}</div>}
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn danger" onClick={confirm} disabled={saving}>
-            {saving ? "Borrando…" : "Borrar evento"}
-          </button>
-        </div>
+    // `ocupado`: tocar afuera (o Escape) mientras dice "Borrando…" cerraba el
+    // modal con el borrado en curso.
+    <Dialogo titulo={<>¿Borrar el evento de {evento.lugar}?</>} onCerrar={onClose} ocupado={saving}>
+      <p className="modal-sub">
+        {evento.lineCount > 0
+          ? `Se va a la papelera junto con sus ${evento.lineCount} producto${evento.lineCount > 1 ? "s" : ""} del pedido.`
+          : "Todavía no tiene pedido cargado."}{" "}
+        El resto del período no se toca, y lo podés recuperar desde la papelera.
+      </p>
+      {err && <MensajeDeError>{err}</MensajeDeError>}
+      <div className="modal-actions">
+        {/* El foco arranca en Cancelar: un Enter de más no borra nada. */}
+        <button type="button" className="btn ghost" onClick={onClose} disabled={saving} autoFocus>Cancelar</button>
+        <button type="button" className="btn danger" onClick={confirm} disabled={saving}>
+          {saving ? "Borrando…" : "Borrar evento"}
+        </button>
       </div>
-    </div>
+    </Dialogo>
   );
 }

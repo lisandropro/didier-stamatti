@@ -53,7 +53,7 @@ async function desanotarConTope(): Promise<void> {
 }
 
 const IconoSalir = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
     <path d="M15 12H4M8 8l-4 4 4 4" />
     <path d="M11 4h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" />
   </svg>

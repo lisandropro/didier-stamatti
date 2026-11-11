@@ -3,12 +3,13 @@ import { canVerStock } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { fmtEventDate } from "@/lib/format";
+import { fmtEvento } from "@/lib/dates";
 import { PrintPlainButton } from "@/components/PrintButton";
 import { Cartel } from "@/components/Cartel";
 import { esCategoria, nombreDeCategoria } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Cartel" };
 
 
 
@@ -44,7 +45,7 @@ export default async function CartelSectorPage({
       </div>
 
       <div className="content pdf-content">
-        <Cartel sector={sector} lugar={ev.lugar} dateLabel={fmtEventDate(ev.date)} />
+        <Cartel sector={sector} lugar={ev.lugar} dateLabel={fmtEvento(ev.date)} />
       </div>
     </>
   );

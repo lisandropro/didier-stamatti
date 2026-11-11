@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { validQuantity, MAX_QUANTITY } from "@/lib/quantity";
 import { updateStock } from "@/app/actions/stock";
 import { NewProductModal } from "@/components/NewProductModal";
@@ -8,6 +8,10 @@ import { ProductAdminModal } from "@/components/ProductAdminModal";
 import { RowMenu } from "@/components/RowMenu";
 import { OPCIONES_CATEGORIA, nombreDeCategoria } from "@/lib/categories";
 import { useRouter } from "next/navigation";
+import { Dialogo } from "@/components/Dialogo";
+import { Campo, MensajeDeError } from "@/components/Formulario";
+import { IconAviso, IconCheck, IconInfo, IconPlus, IconSearch } from "@/components/iconos";
+import { MOTIVOS_DE_STOCK, norm, sinRueda } from "@/components/util";
 
 type Product = {
   id: string;
@@ -25,19 +29,6 @@ type Product = {
 // "Todos" no es una categoría: es el filtro apagado, y por eso no vive en
 // lib/categories junto a los sectores del depósito.
 const CATS = [{ v: "TODOS", l: "Todos" }, ...OPCIONES_CATEGORIA];
-
-const norm = (s: string) =>
-  s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-
-const IconCheck = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M20 6 9 17l-5-5" /></svg>
-);
-const IconPlus = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
-);
-const IconWarn = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M12 8v5M12 16h.01" /><circle cx="12" cy="12" r="9" /></svg>
-);
 
 export function InventoryTable({ products, canEdit }: { products: Product[]; canEdit: boolean }) {
   const items = products;
@@ -66,8 +57,10 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
     <>
       <div className="searchbar">
         <label className="search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></svg>
+          {IconSearch}
           <input
+            aria-label="Buscar producto"
+            enterKeyHint="search"
             placeholder="Buscar producto… (ej. copa, silla, plato)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -79,7 +72,9 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
           {CATS.map((c) => (
             <button
               key={c.v}
+              type="button"
               className={`tab${cat === c.v ? " active" : ""}`}
+              aria-pressed={cat === c.v}
               onClick={() => setCat(c.v)}
             >
               {c.l}
@@ -106,7 +101,7 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
               <th>Unidad</th>
               <th>Stock</th>
               <th>Estado</th>
-              {canEdit && <th></th>}
+              {canEdit && <th><span className="sr-only">Acciones</span></th>}
             </tr>
           </thead>
           <tbody>
@@ -147,9 +142,9 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
                       <span className="chip neutral">Se compra por evento</span>
                     ) : p.stock === null ? (
                       // Nunca se contó. No es "hay cero": es que no se sabe.
-                      <span className="chip warn">{IconWarn}Sin contar</span>
+                      <span className="chip warn">{IconAviso}Sin contar</span>
                     ) : p.stock > 0 ? (
-                      <span className="chip ok">{IconCheck}Cargado</span>
+                      <span className="chip ok">{IconCheck}Contado</span>
                     ) : (
                       <span className="chip neutral">Contado: no hay</span>
                     )}
@@ -173,7 +168,7 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
       </div>
 
       <div className="hint">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
+        {IconInfo}
         {canEdit
           ? "Al editar el stock podés poner el total nuevo o sumar/restar, anotando el motivo (rotura, pérdida o compra). Las bebidas no llevan stock: solo se listan en el pedido."
           : "Este es el stock disponible en el depósito. Las bebidas no llevan stock: solo se listan en el pedido."}
@@ -211,13 +206,6 @@ export function InventoryTable({ products, canEdit }: { products: Product[]; can
   );
 }
 
-const REASONS = [
-  { v: "COMPRA", l: "Compra / ingreso" },
-  { v: "ROTURA", l: "Rotura" },
-  { v: "PERDIDA", l: "Pérdida" },
-  { v: "AJUSTE", l: "Ajuste / conteo" },
-];
-
 function EditStockModal({
   product,
   onClose,
@@ -232,14 +220,6 @@ function EditStockModal({
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Bloquea el scroll del fondo mientras el modal está abierto
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
 
   const parsed = val.trim() === "" ? NaN : Number(val);
   const valid = validQuantity(parsed);
@@ -293,62 +273,66 @@ function EditStockModal({
         : `Restás ${Math.abs(delta)} ${unit}`;
 
   return (
-    <div className="overlay" onClick={() => { if (!saving) onClose(); }}>
-      <div className="modal" data-sin-deslizar role="dialog" aria-modal="true" aria-labelledby="stock-title" onKeyDown={(e) => { if (e.key === "Escape" && !saving) onClose(); }} onClick={(e) => e.stopPropagation()}>
-        <h2 id="stock-title">Editar stock</h2>
-        <div className="msub">
-          {product.name} · stock actual: <span className="stockbig">{product.stock ?? "Sin contar"}</span> {unit}
-        </div>
-
-        <div className="stepper-row">
-          <button type="button" className="step-btn" disabled={saving} onClick={() => step(-1)} aria-label="Restar uno">−</button>
-          <input
-            className="step-input"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={MAX_QUANTITY}
-            step={1}
-            disabled={saving}
-            value={val}
-            onChange={(e) => setVal(e.target.value)}
-            aria-label="Cantidad total"
-            autoFocus
-          />
-          <button type="button" className="step-btn" disabled={saving} onClick={() => step(1)} aria-label="Sumar uno">+</button>
-        </div>
-        <div className={`delta-line${delta !== 0 && valid ? " active" : ""}`}>{deltaText}</div>
-
-        <div className="field">
-          <label>Motivo</label>
-          <select disabled={saving} value={reason} onChange={(e) => setReason(e.target.value)}>
-            {REASONS.map((r) => (
-              <option key={r.v} value={r.v}>{r.l}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field">
-          <label>Nota (opcional)</label>
-          <input
-            type="text"
-            placeholder="Aclaración…"
-            maxLength={1000}
-            disabled={saving}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-        </div>
-
-        {error && <div role="alert" className="preview-line" style={{ color: "var(--crit)" }}>{error}</div>}
-
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn primary" onClick={save} disabled={saving || !valid}>
-            {saving ? "Guardando…" : "Guardar"}
-          </button>
-        </div>
+    <Dialogo
+      titulo="Editar stock"
+      onCerrar={onClose}
+      ocupado={saving}
+      cambiado={(valid && delta !== 0) || note.trim() !== ""}
+      sinDeslizar
+      alEnviar={save}
+    >
+      <div className="msub">
+        {product.name} · stock actual: {product.stock ?? "Sin contar"} {unit}
       </div>
-    </div>
+
+      <div className="stepper-row">
+        <button type="button" className="step-btn" disabled={saving} onClick={() => step(-1)} aria-label="Restar uno">−</button>
+        <input
+          className="step-input"
+          type="number"
+          onWheel={sinRueda}
+          inputMode="numeric"
+          min={0}
+          max={MAX_QUANTITY}
+          step={1}
+          disabled={saving}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          aria-label="Cantidad total"
+          autoFocus
+        />
+        <button type="button" className="step-btn" disabled={saving} onClick={() => step(1)} aria-label="Sumar uno">+</button>
+      </div>
+      {/* Se anuncia al cambiar: quien no ve la pantalla escucha "Sumás 3 unidad". */}
+      <div className={`delta-line${delta !== 0 && valid ? " active" : ""}`} aria-live="polite">{deltaText}</div>
+
+      <Campo label="Motivo">
+        <select disabled={saving} value={reason} onChange={(e) => setReason(e.target.value)}>
+          {MOTIVOS_DE_STOCK.map((r) => (
+            <option key={r.v} value={r.v}>{r.detalle}</option>
+          ))}
+        </select>
+      </Campo>
+
+      <Campo label="Nota (opcional)">
+        <input
+          type="text"
+          placeholder="Aclaración…"
+          maxLength={1000}
+          disabled={saving}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </Campo>
+
+      {error && <MensajeDeError>{error}</MensajeDeError>}
+
+      <div className="modal-actions">
+        <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+        <button type="submit" className="btn primary" disabled={saving || !valid}>
+          {saving ? "Guardando…" : "Guardar"}
+        </button>
+      </div>
+    </Dialogo>
   );
 }

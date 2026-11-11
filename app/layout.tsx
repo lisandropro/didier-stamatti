@@ -3,7 +3,9 @@ import { ComportamientoDeApp } from "@/components/ComportamientoDeApp";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Didier Stamatti — Stock y Pedidos",
+  // Cada pantalla pone su nombre y esta plantilla le suma la marca: en la
+  // computadora, las pestañas y el historial dejan de llamarse todas igual.
+  title: { default: "Didier Stamatti — Stock y Pedidos", template: "%s · Didier Stamatti" },
   description: "Control de stock y armado de pedidos por período operativo",
   // Para que iPhone/Android la reconozcan como app instalable.
   applicationName: "Didier Stamatti",

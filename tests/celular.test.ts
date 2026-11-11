@@ -35,7 +35,7 @@ test("el PDF desde el menú del celular sale recién después de guardar lo pend
 
 test("el menú del editor tiene todo lo que en el celular sale de la cabecera", () => {
   const s = fuente("components/OrderBuilder.tsx");
-  for (const label of ["Editar evento", "Repetir pedido", "PDF del pedido", "Marcar como listo", "Responsable de la fiesta", "Borrar evento"]) {
+  for (const label of ["Editar evento", "Repetir pedido", "PDF del pedido", "Marcar como listo", "Responsable del evento", "Borrar evento"]) {
     assert.ok(s.includes(`label: "${label}"`) || s.includes(`"${label}"`), `falta "${label}" en el menú`);
   }
 });
@@ -143,7 +143,10 @@ test("en el celular el selector de período tiene ancho propio y alto de dedo", 
 
 test("el modal de borrar no se cierra mientras está borrando", () => {
   const s = fuente("components/ConfirmDeleteEvent.tsx");
-  assert.ok(s.includes("onClick={saving ? undefined : onClose}"), "tocar afuera cierra el modal a mitad del borrado");
+  // El cierre por el fondo (y por Escape) lo maneja `Dialogo`: con `ocupado` no cierra.
+  assert.ok(s.includes("ocupado={saving}"), "tocar afuera cierra el modal a mitad del borrado");
+  const base = fuente("components/Dialogo.tsx");
+  assert.ok(base.includes("if (e.ocupado) return;"), "la base cierra aunque esté guardando");
 });
 
 test("en el celular los campos de texto miden 16 px", () => {
