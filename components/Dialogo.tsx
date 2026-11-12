@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { intentar } from "@/lib/actualizacion";
 import { MensajeDeError } from "@/components/Formulario";
 
@@ -56,6 +56,55 @@ function destrabarFondo() {
   estiloPrevio = null;
 }
 
+/** Lo que tarda en irse una ventana que se cierra. Un poco más que la animación
+ *  más larga de salida (la hoja del celular, 200 ms): si la animación no llega
+ *  a correr, el reloj la saca igual. */
+const SALIDA_MS = 240;
+
+/**
+ * Que la ventana se vaya en vez de desaparecer de golpe.
+ *
+ * Quien cierra una ventana la desmonta (cada pantalla tiene su `onClose`), y
+ * enseñarle a las 33 a esperar una animación sería repartir el mismo arreglo
+ * por toda la app. En cambio, justo antes de que React la saque del documento
+ * (los efectos de layout se limpian con los nodos todavía puestos), se deja una
+ * copia quieta en su lugar —sin foco, sin toques, invisible para el lector de
+ * pantalla— que hace la animación de salida y se borra sola.
+ */
+function dejarCopiaQueSeVa(fondo: HTMLElement) {
+  if (!fondo.isConnected || document.visibilityState !== "visible") return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const copia = fondo.cloneNode(true) as HTMLElement;
+  copia.classList.add("saliendo");
+  copia.setAttribute("aria-hidden", "true");
+  copia.setAttribute("inert", "");
+  // Sin ids ni rol: por un instante habría dos ventanas con el mismo nombre.
+  copia.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  copia.querySelectorAll("[role=dialog]").forEach((el) => el.removeAttribute("role"));
+  // `cloneNode` copia atributos, no lo tipeado ni lo tildado.
+  const campos = fondo.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select");
+  const copias = copia.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select");
+  campos.forEach((campo, n) => {
+    const otro = copias[n];
+    if (!otro) return;
+    otro.value = campo.value;
+    if (campo instanceof HTMLInputElement && otro instanceof HTMLInputElement) otro.checked = campo.checked;
+  });
+  document.body.appendChild(copia);
+  // Ni dónde estaba scrolleada: se copia ya puesta, que es cuando cuenta.
+  const scrolls = fondo.querySelectorAll<HTMLElement>(".modal, .sheet-body");
+  copia.querySelectorAll<HTMLElement>(".modal, .sheet-body").forEach((el, n) => {
+    el.scrollTop = scrolls[n]?.scrollTop ?? 0;
+  });
+  const quitar = () => copia.remove();
+  setTimeout(quitar, SALIDA_MS);
+  // En desarrollo React desmonta y vuelve a montar cada efecto para probarlo:
+  // ahí la ventana sigue puesta y la copia no tiene nada que despedir.
+  queueMicrotask(() => {
+    if (fondo.isConnected) quitar();
+  });
+}
+
 const ENFOCABLES =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -99,6 +148,13 @@ export function Dialogo({
   // El clic en el fondo solo cuenta si también empezó en el fondo: arrastrar
   // para seleccionar un texto y soltar afuera no es querer cerrar.
   const empezoEnElFondo = useRef(false);
+  const fondo = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const nodo = fondo.current;
+    return () => {
+      if (nodo) dejarCopiaQueSeVa(nodo);
+    };
+  }, []);
 
   // En referencias: los manejadores del documento se arman una sola vez y
   // tienen que ver siempre el último valor.
@@ -208,6 +264,7 @@ export function Dialogo({
 
   return (
     <div
+      ref={fondo}
       className="overlay"
       onPointerDown={(e) => {
         empezoEnElFondo.current = e.target === e.currentTarget;

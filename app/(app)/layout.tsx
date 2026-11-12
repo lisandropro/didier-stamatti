@@ -8,6 +8,7 @@ import { Actualizador } from "@/components/Actualizador";
 import { SinConexion } from "@/components/SinConexion";
 import { TirarParaActualizar } from "@/components/TirarParaActualizar";
 import { appVersion } from "@/lib/app-version";
+import { Pantalla } from "@/components/Pantalla";
 
 export default async function AppLayout({
   children,
@@ -37,7 +38,9 @@ export default async function AppLayout({
       <PushSubscriptionSync />
       <Sidebar user={user} />
       {/* <main>: el lector de pantalla puede saltar directo al contenido. */}
-      <main className="main">{children}</main>
+      <main className="main">
+        <Pantalla>{children}</Pantalla>
+      </main>
       <MobileNav role={user.role} />
       {/* El formulario vive una sola vez acá: se abre desde cualquier pantalla. */}
       <SuggestionBox />

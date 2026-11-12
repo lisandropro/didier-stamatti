@@ -354,6 +354,19 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 /* Solo anima el movimiento, NUNCA la opacidad: si la animación no corre
    (pestaña oculta, headless), el modal igual se ve. Realza, no condiciona. */
 @keyframes modal-in{from{transform:translateY(8px) scale(.985)}to{transform:none}}
+/* El fondo oscuro entra suave en vez de caer de golpe. Solo el color del
+   fondo: la hoja de encima no se toca. */
+@keyframes fondo-entra{from{background-color:transparent}}
+.overlay{animation:fondo-entra var(--dur) var(--ease)}
+/* La salida. Quien la hace es una copia quieta de la ventana que deja Dialogo
+   al cerrarse (ver `dejarCopiaQueSeVa`): no recibe toques ni foco, y se borra
+   sola a los 240 ms aunque la animación no llegue a correr. Por eso acá sí se
+   puede animar la opacidad: lo que se apaga ya no está. */
+@keyframes fondo-sale{to{background-color:transparent}}
+@keyframes modal-sale{to{opacity:0; transform:translateY(6px) scale(.985)}}
+@keyframes hoja-baja{to{transform:translateY(100%)}}
+.overlay.saliendo{pointer-events:none; animation:fondo-sale 180ms var(--ease) forwards}
+.overlay.saliendo .modal{animation:modal-sale 140ms var(--ease) forwards}
 .modal h2{margin:0 0 3px; font-size:var(--t-xl); font-weight:700; letter-spacing:-.01em}
 /* Subtítulo apagado. El margen es del modal, donde el subtítulo separa el
    título del formulario. */
@@ -573,6 +586,22 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 }
 @media (prefers-reduced-motion:reduce){
   .nav-pending.is-pending{animation:none; opacity:.9}
+}
+/* La sección tocada se marca en el acto, no cuando llega la pantalla nueva.
+   Antes la marca seguía en la sección vieja hasta que el servidor contestaba:
+   con poca señal, medio segundo o más en el que parecía que el toque no había
+   entrado. `is-pending` lo pone useLinkStatus apenas arranca la navegación y lo
+   saca solo si se cancela (el editor del pedido la frena si hay algo sin
+   guardar), así que la marca nunca queda en un lugar al que no se fue. */
+.nav:has(> .nav-pending.is-pending){background:var(--brand-soft); border-color:var(--hair); font-weight:600}
+.nav:has(> .nav-pending.is-pending) svg{color:var(--gold)}
+.side:has(.nav-pending.is-pending) .nav.active:not(:has(> .nav-pending.is-pending)){background:transparent; border-color:transparent; font-weight:500}
+.side:has(.nav-pending.is-pending) .nav.active:not(:has(> .nav-pending.is-pending)) svg{color:var(--muted)}
+@media (max-width:860px){
+  .mobnav a:has(> .nav-pending.is-pending){color:var(--ink)}
+  .mobnav a:has(> .nav-pending.is-pending) svg{color:var(--gold)}
+  .mobnav:has(.nav-pending.is-pending) a.active:not(:has(> .nav-pending.is-pending)){color:var(--muted)}
+  .mobnav:has(.nav-pending.is-pending) a.active:not(:has(> .nav-pending.is-pending)) svg{color:currentColor}
 }
 
 /* ===== Esqueleto de carga (feedback instantáneo al cambiar de pantalla) ===== */
@@ -1383,7 +1412,16 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
 .prep-confirma .btn{flex:1 1 0; justify-content:center; touch-action:manipulation}
 .prep-fila:disabled{cursor:default; opacity:1}
 .prep-fila.ocupada{opacity:.6}
-.prep-check{flex:0 0 auto; width:44px; height:44px; border:2px solid var(--muted); border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:var(--t-xl)}
+.prep-check{flex:0 0 auto; width:44px; height:44px; border:2px solid var(--muted); border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:var(--t-xl);
+  transition:background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)}
+/* El tilde se ve en el acto (Preparar y Levante lo muestran antes de que
+   conteste el servidor) y el cuadro da un saltito: es la confirmación de que
+   el toque entró, sin esperar la red. Solo escala, nunca opacidad: si la
+   animación no corre, el tilde igual está. La fila no se apaga mientras
+   guarda —ya muestra cómo queda—; solo no se puede volver a tocar. */
+@keyframes tilde-salta{0%{transform:scale(.82)}55%{transform:scale(1.1)}100%{transform:none}}
+.prep-fila.guardando .prep-check{animation:tilde-salta 240ms var(--ease)}
+.prep-fila.guardando{cursor:progress}
 .prep-fila.estado-preparado .prep-check{background:var(--ok); border-color:var(--ok); color:var(--surface)}
 .prep-fila.estado-cambio, .prep-fila.estado-nota, .prep-fila.estado-sacar{border-color:var(--warn)}
 .prep-item{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
@@ -1580,6 +1618,13 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
   }
   .modal.modal-sheet{padding-top:var(--sp-3); padding-bottom:0}
   .modal-sheet .sheet-foot{padding-bottom:calc(var(--sp-4) + env(safe-area-inset-bottom))}
+  /* La hoja baja entera, desde donde esté (si la soltó el dedo a mitad de
+     camino, sigue desde ahí). */
+  .overlay.saliendo .modal{animation:hoja-baja 200ms cubic-bezier(.4,0,1,1) forwards}
+  /* El desenfoque del fondo cuesta caro en un Android de gama baja (repinta
+     todo lo de atrás en cada cuadro de la animación) y en una pantalla chica,
+     tapada casi entera por la hoja, no se aprecia. */
+  .overlay{backdrop-filter:none}
   .modal::before{
     content:""; position:absolute; top:var(--sp-2); left:50%; transform:translateX(-50%);
     width:40px; height:4px; border-radius:var(--r-pill);
@@ -1693,7 +1738,7 @@ tbody tr{transition:background-color var(--dur) var(--ease)}
    abiertos, la franja a esa altura les taparía la mitad de abajo. Ahí solo hay
    fondo oscurecido arriba, así que se va para allá. Va fuera de cualquier
    `@media`: en la pantalla ancha las hojas son centradas y arriba tampoco molesta. */
-html:has(.overlay, .mobmas-fondo) .sin-conexion{
+html:has(.overlay:not(.saliendo), .mobmas-fondo) .sin-conexion{
   bottom:auto; top:calc(var(--sp-2) + env(safe-area-inset-top));
 }
 .sin-conexion.volvio{background:var(--ok)}
@@ -1723,4 +1768,27 @@ html:has(.overlay, .mobmas-fondo) .sin-conexion{
   .topbar .sub{font-size:var(--t-chico)}
   .topbar-pedido .sub{font-size:var(--t-chico)}
   .tile .k{font-size:var(--t-chico)}
+}
+
+/* ===== Paso entre pantallas (components/Pantalla.tsx) ======================
+   La vieja se apaga rápido para no competir; la nueva entra un poco más lenta
+   y subiendo 6 px. Todo bajo 200 ms: es para trabajar, no para mirar.
+   Solo anima lo que React nombra (la pantalla y el esqueleto): el resto de la
+   página —barra lateral, barra de abajo, avisos fijos— queda quieto. */
+::view-transition{pointer-events:none}
+::view-transition-old(root),::view-transition-new(root){animation:none}
+/* La barra de abajo flota sobre la pantalla: con nombre propio se dibuja por
+   encima de la que entra y no se mueve. Sin esto, durante la animación la
+   pantalla nueva pasaba por encima de la barra. */
+@media (max-width:860px){ .mobnav{view-transition-name:barra-abajo} }
+::view-transition-group(barra-abajo),::view-transition-old(barra-abajo),::view-transition-new(barra-abajo){animation:none}
+@keyframes pantalla-sale{to{opacity:0}}
+@keyframes pantalla-entra{from{opacity:0; transform:translateY(6px)}}
+::view-transition-old(.pantalla-sale){animation:pantalla-sale 90ms ease-out both}
+::view-transition-new(.pantalla-entra){animation:pantalla-entra 180ms var(--ease) both}
+::view-transition-old(.esqueleto-sale){animation:pantalla-sale 140ms ease-out both}
+/* El apagado global de "reducir movimiento" (arriba) usa `*`, que no alcanza a
+   estos seudoelementos. */
+@media (prefers-reduced-motion:reduce){
+  ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}
 }

@@ -111,8 +111,17 @@ export function ComportamientoDeApp() {
       const dy = dedo.clientY - a.y;
       const golpe = dy > 40 && performance.now() - a.t < 250;
       const cerrar = a.moviendo && (dy > 90 || golpe);
-      soltarGesto();
-      if (cerrar) a.fondo.click();
+      if (!cerrar) return soltarGesto();
+      // Al cerrar, la hoja no vuelve arriba antes de irse: se queda donde la
+      // dejó el dedo y la animación de salida sigue desde ahí. Si no se cerró
+      // (estaba guardando, o pregunta si descartar lo tipeado), ahí sí vuelve.
+      arrastre = null;
+      a.fondo.click();
+      setTimeout(() => {
+        if (!a.hoja.isConnected) return;
+        a.hoja.style.transition = "transform 180ms ease";
+        a.hoja.style.transform = "";
+      }, 0);
     };
 
     // El teclado abierto. Con `interactiveWidget: "resizes-content"` (layout)

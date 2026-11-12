@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useOptimistic, useState, useTransition, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   descontarItem,
@@ -51,6 +51,10 @@ type Item = {
   /** Cuántas unidades baja de verdad "Dar de baja": no más que el stock. */
   bajan: number | null;
 };
+/** Lo que se tocó y todavía no volvió del servidor: clave → si queda como "volvió". */
+type Destinos = ReadonlyMap<string, boolean>;
+const SIN_DESTINOS: Destinos = new Map();
+
 type Data = {
   evento: { id: string; lugar: string; cuando: string; esHoy: boolean };
   items: Item[];
@@ -104,6 +108,23 @@ export function Levante({ data }: { data: Data }) {
   const [sectorAConfirmar, setSectorAConfirmar] = useState<{ category: string; vistos: VistoDeLevante[] } | null>(null);
   // Cuántos quedaban sin revisar cuando se preguntó "¿Terminar igual?".
   const [terminarConfirmar, setTerminarConfirmar] = useState<number | null>(null);
+  // Tachar se ve en el acto, como tildar en Preparar: la fila no espera al
+  // servidor. Si el guardado falla, vuelve sola a como estaba y sale el error.
+  const [, enTransicion] = useTransition();
+  const [destinos, anotarDestinos] = useOptimistic(SIN_DESTINOS, (prev: Destinos, pares: [string, boolean][]) => {
+    const sig = new Map(prev);
+    for (const [clave, volvio] of pares) sig.set(clave, volvio);
+    return sig;
+  });
+  /** Lo mismo que `correr`, pero la fila ya se ve como va a quedar. */
+  function correrAlInstante(clave: string, accion: () => Promise<LevanteResult>, pares: [string, boolean][]) {
+    enTransicion(async () => {
+      anotarDestinos(pares);
+      await correr(clave, accion);
+    });
+  }
+  /** Una fila no se vuelve a tocar hasta que su guardado termina. */
+  const ocupada = (clave: string) => enVuelo.has(clave) || destinos.has(clave);
 
   // El error se va solo: quien está mirando otra parte de la lista no lo va a
   // cerrar, y uno viejo en pantalla hace dudar de si lo último se guardó.
@@ -138,7 +159,7 @@ export function Levante({ data }: { data: Data }) {
   }
 
   function abrirHoja(i: Item) {
-    if (!data.puedeMarcar || i.descontado !== null || enVuelo.has(i.clave)) return;
+    if (!data.puedeMarcar || i.descontado !== null || ocupada(i.clave)) return;
     // Propone todos (lo más común cuando se pierde algo es que no aparezca
     // ninguno), o lo ya marcado si se está corrigiendo.
     setHoja({
@@ -156,14 +177,17 @@ export function Levante({ data }: { data: Data }) {
    *  pendiente (errores de quien marca). Un faltante no se resuelve de un toque:
    *  abre la hoja para corregirlo o desmarcarlo. */
   function alternar(i: Item) {
-    if (!data.puedeMarcar || i.descontado !== null || enVuelo.has(i.clave)) return;
+    if (!data.puedeMarcar || i.descontado !== null || ocupada(i.clave)) return;
     if (i.estado === "FALTA") {
       abrirHoja(i);
       return;
     }
-    vibrar(i.estado === "VOLVIO" ? PATRON.destildar : PATRON.tildar);
-    void correr(i.clave, () =>
-      i.estado === "VOLVIO" ? desmarcarItem(data.evento.id, i.clave, 0) : marcarVolvioItem(data.evento.id, i.clave, i.qty),
+    const desmarcar = i.estado === "VOLVIO";
+    vibrar(desmarcar ? PATRON.destildar : PATRON.tildar);
+    correrAlInstante(
+      i.clave,
+      () => (desmarcar ? desmarcarItem(data.evento.id, i.clave, 0) : marcarVolvioItem(data.evento.id, i.clave, i.qty)),
+      [[i.clave, !desmarcar]],
     );
   }
 
@@ -194,7 +218,11 @@ export function Levante({ data }: { data: Data }) {
   function tacharSector(a: { category: string; vistos: VistoDeLevante[] }) {
     setSectorAConfirmar(null);
     vibrar(PATRON.tildarSector);
-    void correr(`sector:${a.category}`, () => marcarSectorEntero(data.evento.id, a.category, a.vistos));
+    correrAlInstante(
+      `sector:${a.category}`,
+      () => marcarSectorEntero(data.evento.id, a.category, a.vistos),
+      a.vistos.map((v): [string, boolean] => [v.clave, true]),
+    );
   }
 
   async function terminar(sinRevisarVisto: number) {
@@ -231,8 +259,17 @@ export function Levante({ data }: { data: Data }) {
     };
   }
 
-  const sectores = seccionesDeLevante(data.items);
-  const resumen = resumenDeLevante(data.items);
+  // La lista como va a quedar, con los toques en camino ya aplicados: los
+  // contadores de cada sector también cambian en el acto.
+  const items = destinos.size === 0
+    ? data.items
+    : data.items.map((i): Item => {
+        const volvio = destinos.get(i.clave);
+        if (volvio === undefined) return i;
+        return { ...i, estado: volvio ? "VOLVIO" : "PENDIENTE", faltan: 0 };
+      });
+  const sectores = seccionesDeLevante(items);
+  const resumen = resumenDeLevante(items);
 
   function pedirTerminar() {
     if (resumen.sinRevisar > 0) setTerminarConfirmar(resumen.sinRevisar);
@@ -327,6 +364,7 @@ export function Levante({ data }: { data: Data }) {
                 item={i}
                 puedeMarcar={data.puedeMarcar}
                 ocupada={enVuelo.has(i.clave)}
+                guardando={destinos.has(i.clave)}
                 alTocar={() => alternar(i)}
                 alFalta={() => abrirHoja(i)}
                 puedeDescontar={data.terminado !== null && data.puedeAjustarStock}
@@ -422,6 +460,7 @@ function Fila({
   item: i,
   puedeMarcar,
   ocupada,
+  guardando,
   alTocar,
   alFalta,
   puedeDescontar,
@@ -430,6 +469,8 @@ function Fila({
   item: Item;
   puedeMarcar: boolean;
   ocupada: boolean;
+  /** Ya se ve como va a quedar y se está guardando: no se apaga, pero no se toca. */
+  guardando: boolean;
   alTocar: () => void;
   alFalta: () => void;
   puedeDescontar: boolean;
@@ -446,9 +487,10 @@ function Fila({
       <div className="lev-fila-linea">
         <button
           type="button"
-          className={`prep-fila estado-${i.estado.toLowerCase()}${ocupada ? " ocupada" : ""}`}
+          className={`prep-fila estado-${i.estado.toLowerCase()}${ocupada && !guardando ? " ocupada" : ""}${guardando ? " guardando" : ""}`}
           onClick={alTocar}
-          disabled={!tocable || ocupada}
+          disabled={!tocable || ocupada || guardando}
+          aria-busy={guardando || undefined}
           role="checkbox"
           aria-checked={volvio ? true : falta ? "mixed" : false}
         >

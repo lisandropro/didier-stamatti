@@ -4,9 +4,11 @@
 
 /** `title` se omite cuando el encabezado real es dinámico (p. ej. el lugar del
  *  evento): en ese caso también se muestra como esqueleto. */
+import { SalidaDeEsqueleto } from "@/components/Pantalla";
+
 export function PageSkeleton({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <>
+    <SalidaDeEsqueleto>
       <div className="topbar">
         <div>
           <h1>
@@ -18,7 +20,7 @@ export function PageSkeleton({ title, children }: { title?: string; children: Re
         </div>
       </div>
       <div className="content">{children}</div>
-    </>
+    </SalidaDeEsqueleto>
   );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useOptimistic, useState, useTransition, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { destildarItem, tildarItem, tildarSectorEntero } from "@/app/actions/preparacion";
 import { intentar } from "@/lib/actualizacion";
@@ -46,6 +46,10 @@ const armadaDe = (i: Item): Armada => ({ ...vistoDe(i), clave: i.clave, tildadoQ
 const sigueComoSeArmo = (a: Armada, i: Item) =>
   a.clave === i.clave && a.estado === i.estado && a.qty === i.qty && a.note === i.note && a.tildadoQty === i.tildadoQty;
 
+/** Lo que se tocó y todavía no volvió del servidor: clave → si queda tildado. */
+type Destinos = ReadonlyMap<string, boolean>;
+const SIN_DESTINOS: Destinos = new Map();
+
 /** Cuánto dura el error en pantalla. Sin esto se queda hasta el próximo toque. */
 const ERROR_MS = 8_000;
 
@@ -78,6 +82,18 @@ export function Preparar({ data }: { data: Data }) {
   const [sectorAConfirmar, setSectorAConfirmar] = useState<{ category: string; vistos: VistoDeSector[] } | null>(null);
   // La fila de "Cambios para aplicar" que espera la confirmación. Una sola a la vez.
   const [armada, setArmada] = useState<Armada | null>(null);
+  // El tilde se ve en el acto, no cuando contesta el servidor. Con la señal del
+  // depósito la fila quedaba apagada uno o dos segundos y se volvía a tocar,
+  // destildando lo que se acababa de tildar. Lo optimista dura lo que dura el
+  // guardado (la transición incluye la lista nueva que manda el servidor): si
+  // sale bien, la lista nueva ya trae el tilde; si falla, la fila vuelve sola a
+  // como estaba y aparece el error.
+  const [, enTransicion] = useTransition();
+  const [destinos, anotarDestinos] = useOptimistic(SIN_DESTINOS, (prev: Destinos, pares: [string, boolean][]) => {
+    const sig = new Map(prev);
+    for (const [clave, hecho] of pares) sig.set(clave, hecho);
+    return sig;
+  });
 
   // El error se va solo: quien está mirando otra parte de la lista no lo va a
   // cerrar, y uno viejo en pantalla hace dudar de si lo último se guardó.
@@ -87,8 +103,15 @@ export function Preparar({ data }: { data: Data }) {
     return () => clearTimeout(id);
   }, [error]);
 
-  async function correr<T extends { ok: boolean; error?: string; aviso?: string }>(clave: string, accion: () => Promise<T>) {
+  function correr<T extends { ok: boolean; error?: string; aviso?: string }>(clave: string, accion: () => Promise<T>, optimistas: [string, boolean][] = []) {
     setEnVuelo((prev) => new Set(prev).add(clave));
+    enTransicion(async () => {
+      if (optimistas.length > 0) anotarDestinos(optimistas);
+      await guardar(clave, accion);
+    });
+  }
+
+  async function guardar<T extends { ok: boolean; error?: string; aviso?: string }>(clave: string, accion: () => Promise<T>) {
     const r = await intentar(accion);
     setEnVuelo((prev) => {
       const sig = new Set(prev);
@@ -112,16 +135,17 @@ export function Preparar({ data }: { data: Data }) {
   }
 
   function alternar(i: Item) {
-    if (!data.puedeTildar || enVuelo.has(i.clave)) return;
+    if (!data.puedeTildar || ocupada(i.clave)) return;
     // Tocar algo preparado lo destilda (errores de quien tilda). Tocar algo
     // pendiente, que cambió o hay que sacar, lo da por hecho. Los dos llevan lo
     // que se ve en la fila: se guarda eso, y no se destilda si debajo hay algo nuevo.
     const visto = vistoDe(i);
-    vibrar(i.estado === "PREPARADO" ? PATRON.destildar : PATRON.tildar);
-    void correr(i.clave, () =>
-      i.estado === "PREPARADO"
-        ? destildarItem(data.evento.id, i.clave, visto)
-        : tildarItem(data.evento.id, i.clave, visto),
+    const destildar = i.estado === "PREPARADO";
+    vibrar(destildar ? PATRON.destildar : PATRON.tildar);
+    correr(
+      i.clave,
+      () => (destildar ? destildarItem(data.evento.id, i.clave, visto) : tildarItem(data.evento.id, i.clave, visto)),
+      [[i.clave, !destildar]],
     );
   }
 
@@ -130,7 +154,7 @@ export function Preparar({ data }: { data: Data }) {
    *  hecho sin que nadie mueva nada, y esa instrucción se perdería. Ahí el primer
    *  toque solo abre la pregunta (y un segundo toque la cierra). */
   function tocar(i: Item, pideConfirmar: boolean) {
-    if (!data.puedeTildar || enVuelo.has(i.clave)) return;
+    if (!data.puedeTildar || ocupada(i.clave)) return;
     if (pideConfirmar) {
       setArmada((actual) => (actual?.clave === i.clave ? null : armadaDe(i)));
       return;
@@ -160,10 +184,29 @@ export function Preparar({ data }: { data: Data }) {
   function tildarSector(a: { category: string; vistos: VistoDeSector[] }) {
     setSectorAConfirmar(null);
     vibrar(PATRON.tildarSector);
-    void correr(`sector:${a.category}`, () => tildarSectorEntero(data.evento.id, a.category, a.vistos));
+    correr(
+      `sector:${a.category}`,
+      () => tildarSectorEntero(data.evento.id, a.category, a.vistos),
+      a.vistos.map((v): [string, boolean] => [v.clave, true]),
+    );
   }
 
-  const { paraAplicar, sectores } = seccionesDePantalla(data.items);
+  /** Una fila no se vuelve a tocar hasta que su guardado termina: lo que se
+   *  mandaría saldría de la fila vieja, no de la que se ve. */
+  function ocupada(clave: string) {
+    return enVuelo.has(clave) || destinos.has(clave);
+  }
+
+  // La lista tal como va a quedar, con los toques en camino ya aplicados: así
+  // también los contadores (3/8) y los saltos de sector cambian en el acto.
+  const items = destinos.size === 0
+    ? data.items
+    : data.items.map((i): Item => {
+        const hecho = destinos.get(i.clave);
+        if (hecho === undefined) return i;
+        return { ...i, estado: hecho ? "PREPARADO" : "PENDIENTE", accion: hecho ? null : i.accion };
+      });
+  const { paraAplicar, sectores } = seccionesDePantalla(items);
 
   // Si el pedido se actualizó y la fila armada ya no está en "Cambios para
   // aplicar" (otro teléfono la tildó), se desarma: si volviera a cambiar, no
@@ -178,6 +221,7 @@ export function Preparar({ data }: { data: Data }) {
       item={i}
       puedeTildar={data.puedeTildar}
       ocupada={enVuelo.has(i.clave)}
+      guardando={destinos.has(i.clave)}
       pideConfirmar={pideConfirmacion(i.estado)}
       armada={armada?.clave === i.clave}
       alTocar={() => tocar(i, pideConfirmacion(i.estado))}
@@ -310,6 +354,7 @@ function Fila({
   item: i,
   puedeTildar,
   ocupada,
+  guardando,
   pideConfirmar,
   armada,
   alTocar,
@@ -319,6 +364,9 @@ function Fila({
   item: Item;
   puedeTildar: boolean;
   ocupada: boolean;
+  /** Ya se ve como va a quedar y se está guardando: no se apaga, pero tampoco
+   *  se vuelve a tocar hasta que termine. */
+  guardando: boolean;
   pideConfirmar: boolean;
   armada: boolean;
   alTocar: () => void;
@@ -333,9 +381,10 @@ function Fila({
     <div className="prep-fila-caja">
       <button
         type="button"
-        className={`prep-fila estado-${i.estado.toLowerCase()}${ocupada ? " ocupada" : ""}${armada ? " armada" : ""}`}
+        className={`prep-fila estado-${i.estado.toLowerCase()}${ocupada && !guardando ? " ocupada" : ""}${guardando ? " guardando" : ""}${armada ? " armada" : ""}`}
         onClick={alTocar}
-        disabled={!puedeTildar || ocupada}
+        disabled={!puedeTildar || ocupada || guardando}
+        aria-busy={guardando || undefined}
         role="checkbox"
         aria-checked={hecho}
       >

@@ -345,9 +345,10 @@ test("la franja de sin conexión va abajo, por encima de la barra flotante y de 
   // Abajo, a esa altura, taparía la mitad de abajo del menú "Más" (`.mobmas`,
   // que solo existe en el DOM mientras está abierto) y el pie de las hojas
   // (Guardar/Cancelar). Con cualquiera de los dos abierto solo hay fondo
-  // oscurecido: la franja se va arriba.
+  // oscurecido: la franja se va arriba. La copia de una ventana que se está
+  // yendo (`.overlay.saliendo`) no cuenta: la franja no salta arriba y abajo.
   assert.ok(
-    css.includes(":has(.overlay, .mobmas-fondo) .sin-conexion"),
+    css.includes(":has(.overlay:not(.saliendo), .mobmas-fondo) .sin-conexion"),
     "con el menú Más o una hoja abiertos la franja sigue abajo, tapando el menú o los botones de la hoja",
   );
 });
@@ -415,8 +416,10 @@ test("el tirón para actualizar está montado y no pelea con las hojas", () => {
   // Y tildar sin señal: si la acción falla, Preparar vuelve a pedir la lista, y
   // sin red ese pedido termina en la página de "sin conexión".
   const prep = fuente("components/Preparar.tsx");
-  const desdeCorrer = prep.indexOf("async function correr");
-  assert.notEqual(desdeCorrer, -1, "no está correr en Preparar");
+  // El guardado de cada toque vive en `guardar` (`correr` lo envuelve para
+  // mostrar el tilde antes de que conteste el servidor).
+  const desdeCorrer = prep.indexOf("async function guardar");
+  assert.notEqual(desdeCorrer, -1, "no está guardar en Preparar");
   const cuerpoCorrer = prep.slice(desdeCorrer, prep.indexOf("\n  }", desdeCorrer));
   assert.ok(cuerpoCorrer.includes("navigator.onLine"), "tildar sin señal y fallar reemplaza la lista por la página de sin conexión");
 });
